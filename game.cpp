@@ -34,7 +34,9 @@ namespace Game
 
     void checkCollision(GameState &state, Coord oldTail)
     {
-        if (state.snakeCoords[0].x == state.foodCoords[0] && state.snakeCoords[0].y == state.foodCoords[1])
+        const Coord head = state.snakeCoords.front();
+        // Check if we collided with food
+        if (head.x == state.foodCoords[0] && head.y == state.foodCoords[1])
         {
             // Grow tail
             state.snakeCoords.push_back(oldTail);
@@ -44,6 +46,24 @@ namespace Game
             int fy = rand() % state.hCellCount;
             state.foodCoords[0] = fx;
             state.foodCoords[1] = fy;
+        }
+        // Check walls
+        else if (head.x < 0 || head.y < 0 || head.x > state.wCellCount || head.y > state.hCellCount)
+        {
+            state.gameOver = true;
+        }
+        // Check if eating itself
+        else
+        {
+            for (int i = 1; i < state.snakeCoords.size(); i++)
+            {
+                Coord snakePart = state.snakeCoords[i];
+                if (snakePart.x == head.x && snakePart.y == head.y)
+                {
+                    state.gameOver = true;
+                    return;
+                }
+            }
         }
     }
 

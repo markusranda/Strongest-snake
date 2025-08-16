@@ -21,6 +21,7 @@ namespace Game
         std::deque<Coord> snakeCoords;
         int snakeDir[2] = {0, -1};
         int foodCoords[2] = {0, 0};
+        bool gameOver = false;
     };
 
     void tick(HWND hwnd, GameState &gameState, double dt);

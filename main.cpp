@@ -4,7 +4,9 @@
 #include <cstdio>
 #include "game.h"
 
-Game::GameState gameState;
+Game::GameState createGame();
+
+Game::GameState gameState = createGame();
 
 // Window procedure
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -104,16 +106,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     ULONGLONG lastTick = GetTickCount64();
 
     // Game init
-    srand(time(nullptr)); // Seeds rand
-
-    int sx = floor(gameState.wCellCount / 2);
-    int sy = floor(gameState.hCellCount / 2);
-    gameState.snakeCoords.push_back({sx, sy});
-
-    int fx = rand() % gameState.wCellCount;
-    int fy = rand() % gameState.hCellCount;
-    gameState.foodCoords[0] = fx;
-    gameState.foodCoords[1] = fy;
 
     while (running)
     {
@@ -134,8 +126,32 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
             lastTick = now;
             Game::tick(hwnd, gameState, delta);
         }
+
+        if (gameState.gameOver)
+        {
+            gameState = createGame();
+        }
     }
 
     std::cout << "Goodbye from Strongest Snake!\n";
     return 0;
+}
+
+Game::GameState createGame()
+{
+    std::cout << "Creating new game. GameOver: " << gameState.gameOver << "\n";
+
+    Game::GameState state;
+    srand(time(nullptr)); // Seeds rand
+
+    int sx = floor(state.wCellCount / 2);
+    int sy = floor(state.hCellCount / 2);
+    state.snakeCoords.push_back({sx, sy});
+
+    int fx = rand() % state.wCellCount;
+    int fy = rand() % state.hCellCount;
+    state.foodCoords[0] = fx;
+    state.foodCoords[1] = fy;
+
+    return state;
 }
