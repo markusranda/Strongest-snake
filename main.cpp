@@ -2,6 +2,9 @@
 #include <windows.h>
 #include <iostream>
 #include <cstdio>
+#include "game.h"
+
+Game::GameState gameState;
 
 // Window procedure
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -12,12 +15,27 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
+
         RECT rect;
         GetClientRect(hwnd, &rect);
+        int width = rect.right - rect.left;
+        int height = rect.bottom - rect.top;
 
-        HBRUSH brush = CreateSolidBrush(RGB(30, 30, 120)); // dark blue background
-        FillRect(hdc, &rect, brush);
-        DeleteObject(brush);
+        // --- Back buffer setup ---
+        HDC memDC = CreateCompatibleDC(hdc);
+        HBITMAP memBitmap = CreateCompatibleBitmap(hdc, width, height);
+        HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
+
+        // --- Let the game render into memDC ---
+        Game::renderGame(hwnd, memDC, gameState);
+
+        // --- Blit buffer to screen in one go ---
+        BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
+
+        // --- Cleanup ---
+        SelectObject(memDC, oldBitmap);
+        DeleteObject(memBitmap);
+        DeleteDC(memDC);
 
         EndPaint(hwnd, &ps);
         return 0;
@@ -25,7 +43,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
+    case WM_ERASEBKGND:
+        return 1; // nonzero = handled, skip default erase
     }
+
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
@@ -50,18 +71,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     RegisterClass(&wc);
 
-    RECT screen;
-    GetWindowRect(GetDesktopWindow(), &screen);
+    int clientWidth = 800;
+    int clientHeight = 800;
 
-    int width = 800;
-    int height = 600;
-    int x = (screen.right - width) / 2;
-    int y = (screen.bottom - height) / 2;
+    // Desired window style (non-resizable)
+    DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+
+    // Let Windows expand the size to account for borders & titlebar
+    RECT rect = {0, 0, clientWidth, clientHeight};
+    AdjustWindowRect(&rect, style, FALSE);
+
+    int winWidth = rect.right - rect.left;
+    int winHeight = rect.bottom - rect.top;
+    int x = winHeight / 2;
+    int y = winHeight / 2;
 
     HWND hwnd = CreateWindowEx(
         0, CLASS_NAME, L"Strongest Snake",
-        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-        x, y, width, height,
+        style | WS_VISIBLE,
+        x, y, winWidth, winHeight,
         nullptr, nullptr, hInstance, nullptr);
 
     if (!hwnd)
@@ -74,10 +102,32 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     // Message loop
     MSG msg = {};
-    while (GetMessage(&msg, nullptr, 0, 0))
+    bool running = true;
+    double targetDelta = 1000.0 / 60.0;
+    ULONGLONG lastTick = GetTickCount64();
+
+    // Game init
+    gameState.snakeCoords.push_back({10, 10});
+
+    while (running)
     {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+        {
+            if (msg.message == WM_QUIT)
+                running = false;
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+
+        // Timing
+        ULONGLONG now = GetTickCount64();
+        double delta = (double)(now - lastTick); // ms since last loop
+
+        if (delta >= targetDelta)
+        {
+            lastTick = now;
+            Game::tick(hwnd, gameState, delta);
+        }
     }
 
     std::cout << "Goodbye from Strongest Snake!\n";
