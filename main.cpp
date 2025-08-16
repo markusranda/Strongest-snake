@@ -104,10 +104,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     ULONGLONG lastTick = GetTickCount64();
 
     // Game init
+    srand(time(nullptr)); // Seeds rand
+
     int sx = floor(gameState.wCellCount / 2);
     int sy = floor(gameState.hCellCount / 2);
-    std::cout << sx << ", " << sy << "\n";
     gameState.snakeCoords.push_back({sx, sy});
+
+    int fx = rand() % gameState.wCellCount;
+    int fy = rand() % gameState.hCellCount;
+    gameState.foodCoords[0] = fx;
+    gameState.foodCoords[1] = fy;
 
     while (running)
     {

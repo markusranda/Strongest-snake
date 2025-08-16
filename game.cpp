@@ -81,6 +81,7 @@ namespace Game
         const int cellSize = width / state.wCellCount;
 
         // Draw background
+        HBRUSH foodBrush = CreateSolidBrush(RGB(139, 5, 5));
         HBRUSH brush = CreateSolidBrush(RGB(139, 68, 20));    // dark blue background
         HBRUSH snakeBrush = CreateSolidBrush(RGB(0, 200, 0)); // dark blue background
         FillRect(hdc, &rect, brush);
@@ -110,17 +111,28 @@ namespace Game
             int x = coord.x * cellSize;
             int y = coord.y * cellSize;
 
-            RECT rect;
-            rect.top = y;
-            rect.left = x;
-            rect.bottom = y + cellSize;
-            rect.right = x + cellSize;
-            FillRect(hdc, &rect, snakeBrush);
+            RECT sRect;
+            sRect.top = y;
+            sRect.left = x;
+            sRect.bottom = y + cellSize;
+            sRect.right = x + cellSize;
+            FillRect(hdc, &sRect, snakeBrush);
         }
+
+        // Draw food
+        RECT fRect;
+        int fx = state.foodCoords[0] * cellSize;
+        int fy = state.foodCoords[1] * cellSize;
+        fRect.top = fy;
+        fRect.left = fx;
+        fRect.bottom = fy + cellSize;
+        fRect.right = fx + cellSize;
+        FillRect(hdc, &fRect, foodBrush);
 
         // restore and clean up
         SelectObject(hdc, oldPen);
         DeleteObject(snakeBrush);
+        DeleteObject(foodBrush);
         DeleteObject(brush);
         DeleteObject(pen);
     }
