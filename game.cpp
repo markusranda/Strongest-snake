@@ -6,6 +6,8 @@ namespace Game
 {
 
     void updateGame(GameState &state, double delta);
+    void moveSnake(GameState &state);
+    void updateTimers(GameState &state, double delta);
 
     void tick(HWND hwnd, GameState &state, double delta)
     {
@@ -17,14 +19,26 @@ namespace Game
 
     void updateGame(GameState &state, double delta)
     {
-        state.moveTimer -= delta;
+        updateTimers(state, delta);
 
         if (state.moveTimer <= 0)
         {
-            state.moveTimer = 1000;
+            state.moveTimer = 500;
+            moveSnake(state);
+        }
+    }
 
-            // Move snake one tile forward
-            std::cout << "Move!\n";
+    void updateTimers(GameState &state, double delta)
+    {
+        state.moveTimer -= delta;
+    }
+
+    void moveSnake(GameState &state)
+    {
+        for (Coord &coord : state.snakeCoords)
+        {
+            coord.x += state.snakeDir[0];
+            coord.y += state.snakeDir[1];
         }
     }
 

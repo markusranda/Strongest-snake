@@ -71,14 +71,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     RegisterClass(&wc);
 
-    int clientWidth = 800;
-    int clientHeight = 800;
-
     // Desired window style (non-resizable)
     DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 
     // Let Windows expand the size to account for borders & titlebar
-    RECT rect = {0, 0, clientWidth, clientHeight};
+    RECT rect = {0, 0, gameState.width, gameState.height};
     AdjustWindowRect(&rect, style, FALSE);
 
     int winWidth = rect.right - rect.left;
