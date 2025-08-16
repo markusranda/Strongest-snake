@@ -6,9 +6,10 @@ namespace Game
 {
 
     void updateGame(GameState &state, double delta);
-    void moveSnake(GameState &state);
+    Coord moveSnake(GameState &state);
     void updateTimers(GameState &state, double delta);
     void updateDirection(GameState &state);
+    void checkCollision(GameState &state, Coord oldTail);
 
     void tick(HWND hwnd, GameState &state, double delta)
     {
@@ -26,7 +27,23 @@ namespace Game
         if (state.moveTimer <= 0)
         {
             state.moveTimer = MOVE_TIMER_TIMEOUT;
-            moveSnake(state);
+            Coord oldTail = moveSnake(state);
+            checkCollision(state, oldTail);
+        }
+    }
+
+    void checkCollision(GameState &state, Coord oldTail)
+    {
+        if (state.snakeCoords[0].x == state.foodCoords[0] && state.snakeCoords[0].y == state.foodCoords[1])
+        {
+            // Grow tail
+            state.snakeCoords.push_back(oldTail);
+
+            // Create new food
+            int fx = rand() % state.wCellCount;
+            int fy = rand() % state.hCellCount;
+            state.foodCoords[0] = fx;
+            state.foodCoords[1] = fy;
         }
     }
 
@@ -63,13 +80,15 @@ namespace Game
         state.moveTimer -= delta;
     }
 
-    void moveSnake(GameState &state)
+    Coord moveSnake(GameState &state)
     {
-        for (Coord &coord : state.snakeCoords)
-        {
-            coord.x += state.snakeDir[0];
-            coord.y += state.snakeDir[1];
-        }
+        Coord tailCopy = state.snakeCoords.back();
+        Coord newHead = {state.snakeCoords.front().x + state.snakeDir[0], state.snakeCoords.front().y + state.snakeDir[1]};
+
+        state.snakeCoords.push_front(newHead);
+        state.snakeCoords.pop_back();
+
+        return tailCopy;
     }
 
     void renderGame(HWND hwnd, HDC hdc, const GameState &state)

@@ -1,5 +1,5 @@
 #pragma once
-#include <vector>
+#include <deque>
 
 namespace Game
 {
@@ -18,7 +18,7 @@ namespace Game
         int height = 800;
         int wCellCount = 66;
         int hCellCount = 66;
-        std::vector<Coord> snakeCoords;
+        std::deque<Coord> snakeCoords;
         int snakeDir[2] = {0, -1};
         int foodCoords[2] = {0, 0};
     };
