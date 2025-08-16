@@ -8,6 +8,7 @@ namespace Game
     void updateGame(GameState &state, double delta);
     void moveSnake(GameState &state);
     void updateTimers(GameState &state, double delta);
+    void updateDirection(GameState &state);
 
     void tick(HWND hwnd, GameState &state, double delta)
     {
@@ -20,11 +21,40 @@ namespace Game
     void updateGame(GameState &state, double delta)
     {
         updateTimers(state, delta);
+        updateDirection(state);
 
         if (state.moveTimer <= 0)
         {
-            state.moveTimer = 500;
+            state.moveTimer = MOVE_TIMER_TIMEOUT;
             moveSnake(state);
+        }
+    }
+
+    void updateDirection(GameState &state)
+    {
+        SHORT left = GetAsyncKeyState(VK_LEFT);
+        SHORT up = GetAsyncKeyState(VK_UP);
+        SHORT right = GetAsyncKeyState(VK_RIGHT);
+        SHORT down = GetAsyncKeyState(VK_DOWN);
+        if (left & 0x8000)
+        {
+            state.snakeDir[0] = -1;
+            state.snakeDir[1] = 0;
+        }
+        else if (up & 0x8000)
+        {
+            state.snakeDir[0] = 0;
+            state.snakeDir[1] = -1;
+        }
+        else if (right & 0x8000)
+        {
+            state.snakeDir[0] = 1;
+            state.snakeDir[1] = 0;
+        }
+        else if (down & 0x8000)
+        {
+            state.snakeDir[0] = 0;
+            state.snakeDir[1] = 1;
         }
     }
 
