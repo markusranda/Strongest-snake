@@ -10,7 +10,7 @@
 C:\vcpkg\vcpkg.exe install --triplet x64-windows
 ```
 
-### prepare buil
+### prepare build
 
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Debug
 
