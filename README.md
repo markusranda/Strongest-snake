@@ -6,9 +6,13 @@
 
 ## Download dependencies
 
+- Install depedencies
+
 ```
 C:\vcpkg\vcpkg.exe install --triplet x64-windows
 ```
+
+- Press ctrl + s inside CMakeList.txt
 
 ### prepare build
 

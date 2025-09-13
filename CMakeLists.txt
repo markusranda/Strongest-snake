@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 4.1)
 
 project(strongest_snake LANGUAGES CXX)
-
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows/share")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -13,7 +13,7 @@ file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp src/*.h)
 add_executable(strongest_snake ${SRC_FILES})
 
 set_target_properties(strongest_snake PROPERTIES
-    WIN32_EXECUTABLE TRUE
+    WIN32_EXECUTABLE OFF
 )
 
 set(Vulkan_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows/include")
