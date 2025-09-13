@@ -1,7 +1,7 @@
 // Sample by Sascha Willems
 // Contact: webmaster@saschawillems.de
 
-#include "Window.h"
+#include "renderer/Window.h"
 #include "Logger.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
