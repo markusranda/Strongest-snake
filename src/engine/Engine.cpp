@@ -2,14 +2,7 @@
 #include "Debug.h"
 #include "Buffer.h"
 
-Engine::Engine(uint32_t width, uint32_t height) : width(width), height(height), window(width, height, "StrongestSnake") {}
-
-void Engine::run()
-{
-    initVulkan();
-    mainLoop();
-    cleanup();
-}
+Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
 void Engine::initVulkan()
 {
@@ -34,18 +27,8 @@ void Engine::initVulkan()
     createSyncObjects();
 }
 
-void Engine::mainLoop()
+void Engine::awaitDeviceIdle()
 {
-    while (!window.shouldClose())
-    {
-        window.pollEvents();
-        drawFrame();
-        // We want to animate the particle system using the last frames time to get smooth, frame-rate independent animation
-        double currentTime = glfwGetTime();
-        lastFrameTime = (currentTime - lastTime) * 1000.0;
-        lastTime = currentTime;
-    }
-
     vkDeviceWaitIdle(device);
 }
 
@@ -164,9 +147,13 @@ void Engine::setupDebugMessenger()
 
 void Engine::createSurface()
 {
-    if (glfwCreateWindowSurface(instance, window.getHandle(), nullptr, &surface) != VK_SUCCESS)
+    auto status = glfwCreateWindowSurface(instance, window.getHandle(), nullptr, &surface);
+    if (status != VK_SUCCESS)
     {
-        throw std::runtime_error("failed to create window surface!");
+        char buf[128]; // plenty of space for your message
+        snprintf(buf, sizeof(buf), "failed to create window surface: VkResult %d", status);
+        std::string msg(buf);
+        throw std::runtime_error(msg);
     }
 }
 
@@ -808,15 +795,15 @@ void Engine::createSyncObjects()
     }
 }
 
-void Engine::updateUniformBuffer(uint32_t currentImage)
+void Engine::updateUniformBuffer(uint32_t currentImage, double deltaTimeMs)
 {
     UniformBufferObject ubo{};
-    ubo.deltaTime = lastFrameTime * 2.0f;
+    ubo.deltaTime = deltaTimeMs * 2.0f;
 
     memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 }
 
-void Engine::drawFrame()
+void Engine::drawFrame(double deltaTimeMs)
 {
     // ==================================
     // CPU pacing
@@ -851,7 +838,7 @@ void Engine::drawFrame()
     // ==================================
     // COMPUTE
     // ==================================
-    updateUniformBuffer(currentFrame);
+    updateUniformBuffer(currentFrame, deltaTimeMs);
 
     vkResetFences(device, 1, &computeInFlightFences[currentFrame]);
     vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);

@@ -1,3 +1,5 @@
+#pragma once
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #define GLM_FORCE_RADIANS
@@ -92,9 +94,12 @@ const int MAX_FRAMES_IN_FLIGHT = 2;
 class Engine
 {
 public:
-    Engine(uint32_t width, uint32_t height);
+    Engine(uint32_t width, uint32_t height, Window &window);
 
-    void run();
+    void initVulkan();
+    void drawFrame(double deltaTimeMs);
+    void awaitDeviceIdle();
+    void cleanup();
 
 private:
     uint32_t width;
@@ -146,15 +151,7 @@ private:
     std::vector<VkFence> computeInFlightFences;
     uint32_t currentFrame = 0;
 
-    float lastFrameTime = 0.0f;
-
-    double lastTime = 0.0f;
-
-    void initVulkan();
-    void mainLoop();
-    void cleanup();
     void createInstance();
-    void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo);
     void setupDebugMessenger();
     void createSurface();
     void pickPhysicalDevice();
@@ -175,8 +172,7 @@ private:
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void recordComputeCommandBuffer(VkCommandBuffer commandBuffer);
     void createSyncObjects();
-    void updateUniformBuffer(uint32_t currentImage);
-    void drawFrame();
+    void updateUniformBuffer(uint32_t currentImage, double deltaTimeMs);
     VkShaderModule createShaderModule(const std::vector<char> &code);
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);

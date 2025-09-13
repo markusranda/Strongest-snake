@@ -1,4 +1,6 @@
 #include "engine/Engine.h"
+#include "engine/Window.h"
+#include "game/Game.h"
 #include "Logger.h"
 
 const uint32_t WIDTH = 800;
@@ -7,11 +9,13 @@ const uint32_t HEIGHT = 600;
 int main()
 {
     Logger::info("Launching Strongest Snake");
-    Engine app = Engine(WIDTH, HEIGHT);
+    Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
+    Engine engine = Engine(WIDTH, HEIGHT, window);
+    Game game = Game(window, engine);
 
     try
     {
-        app.run();
+        game.run();
     }
     catch (const std::exception &e)
     {
