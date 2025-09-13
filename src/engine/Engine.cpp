@@ -1,4 +1,4 @@
-#include "ComputeShaderApplication.h"
+#include "Engine.h"
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkDebugUtilsMessengerEXT *pDebugMessenger)
 {
@@ -22,16 +22,16 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
     }
 }
 
-ComputeShaderApplication::ComputeShaderApplication(uint32_t width, uint32_t height) : width(width), height(height), window(width, height, "StrongestSnake") {}
+Engine::Engine(uint32_t width, uint32_t height) : width(width), height(height), window(width, height, "StrongestSnake") {}
 
-void ComputeShaderApplication::run()
+void Engine::run()
 {
     initVulkan();
     mainLoop();
     cleanup();
 }
 
-void ComputeShaderApplication::initVulkan()
+void Engine::initVulkan()
 {
     createInstance();
     setupDebugMessenger();
@@ -54,7 +54,7 @@ void ComputeShaderApplication::initVulkan()
     createSyncObjects();
 }
 
-void ComputeShaderApplication::mainLoop()
+void Engine::mainLoop()
 {
     while (!window.shouldClose())
     {
@@ -69,7 +69,7 @@ void ComputeShaderApplication::mainLoop()
     vkDeviceWaitIdle(device);
 }
 
-void ComputeShaderApplication::cleanup()
+void Engine::cleanup()
 {
     swapchain.cleanup(device);
 
@@ -123,7 +123,7 @@ void ComputeShaderApplication::cleanup()
     glfwTerminate();
 }
 
-void ComputeShaderApplication::createInstance()
+void Engine::createInstance()
 {
     if (enableValidationLayers && !checkValidationLayerSupport())
     {
@@ -168,7 +168,7 @@ void ComputeShaderApplication::createInstance()
     }
 }
 
-void ComputeShaderApplication::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo)
+void Engine::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo)
 {
     createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -177,7 +177,7 @@ void ComputeShaderApplication::populateDebugMessengerCreateInfo(VkDebugUtilsMess
     createInfo.pfnUserCallback = debugCallback;
 }
 
-void ComputeShaderApplication::setupDebugMessenger()
+void Engine::setupDebugMessenger()
 {
     if (!enableValidationLayers)
         return;
@@ -191,7 +191,7 @@ void ComputeShaderApplication::setupDebugMessenger()
     }
 }
 
-void ComputeShaderApplication::createSurface()
+void Engine::createSurface()
 {
     if (glfwCreateWindowSurface(instance, window.getHandle(), nullptr, &surface) != VK_SUCCESS)
     {
@@ -199,7 +199,7 @@ void ComputeShaderApplication::createSurface()
     }
 }
 
-void ComputeShaderApplication::pickPhysicalDevice()
+void Engine::pickPhysicalDevice()
 {
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
@@ -227,7 +227,7 @@ void ComputeShaderApplication::pickPhysicalDevice()
     }
 }
 
-void ComputeShaderApplication::createSwapChain()
+void Engine::createSwapChain()
 {
     swapchain.create(
         physicalDevice,
@@ -238,7 +238,7 @@ void ComputeShaderApplication::createSwapChain()
         queueFamilies.presentFamily.value());
 }
 
-void ComputeShaderApplication::createLogicalDevice()
+void Engine::createLogicalDevice()
 {
     queueFamilies = findQueueFamilies(physicalDevice);
 
@@ -289,7 +289,7 @@ void ComputeShaderApplication::createLogicalDevice()
     vkGetDeviceQueue(device, queueFamilies.presentFamily.value(), 0, &presentQueue);
 }
 
-void ComputeShaderApplication::createRenderPass()
+void Engine::createRenderPass()
 {
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = swapchain.getImageFormat();
@@ -333,7 +333,7 @@ void ComputeShaderApplication::createRenderPass()
     }
 }
 
-void ComputeShaderApplication::createComputeDescriptorSetLayout()
+void Engine::createComputeDescriptorSetLayout()
 {
     std::array<VkDescriptorSetLayoutBinding, 3> layoutBindings{};
     layoutBindings[0].binding = 0;
@@ -365,7 +365,7 @@ void ComputeShaderApplication::createComputeDescriptorSetLayout()
     }
 }
 
-void ComputeShaderApplication::createGraphicsPipeline()
+void Engine::createGraphicsPipeline()
 {
     auto vertShaderCode = readFile("shaders/vert.spv");
     auto fragShaderCode = readFile("shaders/frag.spv");
@@ -490,7 +490,7 @@ void ComputeShaderApplication::createGraphicsPipeline()
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
 }
 
-void ComputeShaderApplication::createComputePipeline()
+void Engine::createComputePipeline()
 {
     auto computeShaderCode = readFile("shaders/comp.spv");
 
@@ -525,12 +525,12 @@ void ComputeShaderApplication::createComputePipeline()
     vkDestroyShaderModule(device, computeShaderModule, nullptr);
 }
 
-void ComputeShaderApplication::createFramebuffers()
+void Engine::createFramebuffers()
 {
     swapchain.createFramebuffers(device, renderPass);
 }
 
-void ComputeShaderApplication::createCommandPool()
+void Engine::createCommandPool()
 {
     QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
@@ -545,7 +545,7 @@ void ComputeShaderApplication::createCommandPool()
     }
 }
 
-void ComputeShaderApplication::createShaderStorageBuffers()
+void Engine::createShaderStorageBuffers()
 {
 
     // Initialize particles
@@ -591,7 +591,7 @@ void ComputeShaderApplication::createShaderStorageBuffers()
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
-void ComputeShaderApplication::createUniformBuffers()
+void Engine::createUniformBuffers()
 {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
@@ -607,7 +607,7 @@ void ComputeShaderApplication::createUniformBuffers()
     }
 }
 
-void ComputeShaderApplication::createDescriptorPool()
+void Engine::createDescriptorPool()
 {
     std::array<VkDescriptorPoolSize, 2> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -628,7 +628,7 @@ void ComputeShaderApplication::createDescriptorPool()
     }
 }
 
-void ComputeShaderApplication::createComputeDescriptorSets()
+void Engine::createComputeDescriptorSets()
 {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, computeDescriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo{};
@@ -689,7 +689,7 @@ void ComputeShaderApplication::createComputeDescriptorSets()
     }
 }
 
-void ComputeShaderApplication::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
+void Engine::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
 {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -718,7 +718,7 @@ void ComputeShaderApplication::createBuffer(VkDeviceSize size, VkBufferUsageFlag
     vkBindBufferMemory(device, buffer, bufferMemory, 0);
 }
 
-void ComputeShaderApplication::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+void Engine::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
 {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -752,7 +752,7 @@ void ComputeShaderApplication::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 
-uint32_t ComputeShaderApplication::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+uint32_t Engine::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
 {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -768,7 +768,7 @@ uint32_t ComputeShaderApplication::findMemoryType(uint32_t typeFilter, VkMemoryP
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void ComputeShaderApplication::createCommandBuffers()
+void Engine::createCommandBuffers()
 {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
@@ -784,7 +784,7 @@ void ComputeShaderApplication::createCommandBuffers()
     }
 }
 
-void ComputeShaderApplication::createComputeCommandBuffers()
+void Engine::createComputeCommandBuffers()
 {
     computeCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
@@ -800,7 +800,7 @@ void ComputeShaderApplication::createComputeCommandBuffers()
     }
 }
 
-void ComputeShaderApplication::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
+void Engine::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
 {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -852,7 +852,7 @@ void ComputeShaderApplication::recordCommandBuffer(VkCommandBuffer commandBuffer
     }
 }
 
-void ComputeShaderApplication::recordComputeCommandBuffer(VkCommandBuffer commandBuffer)
+void Engine::recordComputeCommandBuffer(VkCommandBuffer commandBuffer)
 {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -874,7 +874,7 @@ void ComputeShaderApplication::recordComputeCommandBuffer(VkCommandBuffer comman
     }
 }
 
-void ComputeShaderApplication::createSyncObjects()
+void Engine::createSyncObjects()
 {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -905,7 +905,7 @@ void ComputeShaderApplication::createSyncObjects()
     }
 }
 
-void ComputeShaderApplication::updateUniformBuffer(uint32_t currentImage)
+void Engine::updateUniformBuffer(uint32_t currentImage)
 {
     UniformBufferObject ubo{};
     ubo.deltaTime = lastFrameTime * 2.0f;
@@ -913,7 +913,7 @@ void ComputeShaderApplication::updateUniformBuffer(uint32_t currentImage)
     memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 }
 
-void ComputeShaderApplication::drawFrame()
+void Engine::drawFrame()
 {
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1004,7 +1004,7 @@ void ComputeShaderApplication::drawFrame()
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-VkShaderModule ComputeShaderApplication::createShaderModule(const std::vector<char> &code)
+VkShaderModule Engine::createShaderModule(const std::vector<char> &code)
 {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -1020,7 +1020,7 @@ VkShaderModule ComputeShaderApplication::createShaderModule(const std::vector<ch
     return shaderModule;
 }
 
-bool ComputeShaderApplication::isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface)
+bool Engine::isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface)
 {
     QueueFamilyIndices indices = findQueueFamilies(device);
 
@@ -1037,7 +1037,7 @@ bool ComputeShaderApplication::isDeviceSuitable(VkPhysicalDevice device, VkSurfa
     return indices.isComplete() && extensionsSupported && swapChainAdequate;
 }
 
-bool ComputeShaderApplication::checkDeviceExtensionSupport(VkPhysicalDevice device)
+bool Engine::checkDeviceExtensionSupport(VkPhysicalDevice device)
 {
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
@@ -1055,7 +1055,7 @@ bool ComputeShaderApplication::checkDeviceExtensionSupport(VkPhysicalDevice devi
     return requiredExtensions.empty();
 }
 
-QueueFamilyIndices ComputeShaderApplication::findQueueFamilies(VkPhysicalDevice device)
+QueueFamilyIndices Engine::findQueueFamilies(VkPhysicalDevice device)
 {
     QueueFamilyIndices indices;
 
@@ -1092,7 +1092,7 @@ QueueFamilyIndices ComputeShaderApplication::findQueueFamilies(VkPhysicalDevice 
     return indices;
 }
 
-std::vector<const char *> ComputeShaderApplication::getRequiredExtensions()
+std::vector<const char *> Engine::getRequiredExtensions()
 {
     uint32_t glfwExtensionCount = 0;
     const char **glfwExtensions;
@@ -1108,7 +1108,7 @@ std::vector<const char *> ComputeShaderApplication::getRequiredExtensions()
     return extensions;
 }
 
-bool ComputeShaderApplication::checkValidationLayerSupport()
+bool Engine::checkValidationLayerSupport()
 {
     uint32_t layerCount;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
@@ -1138,7 +1138,7 @@ bool ComputeShaderApplication::checkValidationLayerSupport()
     return true;
 }
 
-std::vector<char> ComputeShaderApplication::readFile(const std::string &filename)
+std::vector<char> Engine::readFile(const std::string &filename)
 {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
@@ -1158,7 +1158,7 @@ std::vector<char> ComputeShaderApplication::readFile(const std::string &filename
     return buffer;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL ComputeShaderApplication::debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData)
+VKAPI_ATTR VkBool32 VKAPI_CALL Engine::debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData)
 {
     std::string msg = "validation layer: ";
     switch (messageSeverity)

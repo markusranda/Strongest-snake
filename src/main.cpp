@@ -1,4 +1,4 @@
-#include "renderer/ComputeShaderApplication.h"
+#include "engine/Engine.h"
 #include "Logger.h"
 
 const uint32_t WIDTH = 800;
@@ -7,7 +7,7 @@ const uint32_t HEIGHT = 600;
 int main()
 {
     Logger::info("Launching Strongest Snake");
-    ComputeShaderApplication app = ComputeShaderApplication(WIDTH, HEIGHT);
+    Engine app = Engine(WIDTH, HEIGHT);
 
     try
     {

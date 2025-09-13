@@ -4,8 +4,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "renderer/Window.h"
-#include "renderer/SwapChain.h"
+#include "engine/Window.h"
+#include "engine/SwapChain.h"
 #include "Logger.h"
 
 #include <iostream>
@@ -89,10 +89,10 @@ struct QueueFamilyIndices
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
-class ComputeShaderApplication
+class Engine
 {
 public:
-    ComputeShaderApplication(uint32_t width, uint32_t height);
+    Engine(uint32_t width, uint32_t height);
 
     void run();
 
