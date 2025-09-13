@@ -1,6 +1,7 @@
 // Sample by Sascha Willems
 // Contact: webmaster@saschawillems.de
 
+#include "Window.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -126,14 +127,13 @@ class ComputeShaderApplication
 public:
     void run()
     {
-        initWindow();
         initVulkan();
         mainLoop();
         cleanup();
     }
 
 private:
-    GLFWwindow *window;
+    Window window{WIDTH, HEIGHT, "SnakeGame"};
 
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
@@ -185,28 +185,7 @@ private:
 
     float lastFrameTime = 0.0f;
 
-    bool framebufferResized = false;
-
     double lastTime = 0.0f;
-
-    void initWindow()
-    {
-        glfwInit();
-
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-        window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
-        glfwSetWindowUserPointer(window, this);
-        glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-
-        lastTime = glfwGetTime();
-    }
-
-    static void framebufferResizeCallback(GLFWwindow *window, int width, int height)
-    {
-        auto app = reinterpret_cast<ComputeShaderApplication *>(glfwGetWindowUserPointer(window));
-        app->framebufferResized = true;
-    }
 
     void initVulkan()
     {
@@ -234,9 +213,9 @@ private:
 
     void mainLoop()
     {
-        while (!glfwWindowShouldClose(window))
+        while (!window.shouldClose())
         {
-            glfwPollEvents();
+            window.pollEvents();
             drawFrame();
             // We want to animate the particle system using the last frames time to get smooth, frame-rate independent animation
             double currentTime = glfwGetTime();
@@ -311,7 +290,7 @@ private:
         vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
 
-        glfwDestroyWindow(window);
+        window.~Window();
 
         glfwTerminate();
     }
@@ -319,10 +298,10 @@ private:
     void recreateSwapChain()
     {
         int width = 0, height = 0;
-        glfwGetFramebufferSize(window, &width, &height);
+        window.getFramebufferSize(width, height);
         while (width == 0 || height == 0)
         {
-            glfwGetFramebufferSize(window, &width, &height);
+            window.getFramebufferSize(width, height);
             glfwWaitEvents();
         }
 
@@ -405,7 +384,7 @@ private:
 
     void createSurface()
     {
-        if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
+        if (glfwCreateWindowSurface(instance, window.getHandle(), nullptr, &surface) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to create window surface!");
         }
@@ -1297,9 +1276,9 @@ private:
 
         result = vkQueuePresentKHR(presentQueue, &presentInfo);
 
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized)
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || window.wasResized())
         {
-            framebufferResized = false;
+            window.resetResizedFlag();
             recreateSwapChain();
         }
         else if (result != VK_SUCCESS)
@@ -1361,7 +1340,7 @@ private:
         else
         {
             int width, height;
-            glfwGetFramebufferSize(window, &width, &height);
+            window.getFramebufferSize(width, height);
 
             VkExtent2D actualExtent = {
                 static_cast<uint32_t>(width),
