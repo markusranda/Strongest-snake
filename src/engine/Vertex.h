@@ -5,7 +5,7 @@
 struct Vertex
 {
     glm::vec2 pos;   // clip-space position
-    glm::vec3 color; // RGB
+    glm::vec4 color; // RGB
 
     static VkVertexInputBindingDescription getBindingDescription()
     {
@@ -29,7 +29,7 @@ struct Vertex
         // color (vec3 -> 3 floats)
         attrs[1].binding = 0;
         attrs[1].location = 1;
-        attrs[1].format = VK_FORMAT_R32G32B32_SFLOAT; // matches vec3
+        attrs[1].format = VK_FORMAT_R32G32B32A32_SFLOAT; // matches vec4
         attrs[1].offset = offsetof(Vertex, color);
 
         return attrs;

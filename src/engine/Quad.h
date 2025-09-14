@@ -4,9 +4,9 @@
 struct Quad
 {
     std::array<Vertex, 6> vertices;
-    glm::vec3 color;
+    glm::vec4 color;
 
-    Quad::Quad(float x, float y, float w, float h, glm::vec3 c,
+    Quad::Quad(float x, float y, float w, float h, glm::vec4 c,
                uint32_t screenW, uint32_t screenH)
         : color(c)
     {

@@ -12,7 +12,6 @@ Game::Game(Window &w)
 void Game::run()
 {
     engine.initVulkan();
-
     std::vector<Quad> background = getBackground();
 
     while (!window.shouldClose())
@@ -36,9 +35,9 @@ std::vector<Quad> Game::getBackground()
     float colSize = window.width / len;
     float rowSize = window.height / len;
     const float margin = 1.0f;
-    const auto color = Colors::fromHex(Colors::GROUND_BEIGE);
+    const auto color = Colors::fromHex(Colors::GROUND_BEIGE, 0.75f);
 
-    Quad quad = {0, 0, (float)window.width, (float)window.height, Colors::fromHex(Colors::WHITE), window.width, window.height};
+    Quad quad = {0, 0, (float)window.width, (float)window.height, Colors::fromHex(Colors::WHITE, 1.0f), window.width, window.height};
     vertices.push_back(quad);
 
     for (uint32_t x = 0; x < len; x++)

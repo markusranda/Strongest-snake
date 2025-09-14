@@ -14,11 +14,11 @@ struct Colors
     static constexpr uint32_t OCEAN_TEAL = 0x5EDFD4;
     static constexpr uint32_t SUN_YELLOW = 0xFFF178;
 
-    static glm::vec3 fromHex(uint32_t hex)
+    static glm::vec4 fromHex(uint32_t hex, float alpha)
     {
         float r = ((hex >> 16) & 0xFF) / 255.0f;
         float g = ((hex >> 8) & 0xFF) / 255.0f;
         float b = (hex & 0xFF) / 255.0f;
-        return {r, g, b};
+        return {r, g, b, alpha};
     };
 };
