@@ -10,7 +10,7 @@
 #include "engine/SwapChain.h"
 #include "Logger.h"
 #include "Vertex.h"
-#include "Mesh.h"
+#include "Quad.h"
 
 #include <iostream>
 #include <fstream>
@@ -130,7 +130,6 @@ private:
     void createCommandPool();
     void createCommandBuffers();
     void createSyncObjects();
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Mesh mesh);
     void drawFrame(uint32_t vertexCount);
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);

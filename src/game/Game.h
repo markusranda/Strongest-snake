@@ -3,22 +3,31 @@
 #include "../engine/Window.h"
 #include "../engine/Vertex.h"
 #include <deque>
+#include "Snake.H"
 
 struct Coord
 {
     int x, y;
 };
 
+struct SnakeSegment
+{
+    Coord last;
+    Coord next;
+};
+
+static constexpr double MOVE_TIMER_TIMEOUT = 200.0; // ms per cell
+
 struct GameState
 {
     int wCellCount;
     int hCellCount;
-    double moveTimer = 0.0;
+
     bool gameOver = false;
 
-    std::deque<Coord> snakeCoords;
-    int snakeDir[2] = {1, 0}; // start moving right
     int foodCoords[2];
+
+    Snake snake;
 };
 
 class Game
@@ -43,6 +52,5 @@ private:
     void updateGame(double delta);
     void Game::updateDirection();
     std::vector<Quad> Game::renderGame();
-    void Game::checkCollision(Coord oldTail);
-    Coord Game::moveSnake();
+    void Game::checkCollision();
 };
