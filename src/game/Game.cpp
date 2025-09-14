@@ -31,7 +31,7 @@ void Game::run()
 std::vector<Quad> Game::getBackground()
 {
     std::vector<Quad> vertices;
-    float len = 10;
+    float len = 50;
     float colSize = window.width / len;
     float rowSize = window.height / len;
     const auto color = glm::vec3{1, 0, 0};
