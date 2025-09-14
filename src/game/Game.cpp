@@ -19,6 +19,12 @@ Game::Game(Window &w)
     // compute cell size
     float cellW = static_cast<float>(window.width) / state.wCellCount;
     float cellH = static_cast<float>(window.height) / state.hCellCount;
+    background.push_back(Quad{
+        0, 0,
+        (float)window.width, (float)window.height,
+        Colors::fromHex(Colors::WHITE, 1.0f),
+        window.width, window.height});
+
     for (int x = 0; x < state.wCellCount; x++)
     {
         for (int y = 0; y < state.hCellCount; y++)
