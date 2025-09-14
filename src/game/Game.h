@@ -16,4 +16,6 @@ private:
 
     float lastFrameTime = 0.0f;
     double lastTime = 0.0f;
+
+    std::vector<Quad> Game::getBackground();
 };

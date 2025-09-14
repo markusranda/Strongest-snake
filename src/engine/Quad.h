@@ -7,7 +7,7 @@ struct Quad
     glm::vec3 color;
 
     Quad::Quad(float x, float y, float w, float h, glm::vec3 c,
-               int screenW, int screenH)
+               uint32_t screenW, uint32_t screenH)
         : color(c)
     {
         glm::vec2 topLeft = {x, y};
@@ -23,7 +23,7 @@ struct Quad
         vertices[5] = Vertex{toClipSpace(bottomRight, screenW, screenH), color};
     }
 
-    static glm::vec2 toClipSpace(glm::vec2 pos, int screenW, int screenH)
+    static glm::vec2 toClipSpace(glm::vec2 pos, uint32_t screenW, uint32_t screenH)
     {
         float x = (pos.x / screenW) * 2.0f - 1.0f;
         float y = 1.0f - (pos.y / screenH) * 2.0f;
