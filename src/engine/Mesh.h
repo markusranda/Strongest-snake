@@ -16,7 +16,7 @@ struct Mesh
         VkPhysicalDevice physicalDevice,
         VkCommandPool commandPool,
         VkQueue graphicsQueue,
-        const std::vector<Vertex> &vertices);
+        const std::array<Vertex, 4> &vertices);
 
     void destroy(VkDevice device);
 };

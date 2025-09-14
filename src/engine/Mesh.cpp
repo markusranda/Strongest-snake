@@ -6,7 +6,7 @@ Mesh Mesh::create(
     VkPhysicalDevice physicalDevice,
     VkCommandPool commandPool,
     VkQueue graphicsQueue,
-    const std::vector<Vertex> &vertices)
+    const std::array<Vertex, 4> &vertices)
 {
     Mesh mesh{};
     mesh.vertexCount = static_cast<uint32_t>(vertices.size());

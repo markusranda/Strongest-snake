@@ -1,7 +1,6 @@
 #include "Engine.h"
 #include "Debug.h"
 #include "Buffer.h"
-#include "QuadRenderer.h"
 
 Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
@@ -267,7 +266,7 @@ void Engine::createGraphicsPipeline()
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     VkPipelineViewportStateCreateInfo viewportState{};
@@ -710,13 +709,9 @@ std::vector<char> Engine::readFile(const std::string &filename)
 
 void Engine::drawQuads(const std::vector<Quad> &quads)
 {
-    auto vertices = QuadRenderer::toVertices(quads);
-    Mesh mesh = Mesh::create(device, physicalDevice, commandPool, graphicsQueue, vertices);
-
-    drawFrame(mesh);
-}
-
-Mesh Engine::createMesh(const std::vector<Vertex> &vertices)
-{
-    return Mesh::create(device, physicalDevice, commandPool, graphicsQueue, vertices);
+    for (const auto &quad : quads)
+    {
+        Mesh mesh = Mesh::create(device, physicalDevice, commandPool, graphicsQueue, quad.vertices);
+        drawFrame(mesh);
+    }
 }

@@ -13,7 +13,9 @@ void Game::run()
     engine.initVulkan();
 
     std::vector<Quad> background = {
-        Quad({0.0f, 0.5f}, {0.5f, 0.5f}, {0.5f, 0.0f}, {0.0f, 0.0f}, {1, 0, 0})};
+        Quad(0.0f, 0.0f, 50.0f, 50.0f, glm::vec3{1, 0, 0}, window.width, window.height),
+        Quad(51.0f, 0.0f, 50.0f, 50.0f, glm::vec3{1, 0, 0}, window.width, window.height),
+    };
 
     while (!window.shouldClose())
     {

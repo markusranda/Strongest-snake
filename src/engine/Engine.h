@@ -145,5 +145,4 @@ private:
     static std::vector<char> readFile(const std::string &filename);
 
     void drawFrame(Mesh mesh);
-    Mesh createMesh(const std::vector<Vertex> &vertices);
 };
