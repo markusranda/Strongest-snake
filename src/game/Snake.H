@@ -51,16 +51,19 @@ struct Snake
     {
         if (!fromCells.empty())
         {
-            // Use the *old tail* from last frame
             glm::vec2 oldTail = fromCells.back();
             cells.push_back(oldTail);
+
+            // Keep snapshots aligned
+            fromCells.push_back(oldTail);
             toCells.push_back(oldTail);
         }
         else if (!cells.empty())
         {
-            // fallback: duplicate last cell
             glm::vec2 tail = cells.back();
             cells.push_back(tail);
+
+            fromCells.push_back(tail);
             toCells.push_back(tail);
         }
     }
