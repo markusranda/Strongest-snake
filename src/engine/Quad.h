@@ -3,7 +3,7 @@
 
 struct Quad
 {
-    std::array<Vertex, 4> vertices;
+    std::array<Vertex, 6> vertices;
     glm::vec3 color;
 
     Quad::Quad(float x, float y, float w, float h, glm::vec3 c,
@@ -18,7 +18,9 @@ struct Quad
         vertices[0] = Vertex{toClipSpace(topLeft, screenW, screenH), color};
         vertices[1] = Vertex{toClipSpace(topRight, screenW, screenH), color};
         vertices[2] = Vertex{toClipSpace(bottomLeft, screenW, screenH), color};
-        vertices[3] = Vertex{toClipSpace(bottomRight, screenW, screenH), color};
+        vertices[3] = Vertex{toClipSpace(bottomLeft, screenW, screenH), color};
+        vertices[4] = Vertex{toClipSpace(topRight, screenW, screenH), color};
+        vertices[5] = Vertex{toClipSpace(bottomRight, screenW, screenH), color};
     }
 
     static glm::vec2 toClipSpace(glm::vec2 pos, int screenW, int screenH)

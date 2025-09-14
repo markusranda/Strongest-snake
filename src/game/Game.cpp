@@ -14,7 +14,7 @@ void Game::run()
 
     std::vector<Quad> background = {
         Quad(0.0f, 0.0f, 50.0f, 50.0f, glm::vec3{1, 0, 0}, window.width, window.height),
-        Quad(51.0f, 0.0f, 50.0f, 50.0f, glm::vec3{1, 0, 0}, window.width, window.height),
+        Quad(80.0f, 0.0f, 50.0f, 50.0f, glm::vec3{1, 0, 0}, window.width, window.height),
     };
 
     while (!window.shouldClose())

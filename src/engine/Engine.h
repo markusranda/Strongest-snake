@@ -84,7 +84,6 @@ private:
     VkDevice device;
 
     VkQueue graphicsQueue;
-    VkQueue computeQueue;
     VkQueue presentQueue;
 
     QueueFamilyIndices queueFamilies;
@@ -95,25 +94,17 @@ private:
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
 
-    VkDescriptorSetLayout computeDescriptorSetLayout;
-    VkPipelineLayout computePipelineLayout;
-    VkPipeline computePipeline;
-
-    VkCommandPool commandPool;
-
-    std::vector<VkBuffer> shaderStorageBuffers;
-    std::vector<VkDeviceMemory> shaderStorageBuffersMemory;
-
+    // Uniformbuffers
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void *> uniformBuffersMapped;
 
-    VkDescriptorPool descriptorPool;
-    std::vector<VkDescriptorSet> computeDescriptorSets;
-
+    // Command
+    VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
     std::vector<VkCommandBuffer> computeCommandBuffers;
 
+    // Semaphores
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkSemaphore> computeFinishedSemaphores;
@@ -121,6 +112,12 @@ private:
     std::vector<VkFence> computeInFlightFences;
     uint32_t currentFrame = 0;
 
+    // Vertices
+    VkBuffer quadVertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory quadVertexMemory = VK_NULL_HANDLE;
+    uint32_t quadVertexCapacity = 0;
+
+    void createOrResizeVertexBuffer(size_t requiredVertexCount);
     void createInstance();
     void setupDebugMessenger();
     void createSurface();
@@ -134,15 +131,12 @@ private:
     void createCommandBuffers();
     void createSyncObjects();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Mesh mesh);
-    VkShaderModule createShaderModule(const std::vector<char> &code);
+    void drawFrame(uint32_t vertexCount);
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
-    std::vector<const char *> getRequiredExtensions();
-
     bool checkValidationLayerSupport();
-
     static std::vector<char> readFile(const std::string &filename);
-
-    void drawFrame(Mesh mesh);
+    VkShaderModule createShaderModule(const std::vector<char> &code);
+    std::vector<const char *> getRequiredExtensions();
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 };

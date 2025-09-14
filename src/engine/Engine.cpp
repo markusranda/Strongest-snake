@@ -266,7 +266,7 @@ void Engine::createGraphicsPipeline()
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     VkPipelineViewportStateCreateInfo viewportState{};
@@ -480,7 +480,7 @@ void Engine::createSyncObjects()
     }
 }
 
-void Engine::drawFrame(Mesh mesh)
+void Engine::drawFrame(uint32_t vertexCount)
 {
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -507,8 +507,52 @@ void Engine::drawFrame(Mesh mesh)
 
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-    recordCommandBuffer(commandBuffers[currentFrame], imageIndex, mesh);
 
+    VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.framebuffer = swapchain.getFramebuffers()[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = swapchain.getExtent();
+
+    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)swapchain.getExtent().width;
+    viewport.height = (float)swapchain.getExtent().height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapchain.getExtent();
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+    // 🔑 Bind the global vertex buffer
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &quadVertexBuffer, offsets);
+
+    // 🔑 Draw all vertices
+    vkCmdDraw(commandBuffer, vertexCount, 1, 0, 0);
+
+    vkCmdEndRenderPass(commandBuffer);
+    vkEndCommandBuffer(commandBuffer);
+
+    // --- Submit ---
     VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[imageIndex]};
@@ -523,10 +567,7 @@ void Engine::drawFrame(Mesh mesh)
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to submit draw command buffer!");
-    }
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
 
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -537,19 +578,7 @@ void Engine::drawFrame(Mesh mesh)
     presentInfo.pSwapchains = swapChains;
     presentInfo.pImageIndices = &imageIndex;
 
-    result = vkQueuePresentKHR(presentQueue, &presentInfo);
-
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || window.wasResized())
-    {
-        window.resetResizedFlag();
-        swapchain.recreate(physicalDevice, device, surface, &window,
-                           queueFamilies.graphicsFamily.value(),
-                           queueFamilies.presentFamily.value());
-    }
-    else if (result != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to present swap chain image!");
-    }
+    vkQueuePresentKHR(presentQueue, &presentInfo);
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
@@ -709,9 +738,55 @@ std::vector<char> Engine::readFile(const std::string &filename)
 
 void Engine::drawQuads(const std::vector<Quad> &quads)
 {
+    // Step A: build vertex array for all quads
+    std::vector<Vertex> vertices;
+    vertices.reserve(quads.size() * 4);
+
     for (const auto &quad : quads)
     {
-        Mesh mesh = Mesh::create(device, physicalDevice, commandPool, graphicsQueue, quad.vertices);
-        drawFrame(mesh);
+        for (const auto &v : quad.vertices)
+        {
+            vertices.push_back(v);
+        }
     }
+
+    // Step B: ensure buffer is big enough
+    createOrResizeVertexBuffer(vertices.size());
+
+    // Step C: copy vertex data to buffer
+    void *data;
+    VkDeviceSize bufferSize = sizeof(Vertex) * vertices.size();
+    vkMapMemory(device, quadVertexMemory, 0, bufferSize, 0, &data);
+    memcpy(data, vertices.data(), (size_t)bufferSize);
+    vkUnmapMemory(device, quadVertexMemory);
+
+    // Step D: draw once per frame
+    drawFrame(static_cast<uint32_t>(vertices.size()));
+}
+
+void Engine::createOrResizeVertexBuffer(size_t requiredVertexCount)
+{
+    if (requiredVertexCount <= quadVertexCapacity)
+    {
+        return;
+    }
+
+    if (quadVertexBuffer)
+    {
+        vkDestroyBuffer(device, quadVertexBuffer, nullptr);
+        vkFreeMemory(device, quadVertexMemory, nullptr);
+    }
+
+    quadVertexCapacity = static_cast<uint32_t>(requiredVertexCount);
+
+    VkDeviceSize bufferSize = sizeof(Vertex) * quadVertexCapacity;
+
+    CreateBuffer(
+        device,
+        physicalDevice,
+        bufferSize,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        quadVertexBuffer,
+        quadVertexMemory);
 }
