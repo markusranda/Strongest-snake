@@ -1,7 +1,16 @@
 #include "Game.h"
+#include <glm/glm.hpp>
 
-Game::Game(Window &window, Engine &engine) : window(window), engine(engine) {}
-
+Game::Game(Window &w)
+    : window(w),
+      boardBuffer{
+          {glm::vec2(0.0f, -0.5f), glm::vec3(1.0f, 0.0f, 0.0f)}, // top center
+          {glm::vec2(-0.5f, 0.5f), glm::vec3(0.0f, 0.0f, 1.0f)}, // bottom left
+          {glm::vec2(0.5f, 0.5f), glm::vec3(0.0f, 1.0f, 0.0f)},  // bottom right
+      },
+      engine(w.width, w.height, w, boardBuffer)
+{
+}
 void Game::run()
 {
     engine.initVulkan();

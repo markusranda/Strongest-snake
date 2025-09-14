@@ -29,3 +29,33 @@ target_link_libraries(strongest_snake PRIVATE glfw)
 
 # Project includes
 target_include_directories(strongest_snake PRIVATE src)
+
+# Find glslc (should come with Vulkan SDK)
+find_program(GLSLC_EXECUTABLE NAMES glslc HINTS "$ENV{VULKAN_SDK}/Bin")
+
+if(NOT GLSLC_EXECUTABLE)
+    message(FATAL_ERROR "glslc not found! Make sure Vulkan SDK is installed and VULKAN_SDK is set.")
+endif()
+
+# List all shader sources
+set(SHADER_SOURCES
+    ${CMAKE_SOURCE_DIR}/shaders/vert.vert
+    ${CMAKE_SOURCE_DIR}/shaders/frag.frag
+)
+
+set(SHADER_OUTPUTS "")
+foreach(SHADER ${SHADER_SOURCES})
+    get_filename_component(FILE_NAME ${SHADER} NAME_WE)   # NAME_WE = name without extension
+    set(SPIRV ${CMAKE_SOURCE_DIR}/shaders/${FILE_NAME}.spv)  # write into source shaders/
+    add_custom_command(
+        OUTPUT ${SPIRV}
+        COMMAND ${GLSLC_EXECUTABLE} ${SHADER} -o ${SPIRV}
+        DEPENDS ${SHADER}
+        COMMENT "Compiling ${FILE_NAME} to SPIR-V"
+    )
+    list(APPEND SHADER_OUTPUTS ${SPIRV})
+endforeach()
+
+# Add a custom target so shaders build along with your project
+add_custom_target(Shaders ALL DEPENDS ${SHADER_OUTPUTS})
+

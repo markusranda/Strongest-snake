@@ -10,8 +10,7 @@ int main()
 {
     Logger::info("Launching Strongest Snake");
     Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
-    Engine engine = Engine(WIDTH, HEIGHT, window);
-    Game game = Game(window, engine);
+    Game game = Game(window);
 
     try
     {

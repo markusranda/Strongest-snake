@@ -9,6 +9,9 @@ public:
     Window(uint32_t width, uint32_t height, const char *title);
     ~Window();
 
+    uint32_t height;
+    uint32_t width;
+
     GLFWwindow *getHandle() const { return window; }
     bool shouldClose() const { return glfwWindowShouldClose(window); }
     void pollEvents() { glfwPollEvents(); }

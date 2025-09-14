@@ -1,7 +1,7 @@
 #include "Window.h"
 #include <stdexcept>
 
-Window::Window(uint32_t width, uint32_t height, const char *title)
+Window::Window(uint32_t width, uint32_t height, const char *title) : width(width), height(height)
 {
     if (!glfwInit())
     {
