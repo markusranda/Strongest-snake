@@ -1,8 +1,9 @@
 #include "Engine.h"
 #include "Debug.h"
 #include "Buffer.h"
+#include "QuadRenderer.h"
 
-Engine::Engine(uint32_t width, uint32_t height, Window &window, std::vector<Vertex> &boardBuffer) : width(width), height(height), window(window), boardBuffer(boardBuffer) {}
+Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
 void Engine::initVulkan()
 {
@@ -16,7 +17,6 @@ void Engine::initVulkan()
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
-    createVertexBuffer();
     createCommandBuffers();
     createSyncObjects();
 }
@@ -26,37 +26,7 @@ void Engine::awaitDeviceIdle()
     vkDeviceWaitIdle(device);
 }
 
-void Engine::cleanup()
-{
-    swapchain.cleanup(device);
-
-    vkDestroyPipeline(device, graphicsPipeline, nullptr);
-    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-
-    vkDestroyRenderPass(device, renderPass, nullptr);
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-        vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-        vkDestroyFence(device, inFlightFences[i], nullptr);
-    }
-
-    vkDestroyCommandPool(device, commandPool, nullptr);
-
-    vkDestroyDevice(device, nullptr);
-
-    if (enableValidationLayers)
-    {
-        DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-    }
-
-    vkDestroySurfaceKHR(instance, surface, nullptr);
-    vkDestroyInstance(instance, nullptr);
-
-    vkDestroyBuffer(device, vertexBuffer, nullptr);
-    vkFreeMemory(device, vertexBufferMemory, nullptr);
-}
+void Engine::cleanup() {}
 
 void Engine::createInstance()
 {
@@ -311,7 +281,7 @@ void Engine::createGraphicsPipeline()
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.cullMode = VK_CULL_MODE_NONE;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -405,7 +375,7 @@ void Engine::createCommandPool()
     }
 }
 
-void Engine::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
+void Engine::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Mesh mesh)
 {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -445,9 +415,9 @@ void Engine::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIn
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, offsets);
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &mesh.vertexBuffer, offsets);
 
-    vkCmdDraw(commandBuffer, static_cast<uint32_t>(boardBuffer.size()), 1, 0, 0);
+    vkCmdDraw(commandBuffer, mesh.vertexCount, 1, 0, 0);
 
     vkCmdEndRenderPass(commandBuffer);
 
@@ -455,46 +425,6 @@ void Engine::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIn
     {
         throw std::runtime_error("failed to record command buffer!");
     }
-}
-
-void Engine::createVertexBuffer()
-{
-    std::cout << "Vertex count: " << boardBuffer.size()
-              << "  sizeof(Vertex): " << sizeof(Vertex)
-              << "  bufferSize: " << sizeof(Vertex) * boardBuffer.size()
-              << std::endl;
-
-    VkDeviceSize bufferSize = sizeof(Vertex) * boardBuffer.size();
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    CreateBuffer(
-        device,
-        physicalDevice,
-        bufferSize,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        stagingBuffer,
-        stagingBufferMemory);
-
-    void *data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, boardBuffer.data(), (size_t)bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    CreateBuffer(
-        device,
-        physicalDevice,
-        bufferSize,
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        vertexBuffer,
-        vertexBufferMemory);
-
-    CopyBuffer(device, commandPool, graphicsQueue, stagingBuffer, vertexBuffer, bufferSize);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
 void Engine::createCommandBuffers()
@@ -551,7 +481,7 @@ void Engine::createSyncObjects()
     }
 }
 
-void Engine::drawFrame(double /*deltaTimeMs*/)
+void Engine::drawFrame(Mesh mesh)
 {
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -578,7 +508,7 @@ void Engine::drawFrame(double /*deltaTimeMs*/)
 
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+    recordCommandBuffer(commandBuffers[currentFrame], imageIndex, mesh);
 
     VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -776,4 +706,17 @@ std::vector<char> Engine::readFile(const std::string &filename)
     file.close();
 
     return buffer;
+}
+
+void Engine::drawQuads(const std::vector<Quad> &quads)
+{
+    auto vertices = QuadRenderer::toVertices(quads);
+    Mesh mesh = Mesh::create(device, physicalDevice, commandPool, graphicsQueue, vertices);
+
+    drawFrame(mesh);
+}
+
+Mesh Engine::createMesh(const std::vector<Vertex> &vertices)
+{
+    return Mesh::create(device, physicalDevice, commandPool, graphicsQueue, vertices);
 }

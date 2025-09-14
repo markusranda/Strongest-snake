@@ -9,7 +9,8 @@
 #include "engine/Window.h"
 #include "engine/SwapChain.h"
 #include "Logger.h"
-#include "../game/Vertex.h"
+#include "Vertex.h"
+#include "Mesh.h"
 
 #include <iostream>
 #include <fstream>
@@ -61,21 +62,19 @@ const int MAX_FRAMES_IN_FLIGHT = 2;
 class Engine
 {
 public:
-    Engine(uint32_t width, uint32_t height, Window &window, std::vector<Vertex> &boardBuffer);
+    Engine(uint32_t width, uint32_t height, Window &window);
 
     void initVulkan();
-    void drawFrame(double deltaTimeMs);
     void awaitDeviceIdle();
     void cleanup();
+
+    // Draw functions
+    void drawQuads(const std::vector<Quad> &quads);
 
 private:
     uint32_t width;
     uint32_t height;
     Window window;
-
-    std::vector<Vertex> &boardBuffer;
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
 
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
@@ -132,11 +131,9 @@ private:
     void createGraphicsPipeline();
     void createFramebuffers();
     void createCommandPool();
-    void createVertexBuffer();
     void createCommandBuffers();
-    void recordComputeCommandBuffer(VkCommandBuffer commandBuffer);
     void createSyncObjects();
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Mesh mesh);
     VkShaderModule createShaderModule(const std::vector<char> &code);
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);
@@ -146,4 +143,7 @@ private:
     bool checkValidationLayerSupport();
 
     static std::vector<char> readFile(const std::string &filename);
+
+    void drawFrame(Mesh mesh);
+    Mesh createMesh(const std::vector<Vertex> &vertices);
 };

@@ -1,7 +1,7 @@
 #pragma once
 #include "../engine/Engine.h"
 #include "../engine/Window.h"
-#include "Vertex.h"
+#include "../engine/Vertex.h"
 
 class Game
 {
@@ -13,7 +13,6 @@ public:
 private:
     Window window;
     Engine engine;
-    std::vector<Vertex> boardBuffer;
 
     float lastFrameTime = 0.0f;
     double lastTime = 0.0f;
