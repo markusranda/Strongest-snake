@@ -102,7 +102,6 @@ private:
     // Command
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
-    std::vector<VkCommandBuffer> computeCommandBuffers;
 
     // Semaphores
     std::vector<VkSemaphore> imageAvailableSemaphores;
