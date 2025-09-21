@@ -13,7 +13,6 @@ struct Snake
     const double moveTimeout = 100.0;
 
     std::vector<glm::vec2> fromCells;
-    std::vector<glm::vec2> toCells;
 
     void reset(glm::vec2 start)
     {
@@ -24,7 +23,6 @@ struct Snake
         interpTimer = 0.0;
 
         fromCells = {start};
-        toCells = {start};
     }
 
     void act(double delta)
@@ -40,8 +38,6 @@ struct Snake
             cells.push_front(newHead);
             cells.pop_back();
 
-            toCells.assign(cells.begin(), cells.end());
-
             moveTimer = moveTimeout;
             interpTimer = 0.0;
         }
@@ -49,22 +45,11 @@ struct Snake
 
     void grow()
     {
-        if (!fromCells.empty())
+        if (!cells.empty())
         {
-            glm::vec2 oldTail = fromCells.back();
-            cells.push_back(oldTail);
-
-            // Keep snapshots aligned
-            fromCells.push_back(oldTail);
-            toCells.push_back(oldTail);
-        }
-        else if (!cells.empty())
-        {
-            glm::vec2 tail = cells.back();
-            cells.push_back(tail);
-
-            fromCells.push_back(tail);
-            toCells.push_back(tail);
+            auto tail = &cells.back();
+            cells.push_back(*tail);
+            fromCells.push_back(*tail);
         }
     }
 
@@ -76,11 +61,11 @@ struct Snake
         if (t > 1.0f)
             t = 1.0f;
 
-        if (!fromCells.empty() && fromCells.size() == toCells.size())
+        if (!fromCells.empty() && fromCells.size() == cells.size())
         {
             for (size_t i = 0; i < fromCells.size(); i++)
             {
-                out.push_back(glm::mix(fromCells[i], toCells[i], t));
+                out.push_back(glm::mix(fromCells[i], cells[i], t));
             }
         }
         else
