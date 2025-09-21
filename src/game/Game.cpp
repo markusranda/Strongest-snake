@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 #include <cstdlib>
 #include <deque>
+#include "Collision.h"
 
 Game::Game(Window &w)
     : window(w),
@@ -99,13 +100,7 @@ void Game::checkCollision()
 {
     for (auto &ground : state.groundList)
     {
-        bool intersects =
-            !(state.player.pos.x + state.player.size.x <= ground.pos.x ||
-              state.player.pos.x >= ground.pos.x + ground.size.x ||
-              state.player.pos.y + state.player.size.y <= ground.pos.y ||
-              state.player.pos.y >= ground.pos.y + ground.size.y);
-
-        if (intersects)
+        if (rectIntersects(state.player.pos, state.player.size, ground.pos, ground.size))
         {
             ground.dead = true;
         }
