@@ -3,31 +3,30 @@
 #include "../engine/Window.h"
 #include "../engine/Vertex.h"
 #include <deque>
-#include "Snake.H"
 
-struct Coord
+struct Ground
 {
-    int x, y;
+    glm::vec2 pos;
+    glm::vec2 size;
+    bool dead = false;
 };
 
-struct SnakeSegment
+struct Player
 {
-    Coord last;
-    Coord next;
+    glm::vec2 pos;
+    glm::vec2 size;
+    glm::vec2 dir = glm::vec2(0.0f, 0.0f);
 };
-
-static constexpr double MOVE_TIMER_TIMEOUT = 200.0; // ms per cell
 
 struct GameState
 {
-    int wCellCount;
-    int hCellCount;
-
     bool gameOver = false;
+    Player player;
+    std::vector<Ground> groundList;
 
-    int foodCoords[2];
-
-    Snake snake;
+    uint32_t rows = 20;
+    uint32_t columns = 20;
+    uint32_t cellSize = 1;
 };
 
 class Game

@@ -9,6 +9,7 @@ enum class ShaderType
 {
     FlatColor,
     SnakeSkin,
+    Border,
     COUNT
 };
 

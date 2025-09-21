@@ -42,6 +42,7 @@ set(SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/shaders/vert.vert
     ${CMAKE_SOURCE_DIR}/shaders/snakeskin.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag.frag
+    ${CMAKE_SOURCE_DIR}/shaders/border.frag
 )
 
 set(SHADER_OUTPUTS "")

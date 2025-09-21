@@ -5,6 +5,7 @@ std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipel
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
     pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag.spv", renderPass);
     pipelines[static_cast<size_t>(ShaderType::SnakeSkin)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/snakeskin.spv", renderPass);
+    pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/border.spv", renderPass);
 
     return pipelines;
 }
