@@ -726,7 +726,7 @@ void Engine::createOrResizeVertexBuffer(size_t requiredVertexCount)
         vkFreeMemory(device, quadVertexMemory, nullptr);
     }
 
-    quadVertexCapacity = static_cast<uint32_t>(requiredVertexCount);
+    quadVertexCapacity = static_cast<uint32_t>(requiredVertexCount) * 10;
 
     VkDeviceSize bufferSize = sizeof(Vertex) * quadVertexCapacity;
 
