@@ -43,17 +43,6 @@ void SwapChain::create(VkPhysicalDevice physicalDevice,
     // Framebuffers created separately, once render pass exists
 }
 
-void SwapChain::recreate(VkPhysicalDevice physicalDevice,
-                         VkDevice device,
-                         VkSurfaceKHR surface,
-                         Window *window,
-                         uint32_t graphicsFamily,
-                         uint32_t presentFamily)
-{
-    cleanup(device);
-    create(physicalDevice, device, surface, window, graphicsFamily, presentFamily);
-}
-
 void SwapChain::createSwapChain(VkPhysicalDevice physicalDevice,
                                 VkDevice device,
                                 VkSurfaceKHR surface,

@@ -27,13 +27,6 @@ public:
 
     void cleanup(VkDevice device);
 
-    void recreate(VkPhysicalDevice physicalDevice,
-                  VkDevice device,
-                  VkSurfaceKHR surface,
-                  Window *window,
-                  uint32_t graphicsFamily,
-                  uint32_t presentFamily);
-
     void createFramebuffers(VkDevice device, VkRenderPass renderPass);
 
     // Getters

@@ -96,6 +96,7 @@ private:
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
     uint32_t currentFrame = 0;
+    std::vector<VkFence> imagesInFlight;
 
     // Vertices
     VkBuffer vertexRingbuffer = VK_NULL_HANDLE;
@@ -116,7 +117,9 @@ private:
     void createCommandPool();
     void createCommandBuffers();
     void createSyncObjects();
+    void createImagesInFlight();
     void drawFrame(uint32_t vertexCount);
+    void recreateSwapchain();
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);
     bool checkValidationLayerSupport();
