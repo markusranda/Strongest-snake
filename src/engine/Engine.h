@@ -50,7 +50,7 @@ struct QueueFamilyIndices
     }
 };
 
-const int MAX_FRAMES_IN_FLIGHT = 2;
+const int MAX_FRAMES_IN_FLIGHT = 3;
 
 class Engine
 {
@@ -98,11 +98,12 @@ private:
     uint32_t currentFrame = 0;
 
     // Vertices
-    VkBuffer quadVertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory quadVertexMemory = VK_NULL_HANDLE;
-    uint32_t quadVertexCapacity = 0;
+    VkBuffer vertexRingbuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexRingbufferMemory = VK_NULL_HANDLE;
+    uint32_t vertexSliceCapacity = 0;
+    void *vertexRingbufferMapped = nullptr;
 
-    void createOrResizeVertexBuffer(size_t requiredVertexCount);
+    void createOrResizeVertexBuffer(std::vector<Vertex> vertices);
     void createInstance();
     void setupDebugMessenger();
     void createSurface();

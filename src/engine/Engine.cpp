@@ -1,6 +1,8 @@
 #include "Engine.h"
 #include "Debug.h"
 #include "Buffer.h"
+#include <thread>
+#include <chrono>
 
 Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
@@ -491,8 +493,10 @@ void Engine::drawFrame(uint32_t vertexCount)
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     // 🔑 Bind the global vertex buffer
-    VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &quadVertexBuffer, offsets);
+    VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
+    VkDeviceSize frameOffset = currentFrame * stride;
+    VkDeviceSize offsets[] = {frameOffset};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexRingbuffer, offsets);
 
     // 🔑 Draw all vertices
     vkCmdDraw(commandBuffer, vertexCount, 1, 0, 0);
@@ -698,44 +702,43 @@ void Engine::drawQuads(const std::vector<Quad> &quads)
         }
     }
 
-    // Step B: ensure buffer is big enough
-    createOrResizeVertexBuffer(vertices.size());
-
-    // Step C: copy vertex data to buffer
-    void *data;
-    VkDeviceSize bufferSize = sizeof(Vertex) * vertices.size();
-    vkMapMemory(device, quadVertexMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertices.data(), (size_t)bufferSize);
-    vkUnmapMemory(device, quadVertexMemory);
-
-    // Step D: draw once per frame
+    createOrResizeVertexBuffer(vertices);
     drawFrame(static_cast<uint32_t>(vertices.size()));
 }
 
-void Engine::createOrResizeVertexBuffer(size_t requiredVertexCount)
+void Engine::createOrResizeVertexBuffer(std::vector<Vertex> vertices)
 {
-    if (requiredVertexCount <= quadVertexCapacity)
+    VkDeviceSize stride = sizeof(Vertex) * vertices.size();
+
+    // Check if we're over capacity and handle it
+    if (vertices.size() > vertexSliceCapacity)
     {
-        return;
+        Logger::info("Creating new buffer!");
+        VkDeviceSize totalSize = stride * MAX_FRAMES_IN_FLIGHT;
+
+        // Don't free non existing buffer
+        if (vertexRingbufferMemory)
+        {
+            awaitDeviceIdle(); // We need to wait untill gpu releases buffer
+            vkDestroyBuffer(device, vertexRingbuffer, nullptr);
+            vkUnmapMemory(device, vertexRingbufferMemory);
+            vkFreeMemory(device, vertexRingbufferMemory, nullptr);
+        }
+
+        CreateBuffer(
+            device,
+            physicalDevice,
+            totalSize,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            vertexRingbuffer,
+            vertexRingbufferMemory);
+
+        vkMapMemory(device, vertexRingbufferMemory, 0, totalSize, 0, &vertexRingbufferMapped);
+        vertexSliceCapacity = static_cast<uint32_t>(vertices.size());
     }
 
-    if (quadVertexBuffer)
-    {
-        awaitDeviceIdle(); // We need to wait untill gpu releases buffer
-        vkDestroyBuffer(device, quadVertexBuffer, nullptr);
-        vkFreeMemory(device, quadVertexMemory, nullptr);
-    }
-
-    quadVertexCapacity = static_cast<uint32_t>(requiredVertexCount) * 10;
-
-    VkDeviceSize bufferSize = sizeof(Vertex) * quadVertexCapacity;
-
-    CreateBuffer(
-        device,
-        physicalDevice,
-        bufferSize,
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        quadVertexBuffer,
-        quadVertexMemory);
+    // Update memory in buffer
+    size_t frameOffset = currentFrame * stride;
+    memcpy((char *)vertexRingbufferMapped + frameOffset, vertices.data(), (size_t)stride);
 }
