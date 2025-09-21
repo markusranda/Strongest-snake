@@ -126,7 +126,8 @@ private:
     void createSyncObjects();
     void createImagesInFlight();
     void destroySyncObjects();
-    void drawBatch(DrawBatch batch);
+    void drawBatches(std::vector<DrawBatch> batches);
+    void drawBatch(VkCommandBuffer cmdBuffer, DrawBatch batch);
     void recreateSwapchain();
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);

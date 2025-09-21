@@ -10,7 +10,7 @@ float circle(vec2 uv, vec2 center, float radius) {
 }
 
 bool isEdge() {
-    float edgeThreshold = 0.05; // how thick the edge band is
+    float edgeThreshold = 0.1; // how thick the edge band is
 
     // distance to nearest edge
     float distToEdge = min(
@@ -33,7 +33,7 @@ void main() {
     vec3 spotColor = vec3(1.0, 0.0, 0.0);
 
     if (isEdge()) {
-        outColor = vec4(1.0, 1.0, 1.0, 1.0);
+        outColor = vec4(0.0, 0.0, 0.0, 1.0);
     } else {
         outColor = vec4(mix(base, spotColor, spots), 1.0);
     }

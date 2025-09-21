@@ -480,16 +480,11 @@ void Engine::drawQuads(const std::vector<Quad> &quads)
     }
 
     createOrResizeVertexBuffer(allVertices);
-
-    for (auto &batch : batches)
-    {
-        drawBatch(batch);
-    }
+    drawBatches(batches);
 }
 
-void Engine::drawBatch(DrawBatch batch)
+void Engine::drawBatches(std::vector<DrawBatch> batches)
 {
-    Pipeline pipeline = pipelines[size_t(batch.shader)];
 
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -540,8 +535,6 @@ void Engine::drawBatch(DrawBatch batch)
     renderPassInfo.pClearValues = &clearColor;
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
@@ -556,13 +549,10 @@ void Engine::drawBatch(DrawBatch batch)
     scissor.extent = swapchain.getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    // 🔑 Bind the global vertex buffer
-    VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
-    VkDeviceSize frameOffset = currentFrame * stride;
-    VkDeviceSize offsets[] = {frameOffset};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexRingbuffer, offsets);
-
-    vkCmdDraw(commandBuffer, batch.vertexCount, 1, batch.firstVertex, 0);
+    for (auto &batch : batches)
+    {
+        drawBatch(commandBuffer, batch);
+    }
 
     vkCmdEndRenderPass(commandBuffer);
     vkEndCommandBuffer(commandBuffer);
@@ -596,6 +586,19 @@ void Engine::drawBatch(DrawBatch batch)
     vkQueuePresentKHR(presentQueue, &presentInfo);
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void Engine::drawBatch(VkCommandBuffer cmdBuffer, DrawBatch batch)
+{
+    Pipeline pipeline = pipelines[size_t(batch.shader)];
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+
+    VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
+    VkDeviceSize frameOffset = currentFrame * stride;
+    VkDeviceSize offsets[] = {frameOffset};
+
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexRingbuffer, offsets);
+    vkCmdDraw(cmdBuffer, batch.vertexCount, 1, batch.firstVertex, 0);
 }
 
 void Engine::createOrResizeVertexBuffer(std::vector<Vertex> vertices)
