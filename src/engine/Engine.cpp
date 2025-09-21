@@ -364,6 +364,7 @@ void Engine::createFramebuffers()
 
 void Engine::createImagesInFlight()
 {
+    imagesInFlight.clear();
     imagesInFlight.resize(swapchain.getFramebuffers().size(), VK_NULL_HANDLE);
 }
 
@@ -401,6 +402,7 @@ void Engine::createCommandBuffers()
 void Engine::createSyncObjects()
 {
     size_t imageCount = swapchain.getFramebuffers().size();
+    Logger::info(std::to_string(imageCount));
 
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
@@ -421,6 +423,30 @@ void Engine::createSyncObjects()
             vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to create per-frame sync objects!");
+        }
+    }
+}
+
+void Engine::destroySyncObjects()
+{
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        if (imageAvailableSemaphores[i] != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+            imageAvailableSemaphores[i] = VK_NULL_HANDLE;
+        }
+
+        if (renderFinishedSemaphores[i] != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+            renderFinishedSemaphores[i] = VK_NULL_HANDLE;
+        }
+
+        if (inFlightFences[i] != VK_NULL_HANDLE)
+        {
+            vkDestroyFence(device, inFlightFences[i], nullptr);
+            inFlightFences[i] = VK_NULL_HANDLE;
         }
     }
 }
@@ -450,89 +476,87 @@ void Engine::drawFrame(uint32_t vertexCount)
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
     {
         recreateSwapchain();
+        return;
     }
     else if (result != VK_SUCCESS)
     {
         throw std::runtime_error("failed to acquire swap chain image!");
     }
-    else
-    {
-        vkResetFences(device, 1, &inFlightFences[currentFrame]);
-        vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+    vkResetFences(device, 1, &inFlightFences[currentFrame]);
+    vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
-        VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
+    VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
 
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
-        VkRenderPassBeginInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassInfo.renderPass = renderPass;
-        renderPassInfo.framebuffer = swapchain.getFramebuffers()[imageIndex];
-        renderPassInfo.renderArea.offset = {0, 0};
-        renderPassInfo.renderArea.extent = swapchain.getExtent();
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.framebuffer = swapchain.getFramebuffers()[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = swapchain.getExtent();
 
-        VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearColor;
+    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
 
-        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float)swapchain.getExtent().width;
-        viewport.height = (float)swapchain.getExtent().height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)swapchain.getExtent().width;
+    viewport.height = (float)swapchain.getExtent().height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
-        VkRect2D scissor{};
-        scissor.offset = {0, 0};
-        scissor.extent = swapchain.getExtent();
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapchain.getExtent();
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        // 🔑 Bind the global vertex buffer
-        VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
-        VkDeviceSize frameOffset = currentFrame * stride;
-        VkDeviceSize offsets[] = {frameOffset};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexRingbuffer, offsets);
+    // 🔑 Bind the global vertex buffer
+    VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
+    VkDeviceSize frameOffset = currentFrame * stride;
+    VkDeviceSize offsets[] = {frameOffset};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexRingbuffer, offsets);
 
-        vkCmdDraw(commandBuffer, vertexCount, 1, 0, 0);
+    vkCmdDraw(commandBuffer, vertexCount, 1, 0, 0);
 
-        vkCmdEndRenderPass(commandBuffer);
-        vkEndCommandBuffer(commandBuffer);
+    vkCmdEndRenderPass(commandBuffer);
+    vkEndCommandBuffer(commandBuffer);
 
-        // --- Submit ---
-        VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
-        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-        VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
+    // --- Submit ---
+    VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
 
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = waitSemaphores;
-        submitInfo.pWaitDstStageMask = waitStages;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = signalSemaphores;
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalSemaphores;
 
-        vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
 
-        VkPresentInfoKHR presentInfo{};
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = signalSemaphores;
-        VkSwapchainKHR swapChains[] = {swapchain.getHandle()};
-        presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = swapChains;
-        presentInfo.pImageIndices = &imageIndex;
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalSemaphores;
+    VkSwapchainKHR swapChains[] = {swapchain.getHandle()};
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapChains;
+    presentInfo.pImageIndices = &imageIndex;
 
-        vkQueuePresentKHR(presentQueue, &presentInfo);
-    }
+    vkQueuePresentKHR(presentQueue, &presentInfo);
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
@@ -762,6 +786,7 @@ void Engine::recreateSwapchain()
     }
 
     vkDeviceWaitIdle(device);
+    destroySyncObjects();
 
     swapchain.cleanup(device); // kills framebuffers + image views + swapchain
     swapchain.create(physicalDevice, device, surface, &window,
@@ -771,4 +796,5 @@ void Engine::recreateSwapchain()
 
     createSyncObjects();
     createImagesInFlight();
+    currentFrame = 0;
 }

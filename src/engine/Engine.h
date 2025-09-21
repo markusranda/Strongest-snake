@@ -118,6 +118,7 @@ private:
     void createCommandBuffers();
     void createSyncObjects();
     void createImagesInFlight();
+    void destroySyncObjects();
     void drawFrame(uint32_t vertexCount);
     void recreateSwapchain();
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
