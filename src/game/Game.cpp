@@ -90,8 +90,20 @@ void Game::updateGame(double delta)
 {
     updateDirection();
 
-    state.player.pos = state.player.pos + (state.player.dir * static_cast<float>(state.cellSize));
-    state.player.dir = glm::vec2(0.0f, 0.0f);
+    if (state.player.dir.x == 0 || state.player.dir.y == 0)
+    {
+        state.holdTimer += delta;
+    }
+    else
+    {
+        state.holdTimer = 0;
+    }
+
+    if (state.holdTimer > 500)
+    {
+        state.player.pos += state.player.dir * static_cast<float>(state.cellSize);
+        state.holdTimer = 0;
+    }
 
     checkCollision();
 }
@@ -113,23 +125,27 @@ void Game::updateDirection()
 
     if (glfwGetKey(handle, GLFW_KEY_LEFT) == GLFW_PRESS && state.player.dir[0] != 1)
     {
-        state.player.dir[0] = -1;
-        state.player.dir[1] = 0;
+        state.player.dir[0] = -1.0f;
+        state.player.dir[1] = 0.0f;
     }
     else if (glfwGetKey(handle, GLFW_KEY_UP) == GLFW_PRESS && state.player.dir[1] != 1)
     {
-        state.player.dir[0] = 0;
-        state.player.dir[1] = -1;
+        state.player.dir[0] = 0.0f;
+        state.player.dir[1] = -1.0f;
     }
     else if (glfwGetKey(handle, GLFW_KEY_RIGHT) == GLFW_PRESS && state.player.dir[0] != -1)
     {
-        state.player.dir[0] = 1;
-        state.player.dir[1] = 0;
+        state.player.dir[0] = 1.0f;
+        state.player.dir[1] = 0.0f;
     }
     else if (glfwGetKey(handle, GLFW_KEY_DOWN) == GLFW_PRESS && state.player.dir[1] != -1)
     {
-        state.player.dir[0] = 0;
-        state.player.dir[1] = 1;
+        state.player.dir[0] = 0.0f;
+        state.player.dir[1] = 1.0f;
+    }
+    else
+    {
+        state.player.dir = glm::vec2(0.0f, 0.0f);
     }
 }
 

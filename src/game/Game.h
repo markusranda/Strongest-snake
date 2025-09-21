@@ -27,6 +27,8 @@ struct GameState
     uint32_t rows = 20;
     uint32_t columns = 20;
     uint32_t cellSize = 1;
+
+    float holdTimer = 0;
 };
 
 class Game
