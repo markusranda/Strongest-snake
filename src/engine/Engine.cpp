@@ -708,12 +708,13 @@ void Engine::drawQuads(const std::vector<Quad> &quads)
 
 void Engine::createOrResizeVertexBuffer(std::vector<Vertex> vertices)
 {
-    VkDeviceSize stride = sizeof(Vertex) * vertices.size();
+    VkDeviceSize copySize = sizeof(Vertex) * vertices.size();
 
     // Check if we're over capacity and handle it
     if (vertices.size() > vertexSliceCapacity)
     {
-        Logger::info("Creating new buffer!");
+        vertexSliceCapacity = static_cast<uint32_t>(vertices.size() * 5);
+        VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
         VkDeviceSize totalSize = stride * MAX_FRAMES_IN_FLIGHT;
 
         // Don't free non existing buffer
@@ -735,10 +736,10 @@ void Engine::createOrResizeVertexBuffer(std::vector<Vertex> vertices)
             vertexRingbufferMemory);
 
         vkMapMemory(device, vertexRingbufferMemory, 0, totalSize, 0, &vertexRingbufferMapped);
-        vertexSliceCapacity = static_cast<uint32_t>(vertices.size());
     }
 
     // Update memory in buffer
+    VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
     size_t frameOffset = currentFrame * stride;
-    memcpy((char *)vertexRingbufferMapped + frameOffset, vertices.data(), (size_t)stride);
+    memcpy((char *)vertexRingbufferMapped + frameOffset, vertices.data(), (size_t)copySize);
 }
