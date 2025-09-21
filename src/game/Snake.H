@@ -45,12 +45,9 @@ struct Snake
 
     void grow()
     {
-        if (!cells.empty())
-        {
-            auto tail = &cells.back();
-            cells.push_back(*tail);
-            fromCells.push_back(*tail);
-        }
+        auto tail = &fromCells.back();
+        cells.push_back(*tail);
+        fromCells.push_back(*tail);
     }
 
     /// Mutates `out` with interpolated positions
