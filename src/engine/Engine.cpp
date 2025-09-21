@@ -740,6 +740,7 @@ void Engine::createOrResizeVertexBuffer(std::vector<Vertex> vertices)
 
     // Update memory in buffer
     VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
+    assert(copySize <= stride && "vertex data exceeds slice capacity");
     size_t frameOffset = currentFrame * stride;
     memcpy((char *)vertexRingbufferMapped + frameOffset, vertices.data(), (size_t)copySize);
 }
