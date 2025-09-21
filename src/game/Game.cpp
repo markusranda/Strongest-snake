@@ -128,7 +128,7 @@ std::vector<Quad> Game::renderGame()
     // Background
     quads.push_back(Quad{0, 0, (float)window.width, (float)window.height,
                          Colors::fromHex(Colors::GROUND_BEIGE, 1.0f),
-                         window.width, window.height});
+                         window.width, window.height, ShaderType::FlatColor});
 
     // Snake
     std::vector<glm::vec2> snakePositions;
@@ -139,7 +139,7 @@ std::vector<Quad> Game::renderGame()
             pos.x * cellW, pos.y * cellH,
             cellW, cellH,
             Colors::fromHex(Colors::LIME_GREEN, 1.0f),
-            window.width, window.height});
+            window.width, window.height, ShaderType::SnakeSkin});
     }
 
     // Food
@@ -147,7 +147,7 @@ std::vector<Quad> Game::renderGame()
         state.foodCoords[0] * cellW, state.foodCoords[1] * cellH,
         cellW, cellH,
         Colors::fromHex(Colors::STRAWBERRY_RED, 1.0f),
-        window.width, window.height});
+        window.width, window.height, ShaderType::FlatColor});
 
     return quads;
 }

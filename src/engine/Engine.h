@@ -11,6 +11,7 @@
 #include "Logger.h"
 #include "Vertex.h"
 #include "Quad.h"
+#include "Pipelines.h"
 
 #include <iostream>
 #include <fstream>
@@ -50,6 +51,13 @@ struct QueueFamilyIndices
     }
 };
 
+struct DrawBatch
+{
+    ShaderType shader;
+    uint32_t firstVertex;
+    uint32_t vertexCount;
+};
+
 const int MAX_FRAMES_IN_FLIGHT = 3;
 
 class Engine
@@ -84,8 +92,7 @@ private:
     SwapChain swapchain;
 
     VkRenderPass renderPass;
-    VkPipelineLayout pipelineLayout;
-    VkPipeline graphicsPipeline;
+    std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
 
     // Command
     VkCommandPool commandPool;
@@ -119,7 +126,7 @@ private:
     void createSyncObjects();
     void createImagesInFlight();
     void destroySyncObjects();
-    void drawFrame(uint32_t vertexCount);
+    void drawBatch(DrawBatch batch);
     void recreateSwapchain();
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);

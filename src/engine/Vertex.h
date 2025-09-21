@@ -1,11 +1,13 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <array>
+#include "vulkan/vulkan.h"
 
 struct Vertex
 {
     glm::vec2 pos;   // clip-space position
     glm::vec4 color; // RGB
+    glm::vec2 uv;
 
     static VkVertexInputBindingDescription getBindingDescription()
     {
@@ -16,9 +18,9 @@ struct Vertex
         return binding;
     }
 
-    static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions()
+    static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions()
     {
-        std::array<VkVertexInputAttributeDescription, 2> attrs{};
+        std::array<VkVertexInputAttributeDescription, 3> attrs{};
 
         // position (vec2 -> 2 floats)
         attrs[0].binding = 0;
@@ -31,6 +33,12 @@ struct Vertex
         attrs[1].location = 1;
         attrs[1].format = VK_FORMAT_R32G32B32A32_SFLOAT; // matches vec4
         attrs[1].offset = offsetof(Vertex, color);
+
+        // uv
+        attrs[2].binding = 0;
+        attrs[2].location = 2;
+        attrs[2].format = VK_FORMAT_R32G32_SFLOAT;
+        attrs[2].offset = offsetof(Vertex, uv);
 
         return attrs;
     }
