@@ -99,18 +99,13 @@ void Game::checkCollision()
 {
     for (auto &ground : state.groundList)
     {
-        bool hitX = false;
-        bool hitY = false;
-        if (state.player.pos.x >= ground.pos.x && state.player.pos.x < ground.pos.x + ground.size.x)
-        {
-            hitX = true;
-        }
-        if (state.player.pos.y >= ground.pos.y && state.player.pos.y < ground.pos.y + ground.size.y)
-        {
-            hitY = true;
-        }
+        bool intersects =
+            !(state.player.pos.x + state.player.size.x <= ground.pos.x ||
+              state.player.pos.x >= ground.pos.x + ground.size.x ||
+              state.player.pos.y + state.player.size.y <= ground.pos.y ||
+              state.player.pos.y >= ground.pos.y + ground.size.y);
 
-        if (hitX && hitY)
+        if (intersects)
         {
             ground.dead = true;
         }
