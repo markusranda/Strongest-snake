@@ -33,18 +33,11 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-const uint32_t PARTICLE_COUNT = 8192;
-
 const std::vector<const char *> validationLayers = {
     "VK_LAYER_KHRONOS_validation"};
 
 const std::vector<const char *> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-
-struct UniformBufferObject
-{
-    float deltaTime = 1.0f;
-};
 
 struct QueueFamilyIndices
 {
@@ -94,11 +87,6 @@ private:
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
 
-    // Uniformbuffers
-    std::vector<VkBuffer> uniformBuffers;
-    std::vector<VkDeviceMemory> uniformBuffersMemory;
-    std::vector<void *> uniformBuffersMapped;
-
     // Command
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
@@ -106,9 +94,7 @@ private:
     // Semaphores
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
-    std::vector<VkSemaphore> computeFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
-    std::vector<VkFence> computeInFlightFences;
     uint32_t currentFrame = 0;
 
     // Vertices
