@@ -4,14 +4,15 @@
 #include <thread>
 #include <chrono>
 #include "Pipelines.h"
+#include "Draworder.h"
 
 Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
 void Engine::initVulkan()
 {
-    Logger::info("Engine under construction");
     try
     {
+        Logger::info("Engine is being created");
         createInstance();
         setupDebugMessenger();
         createSurface();
@@ -25,12 +26,12 @@ void Engine::initVulkan()
         createCommandPool();
         createCommandBuffers();
         createSyncObjects();
+        Logger::info("Engine is complete");
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Failed to construct engine: " << e.what() << '\n';
+        std::throw_with_nested(std::runtime_error("Failed to construct engine"));
     }
-    Logger::info("Engine is complete");
 }
 
 void Engine::awaitDeviceIdle()
@@ -459,35 +460,68 @@ bool Engine::checkValidationLayerSupport()
     return true;
 }
 
-void Engine::drawQuads(const std::vector<Quad> &quads)
+void Engine::drawQuads(std::unordered_map<Entity, Quad> &quads)
 {
-    std::unordered_map<ShaderType, std::vector<Vertex>> buckets;
-    for (auto &quad : quads)
+    std::vector<Quad> sortedQuads;
+    std::vector<DrawCmd> commands;
+    std::vector<Vertex> vertices;
+
+    vertices.reserve(quads.size() * 6);
+
+    // Flatten quads into a sortable array
+    sortedQuads.reserve(quads.size());
+    for (auto &[_, quad] : quads)
+        sortedQuads.push_back(quad);
+
+    // Sort by key (renderLayer → shaderType → z → tie)
+    std::sort(sortedQuads.begin(), sortedQuads.end(),
+              [](const Quad a, const Quad b)
+              {
+                  auto keyA = makeDrawKey(a.renderLayer, a.shaderType, a.z, a.tiebreak);
+                  auto keyB = makeDrawKey(b.renderLayer, b.shaderType, b.z, b.tiebreak);
+                  return keyA < keyB;
+              });
+
+    // Build flat vertex buffer and draw commands
+    vertices.reserve(sortedQuads.size() * 6);
+
+    uint32_t currentOffset = 0;
+    for (auto &quad : sortedQuads)
     {
-        auto &verts = buckets[quad.shaderType];
-        verts.insert(verts.end(), quad.vertices.begin(), quad.vertices.end());
+        // Append quad vertices
+        vertices.insert(vertices.end(), quad.vertices.begin(), quad.vertices.end());
+
+        // First batch
+        if (commands.empty())
+        {
+            auto currentCmd = DrawCmd{quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak, (uint32_t)quad.vertices.size(), currentOffset};
+            commands.push_back(currentCmd);
+            continue;
+        }
+
+        // Extend existing batch if same shader
+        auto prev = commands.back();
+        if (prev.shaderType == quad.shaderType)
+        {
+            commands.back().vertexCount += (uint32_t)quad.vertices.size();
+            continue;
+        }
+
+        // New batch
+        currentOffset += commands.back().vertexCount;
+        commands.push_back(DrawCmd{quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak, (uint32_t)quad.vertices.size(), currentOffset});
     }
 
-    std::vector<Vertex> allVertices;
-    std::vector<DrawBatch> batches;
+    // Create/resize GPU vertex buffer with all vertices
+    createOrResizeVertexBuffer(vertices);
 
-    for (auto &[shader, verts] : buckets)
-    {
-        uint32_t start = static_cast<uint32_t>(allVertices.size());
-        allVertices.insert(allVertices.end(), verts.begin(), verts.end());
-        uint32_t count = static_cast<uint32_t>(verts.size());
-        batches.push_back({shader, start, count});
-    }
-
-    createOrResizeVertexBuffer(allVertices);
-    drawBatches(batches);
+    // Draw
+    drawCmds(commands);
 }
 
-void Engine::drawBatches(std::vector<DrawBatch> batches)
+void Engine::drawCmds(std::vector<DrawCmd> commands)
 {
-
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(
         device,
@@ -549,9 +583,17 @@ void Engine::drawBatches(std::vector<DrawBatch> batches)
     scissor.extent = swapchain.getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    for (auto &batch : batches)
+    for (auto &cmd : commands)
     {
-        drawBatch(commandBuffer, batch);
+        Pipeline pipeline = pipelines[size_t(cmd.shaderType)];
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+
+        VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
+        VkDeviceSize frameOffset = currentFrame * stride;
+        VkDeviceSize offsets[] = {frameOffset};
+
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexRingbuffer, offsets);
+        vkCmdDraw(commandBuffer, cmd.vertexCount, 1, cmd.firstVertex, 0);
     }
 
     vkCmdEndRenderPass(commandBuffer);
@@ -586,19 +628,6 @@ void Engine::drawBatches(std::vector<DrawBatch> batches)
     vkQueuePresentKHR(presentQueue, &presentInfo);
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-}
-
-void Engine::drawBatch(VkCommandBuffer cmdBuffer, DrawBatch batch)
-{
-    Pipeline pipeline = pipelines[size_t(batch.shader)];
-    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-
-    VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
-    VkDeviceSize frameOffset = currentFrame * stride;
-    VkDeviceSize offsets[] = {frameOffset};
-
-    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexRingbuffer, offsets);
-    vkCmdDraw(cmdBuffer, batch.vertexCount, 1, batch.firstVertex, 0);
 }
 
 void Engine::createOrResizeVertexBuffer(std::vector<Vertex> vertices)

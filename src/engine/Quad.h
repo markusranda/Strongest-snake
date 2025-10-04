@@ -1,16 +1,23 @@
 #pragma once
 #include <glm/glm.hpp>
 #include "Pipelines.h"
+#include "Shadertype.h"
+#include "RenderLayer.h"
 
 struct Quad
 {
     std::array<Vertex, 6> vertices;
     glm::vec4 color;
     ShaderType shaderType;
+    RenderLayer renderLayer;
+    float z = 0;
+    uint8_t tiebreak = 0;
+    char *name;
 
     Quad::Quad(float x, float y, float w, float h, glm::vec4 c,
-               uint32_t screenW, uint32_t screenH, ShaderType shaderType)
-        : color(c), shaderType(shaderType)
+               uint32_t screenW, uint32_t screenH, ShaderType shaderType,
+               RenderLayer renderLayer, char *name = "not defined")
+        : color(c), shaderType(shaderType), name(name), renderLayer(renderLayer)
     {
         glm::vec2 topLeft = {x, y};
         glm::vec2 topRight = {x + w, y};

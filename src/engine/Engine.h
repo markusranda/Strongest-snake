@@ -11,7 +11,9 @@
 #include "Logger.h"
 #include "Vertex.h"
 #include "Quad.h"
+#include "game/Entity.h"
 #include "Pipelines.h"
+#include "Draworder.h"
 
 #include <iostream>
 #include <fstream>
@@ -51,13 +53,6 @@ struct QueueFamilyIndices
     }
 };
 
-struct DrawBatch
-{
-    ShaderType shader;
-    uint32_t firstVertex;
-    uint32_t vertexCount;
-};
-
 const int MAX_FRAMES_IN_FLIGHT = 3;
 
 class Engine
@@ -70,7 +65,7 @@ public:
     void cleanup();
 
     // Draw functions
-    void drawQuads(const std::vector<Quad> &quads);
+    void drawQuads(std::unordered_map<Entity, Quad> &quads);
 
 private:
     uint32_t width;
@@ -126,8 +121,7 @@ private:
     void createSyncObjects();
     void createImagesInFlight();
     void destroySyncObjects();
-    void drawBatches(std::vector<DrawBatch> batches);
-    void drawBatch(VkCommandBuffer cmdBuffer, DrawBatch batch);
+    void drawCmds(std::vector<DrawCmd> commands);
     void recreateSwapchain();
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);

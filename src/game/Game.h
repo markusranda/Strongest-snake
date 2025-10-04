@@ -3,26 +3,41 @@
 #include "../engine/Window.h"
 #include "../engine/Vertex.h"
 #include <deque>
+#include "EntityManager.h"
 
-struct Ground
+struct Transform2D
 {
-    glm::vec2 pos;
-    glm::vec2 size;
-    bool dead = false;
-};
-
-struct Player
-{
-    glm::vec2 pos;
+    glm::vec2 position;
     glm::vec2 size;
     glm::vec2 dir = glm::vec2(0.0f, 0.0f);
 };
 
+struct Ground
+{
+    Entity entity;
+    bool dead;
+};
+
+struct Player
+{
+    Entity entity;
+};
+
+struct Background
+{
+    Entity entity;
+};
+
 struct GameState
 {
+    EntityManager entityManager;
+
     bool gameOver = false;
+    Background background;
     Player player;
-    std::vector<Ground> groundList;
+    std::unordered_map<Entity, Transform2D> transforms;
+    std::unordered_map<Entity, Quad> quads;
+    std::unordered_map<Entity, Ground> grounds;
 
     uint32_t rows = 20;
     uint32_t columns = 20;
@@ -48,10 +63,10 @@ private:
     float cellW;
     float cellH;
     GameState state;
-    std::vector<Quad> background;
+    EntityManager entityManager;
 
     void updateGame(double delta);
     void Game::updateDirection();
-    std::vector<Quad> Game::renderGame();
+    void Game::updateGraphics();
     void Game::checkCollision();
 };

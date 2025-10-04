@@ -1,17 +1,10 @@
 #pragma once
 #include "vulkan/vulkan.h"
+#include "Shadertype.h"
 #include "Vertex.h"
 
 #include <fstream>
 #include <unordered_map>
-
-enum class ShaderType
-{
-    FlatColor,
-    SnakeSkin,
-    Border,
-    COUNT
-};
 
 struct Pipeline
 {

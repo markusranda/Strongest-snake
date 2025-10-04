@@ -6,59 +6,54 @@
 #include <cstdlib>
 #include <deque>
 #include "Collision.h"
+#include <filesystem>
 
 Game::Game(Window &w)
     : window(w),
       engine(w.width, w.height, w)
 {
-    engine.initVulkan();
-
-    state.cellSize = window.width / state.rows;
-    state.groundList.reserve((state.rows - 2) * state.columns);
-    for (uint32_t y = 2; y < state.columns; y++)
+    try
     {
-        for (uint32_t x = 0; x < state.rows; x++)
+        Logger::info(std::filesystem::current_path().string());
+        engine.initVulkan();
+        state.cellSize = window.width / state.rows;
+
+        state.background = Background{entityManager.createEntity()};
+
+        auto playerEntity = entityManager.createEntity();
+        auto transform = Transform2D{glm::vec2{std::floor(state.columns / 2) * state.cellSize, 1 * state.cellSize}, glm::vec2{state.cellSize, state.cellSize}};
+        state.transforms[playerEntity] = transform;
+        state.player = Player{playerEntity};
+
+        for (uint32_t y = 2; y < state.columns; y++)
         {
-            state.groundList.push_back(
-                Ground{glm::vec2{x * state.cellSize, y * state.cellSize}, glm::vec2{state.cellSize, state.cellSize}});
+            for (uint32_t x = 0; x < state.rows; x++)
+            {
+                auto entity = entityManager.createEntity();
+                auto transform = Transform2D{glm::vec2{x * state.cellSize, y * state.cellSize}, glm::vec2{state.cellSize, state.cellSize}};
+                auto quad = Quad{transform.position.x, transform.position.y, transform.size.x, transform.size.y, Colors::fromHex(Colors::GROUND_BEIGE, 1.0f),
+                                 window.width, window.height, ShaderType::Border, RenderLayer::World, "ground"};
+                state.grounds.insert_or_assign(entity, Ground{entity, false});
+                state.transforms.insert_or_assign(entity, transform);
+                state.quads.insert_or_assign(entity, quad);
+            }
         }
     }
-
-    state.player.pos.x = std::floor(state.columns / 2) * state.cellSize;
-    state.player.pos.y = 1 * state.cellSize;
-
-    state.player.size.x = state.cellSize;
-    state.player.size.y = state.cellSize;
+    catch (const std::exception &e)
+    {
+        Logger::err(std::string("Failed to start game: ") + e.what());
+    }
+    catch (...)
+    {
+        Logger::err("Unknown exception thrown!");
+    }
 }
-
-// MAP
-// [
-//     00000000000000000000
-//     00000000000000000000
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-//     xxxxxxxxxxxxxxxxxxxx
-// ]
 
 void Game::run()
 {
     try
     {
+        Logger::info("Starting game loop");
         while (!window.shouldClose())
         {
             window.pollEvents();
@@ -71,17 +66,19 @@ void Game::run()
                 throw std::runtime_error("You fucked up");
 
             updateGame(delta);
-            auto quads = renderGame();
-            engine.drawQuads(quads);
+            updateGraphics();
+
+            engine.drawQuads(state.quads);
         }
     }
     catch (std::exception e)
     {
         Logger::err(e.what());
     }
-
-    engine.awaitDeviceIdle();
-    engine.cleanup();
+    catch (...)
+    {
+        Logger::err("Unknown exception thrown!");
+    }
 }
 
 // ----------------- game logic -----------------
@@ -90,7 +87,8 @@ void Game::updateGame(double delta)
 {
     updateDirection();
 
-    if (state.player.dir.x == 0 || state.player.dir.y == 0)
+    auto *playerTransform = &state.transforms[state.player.entity];
+    if (playerTransform->dir.x != 0 || playerTransform->dir.y != 0)
     {
         state.holdTimer += delta;
     }
@@ -101,7 +99,7 @@ void Game::updateGame(double delta)
 
     if (state.holdTimer > 500)
     {
-        state.player.pos += state.player.dir * static_cast<float>(state.cellSize);
+        playerTransform->position += playerTransform->dir * static_cast<float>(state.cellSize);
         state.holdTimer = 0;
     }
 
@@ -110,9 +108,11 @@ void Game::updateGame(double delta)
 
 void Game::checkCollision()
 {
-    for (auto &ground : state.groundList)
+    auto playerTransform = state.transforms[state.player.entity];
+    for (auto &[entity, ground] : state.grounds)
     {
-        if (rectIntersects(state.player.pos, state.player.size, ground.pos, ground.size))
+        auto groundTransform = state.transforms[entity];
+        if (rectIntersects(playerTransform.position, playerTransform.size, groundTransform.position, groundTransform.size))
         {
             ground.dead = true;
         }
@@ -122,57 +122,64 @@ void Game::checkCollision()
 void Game::updateDirection()
 {
     GLFWwindow *handle = window.getHandle();
-
-    if (glfwGetKey(handle, GLFW_KEY_LEFT) == GLFW_PRESS && state.player.dir[0] != 1)
+    Transform2D *playerTransform = &state.transforms[state.player.entity];
+    if (glfwGetKey(handle, GLFW_KEY_LEFT) == GLFW_PRESS && playerTransform->dir.x != 1)
     {
-        state.player.dir[0] = -1.0f;
-        state.player.dir[1] = 0.0f;
+        playerTransform->dir.x = -1.0f;
+        playerTransform->dir.y = 0.0f;
     }
-    else if (glfwGetKey(handle, GLFW_KEY_UP) == GLFW_PRESS && state.player.dir[1] != 1)
+    else if (glfwGetKey(handle, GLFW_KEY_UP) == GLFW_PRESS && playerTransform->dir.y != 1)
     {
-        state.player.dir[0] = 0.0f;
-        state.player.dir[1] = -1.0f;
+        playerTransform->dir.x = 0.0f;
+        playerTransform->dir.y = -1.0f;
     }
-    else if (glfwGetKey(handle, GLFW_KEY_RIGHT) == GLFW_PRESS && state.player.dir[0] != -1)
+    else if (glfwGetKey(handle, GLFW_KEY_RIGHT) == GLFW_PRESS && playerTransform->dir.x != -1)
     {
-        state.player.dir[0] = 1.0f;
-        state.player.dir[1] = 0.0f;
+        playerTransform->dir.x = 1.0f;
+        playerTransform->dir.y = 0.0f;
     }
-    else if (glfwGetKey(handle, GLFW_KEY_DOWN) == GLFW_PRESS && state.player.dir[1] != -1)
+    else if (glfwGetKey(handle, GLFW_KEY_DOWN) == GLFW_PRESS && playerTransform->dir.y != -1)
     {
-        state.player.dir[0] = 0.0f;
-        state.player.dir[1] = 1.0f;
+        playerTransform->dir.x = 0.0f;
+        playerTransform->dir.y = 1.0f;
     }
     else
     {
-        state.player.dir = glm::vec2(0.0f, 0.0f);
+        playerTransform->dir = glm::vec2(0.0f, 0.0f);
     }
 }
 
 // ----------------- rendering -----------------
 
-std::vector<Quad> Game::renderGame()
+void Game::updateGraphics()
 {
-    std::vector<Quad> quads;
 
     // Background
-    quads.push_back(Quad{0, 0, (float)window.width, (float)window.height,
-                         Colors::fromHex(Colors::SKY_BLUE, 1.0f),
-                         window.width, window.height, ShaderType::FlatColor});
+    // TODO this should move with the camera later
+    state.quads.insert_or_assign(state.background.entity, Quad{0, 0, (float)window.width, (float)window.height,
+                                                               Colors::fromHex(Colors::SKY_BLUE, 1.0f),
+                                                               window.width, window.height, ShaderType::FlatColor, RenderLayer::Background});
 
-    for (auto &ground : state.groundList)
+    for (auto it = state.grounds.begin(); it != state.grounds.end();)
     {
-        if (!ground.dead)
+        auto entity = it->second.entity;
+        if (it->second.dead)
         {
-            quads.push_back(Quad{ground.pos.x, ground.pos.y, ground.size.x, ground.size.y,
-                                 Colors::fromHex(Colors::GROUND_BEIGE, 1.0f),
-                                 window.width, window.height, ShaderType::Border});
+            state.quads.erase(entity);
+            state.transforms.erase(entity);
+            it = state.grounds.erase(it);
+        }
+        else
+        {
+            ++it;
         }
     }
 
-    quads.push_back(Quad{state.player.pos.x, state.player.pos.y, state.player.size.x, state.player.size.y,
-                         Colors::fromHex(Colors::MANGO_ORANGE, 1.0f),
-                         window.width, window.height, ShaderType::FlatColor});
+    Logger::info(std::to_string(state.grounds.size()));
 
-    return quads;
+    // Update player position
+    auto playerTransform = state.transforms[state.player.entity];
+    state.quads.insert_or_assign(state.player.entity, Quad{playerTransform.position.x, playerTransform.position.y, playerTransform.size.x, playerTransform.size.y,
+                                                           Colors::fromHex(Colors::MANGO_ORANGE, 1.0f),
+                                                           window.width, window.height, ShaderType::FlatColor, RenderLayer::World});
 }
