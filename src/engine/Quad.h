@@ -14,8 +14,8 @@ struct Quad
     uint8_t tiebreak = 0;
     char *name;
 
-    Quad::Quad(float x, float y, float w, float h, glm::vec4 c,
-               uint32_t screenW, uint32_t screenH, ShaderType shaderType,
+    Quad::Quad(float x, float y, float w, float h,
+               glm::vec4 c, ShaderType shaderType,
                RenderLayer renderLayer, char *name = "not defined")
         : color(c), shaderType(shaderType), name(name), renderLayer(renderLayer)
     {
@@ -24,18 +24,11 @@ struct Quad
         glm::vec2 bottomLeft = {x, y + h};
         glm::vec2 bottomRight = {x + w, y + h};
 
-        vertices[0] = Vertex{toClipSpace(topLeft, screenW, screenH), color, glm::vec2{0, 0}};
-        vertices[1] = Vertex{toClipSpace(topRight, screenW, screenH), color, glm::vec2{1, 0}};
-        vertices[2] = Vertex{toClipSpace(bottomLeft, screenW, screenH), color, glm::vec2{0, 1}};
-        vertices[3] = Vertex{toClipSpace(bottomLeft, screenW, screenH), color, glm::vec2{0, 1}};
-        vertices[4] = Vertex{toClipSpace(topRight, screenW, screenH), color, glm::vec2{1, 0}};
-        vertices[5] = Vertex{toClipSpace(bottomRight, screenW, screenH), color, glm::vec2{1, 1}};
-    }
-
-    static glm::vec2 toClipSpace(glm::vec2 pos, uint32_t screenW, uint32_t screenH)
-    {
-        float x = (pos.x / screenW) * 2.0f - 1.0f;
-        float y = 1.0f - (pos.y / screenH) * 2.0f;
-        return {x, -y};
+        vertices[0] = Vertex{topLeft, color, glm::vec2{0, 0}};
+        vertices[1] = Vertex{topRight, color, glm::vec2{1, 0}};
+        vertices[2] = Vertex{bottomLeft, color, glm::vec2{0, 1}};
+        vertices[3] = Vertex{bottomLeft, color, glm::vec2{0, 1}};
+        vertices[4] = Vertex{topRight, color, glm::vec2{1, 0}};
+        vertices[5] = Vertex{bottomRight, color, glm::vec2{1, 1}};
     }
 };

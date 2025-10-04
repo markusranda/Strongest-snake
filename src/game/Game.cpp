@@ -21,18 +21,20 @@ Game::Game(Window &w)
         state.background = Background{entityManager.createEntity()};
 
         auto playerEntity = entityManager.createEntity();
-        auto transform = Transform2D{glm::vec2{std::floor(state.columns / 2) * state.cellSize, 1 * state.cellSize}, glm::vec2{state.cellSize, state.cellSize}};
+        auto transform = Transform{glm::vec2{std::floor(state.columns / 2) * state.cellSize, 1 * state.cellSize}, glm::vec2{state.cellSize, state.cellSize}};
         state.transforms[playerEntity] = transform;
         state.player = Player{playerEntity};
+
+        state.camera = Camera{window.width, window.height};
 
         for (uint32_t y = 2; y < state.columns; y++)
         {
             for (uint32_t x = 0; x < state.rows; x++)
             {
                 auto entity = entityManager.createEntity();
-                auto transform = Transform2D{glm::vec2{x * state.cellSize, y * state.cellSize}, glm::vec2{state.cellSize, state.cellSize}};
-                auto quad = Quad{transform.position.x, transform.position.y, transform.size.x, transform.size.y, Colors::fromHex(Colors::GROUND_BEIGE, 1.0f),
-                                 window.width, window.height, ShaderType::Border, RenderLayer::World, "ground"};
+                auto transform = Transform{glm::vec2{x * state.cellSize, y * state.cellSize}, glm::vec2{state.cellSize, state.cellSize}};
+                auto quad = Quad{transform.position.x, transform.position.y, transform.size.x, transform.size.y,
+                                 Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), ShaderType::Border, RenderLayer::World, "ground"};
                 state.grounds.insert_or_assign(entity, Ground{entity, false});
                 state.transforms.insert_or_assign(entity, transform);
                 state.quads.insert_or_assign(entity, quad);
@@ -66,9 +68,10 @@ void Game::run()
                 throw std::runtime_error("You fucked up");
 
             updateGame(delta);
+            updateCamera();
             updateGraphics();
 
-            engine.drawQuads(state.quads);
+            engine.drawQuads(state.quads, state.camera);
         }
     }
     catch (std::exception e)
@@ -82,6 +85,12 @@ void Game::run()
 }
 
 // ----------------- game logic -----------------
+
+void Game::updateCamera()
+{
+    Transform playerTransform = state.transforms[state.player.entity];
+    state.camera.position = playerTransform.position - glm::vec2((float)window.width / 2.0f, (float)window.height / 2.0f);
+}
 
 void Game::updateGame(double delta)
 {
@@ -122,23 +131,23 @@ void Game::checkCollision()
 void Game::updateDirection()
 {
     GLFWwindow *handle = window.getHandle();
-    Transform2D *playerTransform = &state.transforms[state.player.entity];
-    if (glfwGetKey(handle, GLFW_KEY_LEFT) == GLFW_PRESS && playerTransform->dir.x != 1)
+    Transform *playerTransform = &state.transforms[state.player.entity];
+    if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS && playerTransform->dir.x != 1)
     {
         playerTransform->dir.x = -1.0f;
         playerTransform->dir.y = 0.0f;
     }
-    else if (glfwGetKey(handle, GLFW_KEY_UP) == GLFW_PRESS && playerTransform->dir.y != 1)
+    else if (glfwGetKey(handle, GLFW_KEY_W) == GLFW_PRESS && playerTransform->dir.y != 1)
     {
         playerTransform->dir.x = 0.0f;
         playerTransform->dir.y = -1.0f;
     }
-    else if (glfwGetKey(handle, GLFW_KEY_RIGHT) == GLFW_PRESS && playerTransform->dir.x != -1)
+    else if (glfwGetKey(handle, GLFW_KEY_D) == GLFW_PRESS && playerTransform->dir.x != -1)
     {
         playerTransform->dir.x = 1.0f;
         playerTransform->dir.y = 0.0f;
     }
-    else if (glfwGetKey(handle, GLFW_KEY_DOWN) == GLFW_PRESS && playerTransform->dir.y != -1)
+    else if (glfwGetKey(handle, GLFW_KEY_S) == GLFW_PRESS && playerTransform->dir.y != -1)
     {
         playerTransform->dir.x = 0.0f;
         playerTransform->dir.y = 1.0f;
@@ -155,10 +164,9 @@ void Game::updateGraphics()
 {
 
     // Background
-    // TODO this should move with the camera later
-    state.quads.insert_or_assign(state.background.entity, Quad{0, 0, (float)window.width, (float)window.height,
+    state.quads.insert_or_assign(state.background.entity, Quad{state.camera.position.x, state.camera.position.y, (float)window.width, (float)window.height,
                                                                Colors::fromHex(Colors::SKY_BLUE, 1.0f),
-                                                               window.width, window.height, ShaderType::FlatColor, RenderLayer::Background});
+                                                               ShaderType::FlatColor, RenderLayer::Background});
 
     for (auto it = state.grounds.begin(); it != state.grounds.end();)
     {
@@ -175,11 +183,9 @@ void Game::updateGraphics()
         }
     }
 
-    Logger::info(std::to_string(state.grounds.size()));
-
     // Update player position
     auto playerTransform = state.transforms[state.player.entity];
     state.quads.insert_or_assign(state.player.entity, Quad{playerTransform.position.x, playerTransform.position.y, playerTransform.size.x, playerTransform.size.y,
                                                            Colors::fromHex(Colors::MANGO_ORANGE, 1.0f),
-                                                           window.width, window.height, ShaderType::FlatColor, RenderLayer::World});
+                                                           ShaderType::FlatColor, RenderLayer::World});
 }

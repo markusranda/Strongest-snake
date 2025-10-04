@@ -11,9 +11,10 @@
 #include "Logger.h"
 #include "Vertex.h"
 #include "Quad.h"
-#include "game/Entity.h"
 #include "Pipelines.h"
 #include "Draworder.h"
+#include "game/Entity.h"
+#include "game/Camera.h"
 
 #include <iostream>
 #include <fstream>
@@ -65,7 +66,7 @@ public:
     void cleanup();
 
     // Draw functions
-    void drawQuads(std::unordered_map<Entity, Quad> &quads);
+    void drawQuads(std::unordered_map<Entity, Quad> &quads, Camera &camera);
 
 private:
     uint32_t width;
@@ -121,7 +122,7 @@ private:
     void createSyncObjects();
     void createImagesInFlight();
     void destroySyncObjects();
-    void drawCmds(std::vector<DrawCmd> commands);
+    void drawCmds(std::vector<DrawCmd> commands, Camera &camera);
     void recreateSwapchain();
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);

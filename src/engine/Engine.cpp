@@ -460,7 +460,7 @@ bool Engine::checkValidationLayerSupport()
     return true;
 }
 
-void Engine::drawQuads(std::unordered_map<Entity, Quad> &quads)
+void Engine::drawQuads(std::unordered_map<Entity, Quad> &quads, Camera &camera)
 {
     std::vector<Quad> sortedQuads;
     std::vector<DrawCmd> commands;
@@ -516,10 +516,10 @@ void Engine::drawQuads(std::unordered_map<Entity, Quad> &quads)
     createOrResizeVertexBuffer(vertices);
 
     // Draw
-    drawCmds(commands);
+    drawCmds(commands, camera);
 }
 
-void Engine::drawCmds(std::vector<DrawCmd> commands)
+void Engine::drawCmds(std::vector<DrawCmd> commands, Camera &camera)
 {
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     uint32_t imageIndex;
@@ -586,6 +586,16 @@ void Engine::drawCmds(std::vector<DrawCmd> commands)
     for (auto &cmd : commands)
     {
         Pipeline pipeline = pipelines[size_t(cmd.shaderType)];
+
+        glm::mat4 viewProj = camera.getViewProj();
+        vkCmdPushConstants(
+            commandBuffer,
+            pipeline.layout,
+            VK_SHADER_STAGE_VERTEX_BIT,
+            0,
+            sizeof(glm::mat4),
+            &viewProj);
+
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
 
         VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);

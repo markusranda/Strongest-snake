@@ -4,8 +4,9 @@
 #include "../engine/Vertex.h"
 #include <deque>
 #include "EntityManager.h"
+#include "Camera.h"
 
-struct Transform2D
+struct Transform
 {
     glm::vec2 position;
     glm::vec2 size;
@@ -35,7 +36,8 @@ struct GameState
     bool gameOver = false;
     Background background;
     Player player;
-    std::unordered_map<Entity, Transform2D> transforms;
+    Camera camera{100, 100};
+    std::unordered_map<Entity, Transform> transforms;
     std::unordered_map<Entity, Quad> quads;
     std::unordered_map<Entity, Ground> grounds;
 
@@ -69,4 +71,5 @@ private:
     void Game::updateDirection();
     void Game::updateGraphics();
     void Game::checkCollision();
+    void Game::updateCamera();
 };
