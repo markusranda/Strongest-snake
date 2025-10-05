@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <cstdlib>
 #include "engine/Transform.h"
+#include "SnakeMath.h"
 
 struct Ground
 {
@@ -44,7 +45,13 @@ struct Game
     uint32_t rows = 20;
     uint32_t columns = 20;
     uint32_t cellSize = 1;
-    float holdTimer = 0;
+
+    // -- Player ---
+    const float thrustPower = 900.0f;  // pixels per second squared
+    const float rotationSpeed = 3.14f; // radians per second (~180°/s)
+    const float friction = 6.0f;       // friction coefficient
+
+    glm::vec2 playerVelocity = {0.0f, 0.0f};
 
     // Timing
     double lastTime = 0.0;
@@ -78,7 +85,6 @@ struct Game
             Transform transform = Transform{
                 glm::vec2{std::floor(columns / 2) * cellSize, 1 * cellSize},
                 glm::vec2{cellSize, cellSize},
-                3.14f / 4,
                 "player"};
             engine.transforms.insert_or_assign(playerEntity, transform);
             player = {playerEntity};
@@ -167,19 +173,35 @@ struct Game
 
     void updateGame(double delta)
     {
-        updateDirection();
-
         auto &playerTransform = engine.transforms.at(player.entity);
-        if (playerTransform.dir.x != 0 || playerTransform.dir.y != 0)
-            holdTimer += delta;
-        else
-            holdTimer = 0;
 
-        if (holdTimer > 500)
-        {
-            playerTransform.position += playerTransform.dir * static_cast<float>(cellSize);
-            holdTimer = 0;
-        }
+        // Constants / parameters
+        const float dt = static_cast<float>(delta) / 1000.0f;
+        glm::vec2 acceleration = {0.0f, 0.0f};
+
+        GLFWwindow *handle = window.getHandle();
+
+        // --- Rotation ---
+        if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS)
+            playerTransform.rotation -= rotationSpeed * dt;
+        if (glfwGetKey(handle, GLFW_KEY_D) == GLFW_PRESS)
+            playerTransform.rotation += rotationSpeed * dt;
+
+        // --- Forward direction ---
+        glm::vec2 forward = glm::vec2(SnakeMath::fastCos(playerTransform.rotation), SnakeMath::fastSin(playerTransform.rotation));
+
+        // --- Thrust ---
+        if (glfwGetKey(handle, GLFW_KEY_W) == GLFW_PRESS)
+            acceleration = forward * thrustPower;
+
+        // --- Velocity integration ---
+        playerVelocity += acceleration * dt;
+
+        // --- Apply friction ---
+        playerVelocity -= playerVelocity * friction * dt;
+
+        // --- Position integration ---
+        playerTransform.position += playerVelocity * dt;
 
         checkCollision();
     }
@@ -195,23 +217,6 @@ struct Game
                 ground.dead = true;
             }
         }
-    }
-
-    void updateDirection()
-    {
-        GLFWwindow *handle = window.getHandle();
-        auto &playerTransform = engine.transforms.at(player.entity);
-
-        if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS && playerTransform.dir.x != 1)
-            playerTransform.dir = {-1.0f, 0.0f};
-        else if (glfwGetKey(handle, GLFW_KEY_W) == GLFW_PRESS && playerTransform.dir.y != 1)
-            playerTransform.dir = {0.0f, -1.0f};
-        else if (glfwGetKey(handle, GLFW_KEY_D) == GLFW_PRESS && playerTransform.dir.x != -1)
-            playerTransform.dir = {1.0f, 0.0f};
-        else if (glfwGetKey(handle, GLFW_KEY_S) == GLFW_PRESS && playerTransform.dir.y != -1)
-            playerTransform.dir = {0.0f, 1.0f};
-        else
-            playerTransform.dir = {0.0f, 0.0f};
     }
 
     // --- Rendering ---
