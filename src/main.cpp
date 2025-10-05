@@ -9,11 +9,12 @@ const uint32_t HEIGHT = 800;
 int main()
 {
     Logger::info("Launching Strongest Snake");
-    Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
-    Game game = Game(window);
 
     try
     {
+        Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
+        Game game{window};
+        game.init();
         game.run();
     }
     catch (const std::exception &e)
