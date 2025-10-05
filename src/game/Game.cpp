@@ -69,6 +69,7 @@ void Game::run()
 
             updateGame(delta);
             updateCamera();
+            updateLifecycle();
             updateGraphics();
 
             engine.drawQuads(state.quads, state.camera);
@@ -85,6 +86,25 @@ void Game::run()
 }
 
 // ----------------- game logic -----------------
+
+void Game::updateLifecycle()
+{
+    for (auto it = state.grounds.begin(); it != state.grounds.end();)
+    {
+        auto entity = it->second.entity;
+        if (it->second.dead)
+        {
+            state.quads.erase(entity);
+            state.transforms.erase(entity);
+            it = state.grounds.erase(it);
+            entityManager.destroyEntity(entity);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
 
 void Game::updateCamera()
 {
@@ -167,21 +187,6 @@ void Game::updateGraphics()
     state.quads.insert_or_assign(state.background.entity, Quad{state.camera.position.x, state.camera.position.y, (float)window.width, (float)window.height,
                                                                Colors::fromHex(Colors::SKY_BLUE, 1.0f),
                                                                ShaderType::FlatColor, RenderLayer::Background});
-
-    for (auto it = state.grounds.begin(); it != state.grounds.end();)
-    {
-        auto entity = it->second.entity;
-        if (it->second.dead)
-        {
-            state.quads.erase(entity);
-            state.transforms.erase(entity);
-            it = state.grounds.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
 
     // Update player position
     auto playerTransform = state.transforms[state.player.entity];

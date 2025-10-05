@@ -11,6 +11,7 @@ struct Transform
     glm::vec2 position;
     glm::vec2 size;
     glm::vec2 dir = glm::vec2(0.0f, 0.0f);
+    float rotation = 0.0f;
 };
 
 struct Ground
@@ -72,4 +73,5 @@ private:
     void Game::updateGraphics();
     void Game::checkCollision();
     void Game::updateCamera();
+    void Game::updateLifecycle();
 };
