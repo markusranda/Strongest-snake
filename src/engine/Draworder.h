@@ -5,24 +5,35 @@
 
 struct DrawCmd
 {
-    uint32_t vertexCount;
-    uint32_t firstVertex;
-    RenderLayer renderLayer;
     ShaderType shaderType;
-    float z = 0;
-    uint8_t tiebreak = 0;
-    char *name;
+    RenderLayer renderLayer;
 
-    DrawCmd(RenderLayer renderLayer, ShaderType shaderType, float z, uint8_t tiebreak, uint32_t vertexCount, uint32_t firstVertex, char *name = "not defined")
+    uint32_t vertexCount;   // usually 6 for quads
+    uint32_t firstVertex;   // offset in vertex buffer
+    uint32_t instanceCount; // how many instances to draw
+    uint32_t firstInstance; // instance buffer offset (in instances, not bytes)
+
+    float z; // used only for sorting
+    uint8_t tiebreak;
+
+    DrawCmd(RenderLayer layer,
+            ShaderType shader,
+            float z,
+            uint8_t tie,
+            uint32_t vertexCount,
+            uint32_t firstVertex,
+            uint32_t instanceCount,
+            uint32_t firstInstance)
+        : shaderType(shader),
+          renderLayer(layer),
+          vertexCount(vertexCount),
+          firstVertex(firstVertex),
+          instanceCount(instanceCount),
+          firstInstance(firstInstance),
+          z(z),
+          tiebreak(tie)
     {
-        this->shaderType = shaderType;
-        this->renderLayer = renderLayer;
-        this->z = z;
-        this->tiebreak = tiebreak;
-        this->name = name;
-        this->vertexCount = vertexCount;
-        this->firstVertex = firstVertex;
-    };
+    }
 };
 
 // 64-bit draw key

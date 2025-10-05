@@ -10,18 +10,10 @@ int main()
 {
     Logger::info("Launching Strongest Snake");
 
-    try
-    {
-        Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
-        Game game{window};
-        game.init();
-        game.run();
-    }
-    catch (const std::exception &e)
-    {
-        Logger::err(e.what());
-        return EXIT_FAILURE;
-    }
+    Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
+    Game game{window};
+    game.init();
+    game.run();
 
     return EXIT_SUCCESS;
 }

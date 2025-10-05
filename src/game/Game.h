@@ -1,9 +1,9 @@
 #pragma once
-#include "../engine/Engine.h"
-#include "../engine/Window.h"
-#include "../engine/Vertex.h"
-#include "EntityManager.h"
-#include "Camera.h"
+#include "engine/Engine.h"
+#include "engine/Window.h"
+#include "engine/Vertex.h"
+#include "engine/EntityManager.h"
+#include "engine/Camera.h"
 #include "Collision.h"
 #include "../tusj/Colors.h"
 #include <glm/glm.hpp>
@@ -12,14 +12,7 @@
 #include <deque>
 #include <filesystem>
 #include <cstdlib>
-
-struct Transform
-{
-    glm::vec2 position;
-    glm::vec2 size;
-    glm::vec2 dir = glm::vec2(0.0f);
-    float rotation = 0.0f;
-};
+#include "engine/Transform.h"
 
 struct Ground
 {
@@ -41,14 +34,10 @@ struct Game
     Window window;
     Engine engine;
 
-    // ECS-style state
     bool gameOver = false;
-    EntityManager entityManager;
     Background background;
     Player player;
-    Camera camera{100, 100};
-    std::unordered_map<Entity, Transform> transforms;
-    std::unordered_map<Entity, Quad> quads;
+    Camera camera{1, 1};
     std::unordered_map<Entity, Ground> grounds;
 
     // Game settings
@@ -75,41 +64,51 @@ struct Game
             engine.initVulkan();
 
             cellSize = window.width / rows;
-            background = {entityManager.createEntity()};
 
-            // Player
-            auto playerEntity = entityManager.createEntity();
-            Transform transform{
+            // --- Background ---
+            background = {engine.ecs.createEntity()};
+            auto backgroundTranslate = Transform{glm::vec2{0, 0}, glm::vec2{window.width, window.height}};
+            engine.quads.insert_or_assign(
+                background.entity,
+                Quad{ShaderType::FlatColor, RenderLayer::Background, Colors::fromHex(Colors::SKY_BLUE, 1.0f), "background"});
+            engine.transforms.insert_or_assign(background.entity, backgroundTranslate);
+
+            // ---- Player ----
+            auto playerEntity = engine.ecs.createEntity();
+            Transform transform = Transform{
                 glm::vec2{std::floor(columns / 2) * cellSize, 1 * cellSize},
-                glm::vec2{cellSize, cellSize}};
-            transforms[playerEntity] = transform;
+                glm::vec2{cellSize, cellSize},
+                3.14f / 4,
+                "player"};
+            engine.transforms.insert_or_assign(playerEntity, transform);
             player = {playerEntity};
+            engine.quads.insert_or_assign(
+                playerEntity,
+                Quad{ShaderType::FlatColor, RenderLayer::World, Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), "player"});
 
             camera = Camera{window.width, window.height};
 
-            // Ground tiles
+            // --- Ground ----
             for (uint32_t y = 2; y < columns; y++)
             {
                 for (uint32_t x = 0; x < rows; x++)
                 {
-                    auto entity = entityManager.createEntity();
-                    Transform t{{x * cellSize, y * cellSize}, {cellSize, cellSize}};
-                    Quad q{t.position.x, t.position.y, t.size.x, t.size.y,
-                           Colors::fromHex(Colors::GROUND_BEIGE, 1.0f),
-                           ShaderType::Border, RenderLayer::World, "ground"};
+                    auto entity = engine.ecs.createEntity();
+                    Transform t{{x * cellSize, y * cellSize}, {cellSize, cellSize}, "ground"};
+                    Quad q{ShaderType::Border, RenderLayer::World, Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), "ground"};
                     grounds.insert_or_assign(entity, Ground{entity, false});
-                    transforms.insert_or_assign(entity, t);
-                    quads.insert_or_assign(entity, q);
+                    engine.transforms.insert_or_assign(entity, t);
+                    engine.quads.insert_or_assign(entity, q);
                 }
             }
         }
         catch (const std::exception &e)
         {
-            Logger::err(std::string("Failed to start game: ") + e.what());
+            throw std::runtime_error(std::string("Failed to init game: ") + e.what());
         }
         catch (...)
         {
-            Logger::err("Unknown exception thrown!");
+            throw std::runtime_error(std::string("Unknown exception thrown in Game::init"));
         }
     }
 
@@ -133,7 +132,7 @@ struct Game
             updateLifecycle();
             updateGraphics();
 
-            engine.drawQuads(quads, camera);
+            engine.draw(camera);
         }
     }
 
@@ -145,10 +144,10 @@ struct Game
             auto entity = it->second.entity;
             if (it->second.dead)
             {
-                quads.erase(entity);
-                transforms.erase(entity);
+                engine.quads.erase(entity);
+                engine.transforms.erase(entity);
                 it = grounds.erase(it);
-                entityManager.destroyEntity(entity);
+                engine.ecs.destroyEntity(entity);
             }
             else
             {
@@ -159,15 +158,18 @@ struct Game
 
     void updateCamera()
     {
-        Transform playerTransform = transforms[player.entity];
+        Transform playerTransform = engine.transforms.at(player.entity);
         camera.position = playerTransform.position - glm::vec2(window.width / 2.0f, window.height / 2.0f);
+
+        engine.transforms.at(background.entity).position.x = camera.position.x;
+        engine.transforms.at(background.entity).position.y = camera.position.y;
     }
 
     void updateGame(double delta)
     {
         updateDirection();
 
-        auto &playerTransform = transforms[player.entity];
+        auto &playerTransform = engine.transforms.at(player.entity);
         if (playerTransform.dir.x != 0 || playerTransform.dir.y != 0)
             holdTimer += delta;
         else
@@ -184,10 +186,10 @@ struct Game
 
     void checkCollision()
     {
-        auto playerTransform = transforms[player.entity];
+        auto playerTransform = engine.transforms.at(player.entity);
         for (auto &[entity, ground] : grounds)
         {
-            auto groundTransform = transforms[entity];
+            auto groundTransform = engine.transforms.at(entity);
             if (rectIntersects(playerTransform.position, playerTransform.size, groundTransform.position, groundTransform.size))
             {
                 ground.dead = true;
@@ -198,7 +200,7 @@ struct Game
     void updateDirection()
     {
         GLFWwindow *handle = window.getHandle();
-        auto &playerTransform = transforms[player.entity];
+        auto &playerTransform = engine.transforms.at(player.entity);
 
         if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS && playerTransform.dir.x != 1)
             playerTransform.dir = {-1.0f, 0.0f};
@@ -215,19 +217,5 @@ struct Game
     // --- Rendering ---
     void updateGraphics()
     {
-        quads.insert_or_assign(
-            background.entity,
-            Quad{camera.position.x, camera.position.y,
-                 (float)window.width, (float)window.height,
-                 Colors::fromHex(Colors::SKY_BLUE, 1.0f),
-                 ShaderType::FlatColor, RenderLayer::Background});
-
-        auto playerTransform = transforms[player.entity];
-        quads.insert_or_assign(
-            player.entity,
-            Quad{playerTransform.position.x, playerTransform.position.y,
-                 playerTransform.size.x, playerTransform.size.y,
-                 Colors::fromHex(Colors::MANGO_ORANGE, 1.0f),
-                 ShaderType::FlatColor, RenderLayer::World});
     }
 };

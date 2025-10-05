@@ -6,6 +6,9 @@
 #include "Pipelines.h"
 #include "Draworder.h"
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/string_cast.hpp>
+
 Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
 void Engine::initVulkan()
@@ -21,6 +24,7 @@ void Engine::initVulkan()
         createSwapChain();
         createRenderPass();
         createGraphicsPipeline();
+        createStaticVertexBuffer();
         createFramebuffers();
         createImagesInFlight();
         createCommandPool();
@@ -30,7 +34,11 @@ void Engine::initVulkan()
     }
     catch (const std::exception &e)
     {
-        std::throw_with_nested(std::runtime_error("Failed to construct engine"));
+        throw std::runtime_error(std::string("Failed to construct engine: ") + e.what());
+    }
+    catch (...)
+    {
+        throw std::runtime_error(std::string("Unknown exception thrown in Engine::initVulkan: "));
     }
 }
 
@@ -460,66 +468,85 @@ bool Engine::checkValidationLayerSupport()
     return true;
 }
 
-void Engine::drawQuads(std::unordered_map<Entity, Quad> &quads, Camera &camera)
+void Engine::draw(Camera &camera)
 {
-    std::vector<Quad> sortedQuads;
-    std::vector<DrawCmd> commands;
-    std::vector<Vertex> vertices;
-
-    vertices.reserve(quads.size() * 6);
-
-    // Flatten quads into a sortable array
-    sortedQuads.reserve(quads.size());
-    for (auto &[_, quad] : quads)
-        sortedQuads.push_back(quad);
-
-    // Sort by key (renderLayer → shaderType → z → tie)
-    std::sort(sortedQuads.begin(), sortedQuads.end(),
-              [](const Quad a, const Quad b)
-              {
-                  auto keyA = makeDrawKey(a.renderLayer, a.shaderType, a.z, a.tiebreak);
-                  auto keyB = makeDrawKey(b.renderLayer, b.shaderType, b.z, b.tiebreak);
-                  return keyA < keyB;
-              });
-
-    // Build flat vertex buffer and draw commands
-    vertices.reserve(sortedQuads.size() * 6);
-
-    uint32_t currentOffset = 0;
-    for (auto &quad : sortedQuads)
+    uint32_t imageIndex = prepareDraw();
+    if (imageIndex < 0)
     {
-        // Append quad vertices
-        vertices.insert(vertices.end(), quad.vertices.begin(), quad.vertices.end());
-
-        // First batch
-        if (commands.empty())
-        {
-            auto currentCmd = DrawCmd{quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak, (uint32_t)quad.vertices.size(), currentOffset};
-            commands.push_back(currentCmd);
-            continue;
-        }
-
-        // Extend existing batch if same shader
-        auto prev = commands.back();
-        if (prev.shaderType == quad.shaderType)
-        {
-            commands.back().vertexCount += (uint32_t)quad.vertices.size();
-            continue;
-        }
-
-        // New batch
-        currentOffset += commands.back().vertexCount;
-        commands.push_back(DrawCmd{quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak, (uint32_t)quad.vertices.size(), currentOffset});
+        Logger::debug("Skipping draw : Recreating swapchain");
+        return;
     }
 
-    // Create/resize GPU vertex buffer with all vertices
-    createOrResizeVertexBuffer(vertices);
+    // Step 1: Sort entities
+    std::vector<std::pair<uint64_t, Entity>> sorted;
+    sorted.reserve(quads.size());
 
-    // Draw
-    drawCmds(commands, camera);
+    for (auto &[entity, quad] : quads)
+    {
+        uint64_t key = makeDrawKey(quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak);
+        sorted.emplace_back(key, entity);
+    }
+
+    std::sort(sorted.begin(), sorted.end(), [](auto &a, auto &b)
+              { return a.first < b.first; });
+
+    // Step 2: Collect all instance data
+    std::vector<InstanceData> instances;
+    std::vector<DrawCmd> drawCmds;
+
+    ShaderType currentShader = ShaderType::COUNT;
+    RenderLayer currentLayer = RenderLayer::World;
+
+    uint32_t instanceOffset = 0;
+
+    for (auto &[key, entity] : sorted)
+    {
+        auto &quad = quads.at(entity);
+        auto &transform = transforms.at(entity);
+
+        bool newBatch = (quad.shaderType != currentShader) || (quad.renderLayer != currentLayer);
+
+        if (newBatch && !instances.empty())
+        {
+            uint32_t count = instances.size() - instanceOffset;
+            drawCmds.emplace_back(currentLayer,
+                                  currentShader,
+                                  quad.z,
+                                  quad.tiebreak,
+                                  6,
+                                  0,
+                                  count,
+                                  instanceOffset);
+            instanceOffset = instances.size();
+        }
+
+        instances.push_back({transform.transformToModelMatrix(), quad.color});
+        currentShader = quad.shaderType;
+        currentLayer = quad.renderLayer;
+    }
+
+    // Last batch
+    if (!instances.empty())
+    {
+        uint32_t count = instances.size() - instanceOffset;
+        drawCmds.emplace_back(currentLayer,
+                              currentShader,
+                              0.0f,
+                              0,
+                              6,
+                              0,
+                              count,
+                              instanceOffset);
+    }
+
+    // Step 3: Upload once, then draw all
+    uploadToInstanceBuffer(instances);
+    drawCmdList(drawCmds, camera);
+
+    endDraw(imageIndex);
 }
 
-void Engine::drawCmds(std::vector<DrawCmd> commands, Camera &camera)
+uint32_t Engine::prepareDraw()
 {
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     uint32_t imageIndex;
@@ -542,7 +569,7 @@ void Engine::drawCmds(std::vector<DrawCmd> commands, Camera &camera)
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
     {
         recreateSwapchain();
-        return;
+        return -1;
     }
     else if (result != VK_SUCCESS)
     {
@@ -583,28 +610,41 @@ void Engine::drawCmds(std::vector<DrawCmd> commands, Camera &camera)
     scissor.extent = swapchain.getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    for (auto &cmd : commands)
+    return imageIndex;
+}
+
+void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
+{
+    VkCommandBuffer cmd = commandBuffers[currentFrame];
+
+    glm::mat4 viewProj = camera.getViewProj();
+
+    for (const auto &dc : drawCmds)
     {
-        Pipeline pipeline = pipelines[size_t(cmd.shaderType)];
+        const Pipeline &pipeline = pipelines[(size_t)dc.shaderType];
 
-        glm::mat4 viewProj = camera.getViewProj();
-        vkCmdPushConstants(
-            commandBuffer,
-            pipeline.layout,
-            VK_SHADER_STAGE_VERTEX_BIT,
-            0,
-            sizeof(glm::mat4),
-            &viewProj);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
 
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+        vkCmdPushConstants(cmd,
+                           pipeline.layout,
+                           VK_SHADER_STAGE_VERTEX_BIT,
+                           0,
+                           sizeof(glm::mat4),
+                           &viewProj);
 
-        VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
-        VkDeviceSize frameOffset = currentFrame * stride;
-        VkDeviceSize offsets[] = {frameOffset};
+        // Bind vertex + instance buffer
+        VkBuffer vertexBuffers[] = {vertexBuffer, instanceBuffer};
+        VkDeviceSize offsets[] = {0, currentFrame * maxIntancesPerFrame * sizeof(InstanceData)};
+        vkCmdBindVertexBuffers(cmd, 0, 2, vertexBuffers, offsets);
 
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexRingbuffer, offsets);
-        vkCmdDraw(commandBuffer, cmd.vertexCount, 1, cmd.firstVertex, 0);
+        // Issue draw
+        vkCmdDraw(cmd, dc.vertexCount, dc.instanceCount, dc.firstVertex, dc.firstInstance);
     }
+}
+
+void Engine::endDraw(uint32_t imageIndex)
+{
+    VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
 
     vkCmdEndRenderPass(commandBuffer);
     vkEndCommandBuffer(commandBuffer);
@@ -640,24 +680,43 @@ void Engine::drawCmds(std::vector<DrawCmd> commands, Camera &camera)
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void Engine::createOrResizeVertexBuffer(std::vector<Vertex> vertices)
+void Engine::createStaticVertexBuffer()
 {
-    VkDeviceSize copySize = sizeof(Vertex) * vertices.size();
+    const auto &unitVerts = Quad::getUnitVertices();
+    VkDeviceSize size = sizeof(Vertex) * unitVerts.size();
 
-    // Check if we're over capacity and handle it
-    if (vertices.size() > vertexSliceCapacity)
+    CreateBuffer(device, physicalDevice,
+                 size,
+                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 vertexBuffer,
+                 vertexBufferMemory);
+
+    void *data;
+    vkMapMemory(device, vertexBufferMemory, 0, size, 0, &data);
+    memcpy(data, unitVerts.data(), (size_t)size);
+    vkUnmapMemory(device, vertexBufferMemory);
+
+    vertexCapacity = static_cast<uint32_t>(unitVerts.size());
+}
+
+void Engine::uploadToInstanceBuffer(const std::vector<InstanceData> &instances)
+{
+    VkDeviceSize copySize = sizeof(InstanceData) * instances.size();
+
+    // Resize if capacity too small
+    if (instances.size() > maxIntancesPerFrame)
     {
-        vertexSliceCapacity = static_cast<uint32_t>(vertices.size() * 5);
-        VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
+        maxIntancesPerFrame = static_cast<uint32_t>(instances.size() * 5);
+        VkDeviceSize stride = maxIntancesPerFrame * sizeof(InstanceData);
         VkDeviceSize totalSize = stride * MAX_FRAMES_IN_FLIGHT;
 
-        // Don't free non existing buffer
-        if (vertexRingbufferMemory)
+        if (instanceBufferMemory)
         {
-            awaitDeviceIdle(); // We need to wait untill gpu releases buffer
-            vkDestroyBuffer(device, vertexRingbuffer, nullptr);
-            vkUnmapMemory(device, vertexRingbufferMemory);
-            vkFreeMemory(device, vertexRingbufferMemory, nullptr);
+            awaitDeviceIdle(); // wait until GPU is done using the old one
+            vkDestroyBuffer(device, instanceBuffer, nullptr);
+            vkUnmapMemory(device, instanceBufferMemory);
+            vkFreeMemory(device, instanceBufferMemory, nullptr);
         }
 
         CreateBuffer(
@@ -666,17 +725,24 @@ void Engine::createOrResizeVertexBuffer(std::vector<Vertex> vertices)
             totalSize,
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            vertexRingbuffer,
-            vertexRingbufferMemory);
+            instanceBuffer,
+            instanceBufferMemory);
 
-        assert(vkMapMemory(device, vertexRingbufferMemory, 0, totalSize, 0, &vertexRingbufferMapped) == VK_SUCCESS && "failed to map memory during buffer creation");
+        // map once, persistently
+        assert(
+            vkMapMemory(device, instanceBufferMemory, 0, totalSize, 0, &instanceBufferMapped) == VK_SUCCESS &&
+            "failed to map memory during instance buffer creation");
     }
 
-    // Update memory in buffer
-    VkDeviceSize stride = vertexSliceCapacity * sizeof(Vertex);
-    assert(copySize <= stride && "vertex data exceeds slice capacity");
+    // Write to the correct frame slice
+    VkDeviceSize stride = maxIntancesPerFrame * sizeof(InstanceData);
+    assert(copySize <= stride && "instance data exceeds slice capacity");
     size_t frameOffset = currentFrame * stride;
-    memcpy((char *)vertexRingbufferMapped + frameOffset, vertices.data(), (size_t)copySize);
+
+    memcpy(
+        static_cast<char *>(instanceBufferMapped) + frameOffset,
+        instances.data(),
+        static_cast<size_t>(copySize));
 }
 
 void Engine::recreateSwapchain()

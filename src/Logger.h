@@ -5,13 +5,6 @@
 #include <ctime>
 #include <sstream>
 
-enum class LogLevel
-{
-        INFO,
-        WARN,
-        ERROR
-};
-
 class Logger
 {
 public:

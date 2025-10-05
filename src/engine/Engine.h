@@ -8,13 +8,15 @@
 
 #include "engine/Window.h"
 #include "engine/SwapChain.h"
+#include "InstanceData.h"
 #include "Logger.h"
 #include "Vertex.h"
 #include "Quad.h"
 #include "Pipelines.h"
 #include "Draworder.h"
-#include "game/Entity.h"
-#include "game/Camera.h"
+#include "EntityManager.h"
+#include "Camera.h"
+#include "Transform.h"
 
 #include <iostream>
 #include <fstream>
@@ -59,6 +61,11 @@ const int MAX_FRAMES_IN_FLIGHT = 3;
 class Engine
 {
 public:
+    // Transforms
+    std::unordered_map<Entity, Transform> transforms;
+    std::unordered_map<Entity, Quad> quads;
+    EntityManager ecs;
+
     Engine(uint32_t width, uint32_t height, Window &window);
 
     void initVulkan();
@@ -66,7 +73,7 @@ public:
     void cleanup();
 
     // Draw functions
-    void drawQuads(std::unordered_map<Entity, Quad> &quads, Camera &camera);
+    void draw(Camera &camera);
 
 private:
     uint32_t width;
@@ -101,13 +108,22 @@ private:
     uint32_t currentFrame = 0;
     std::vector<VkFence> imagesInFlight;
 
-    // Vertices
-    VkBuffer vertexRingbuffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertexRingbufferMemory = VK_NULL_HANDLE;
-    uint32_t vertexSliceCapacity = 0;
-    void *vertexRingbufferMapped = nullptr;
+    // Instances
+    VkBuffer instanceBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
+    uint32_t maxIntancesPerFrame = 0;
 
-    void createOrResizeVertexBuffer(std::vector<Vertex> vertices);
+    // Vertices
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    uint32_t vertexCapacity = 0;
+    void *instanceBufferMapped = nullptr;
+
+    void createStaticVertexBuffer();
+    uint32_t prepareDraw();
+    void endDraw(uint32_t imageIndex);
+    void drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera);
+    void uploadToInstanceBuffer(const std::vector<InstanceData> &instances);
     void createInstance();
     void setupDebugMessenger();
     void createSurface();
@@ -122,7 +138,6 @@ private:
     void createSyncObjects();
     void createImagesInFlight();
     void destroySyncObjects();
-    void drawCmds(std::vector<DrawCmd> commands, Camera &camera);
     void recreateSwapchain();
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);

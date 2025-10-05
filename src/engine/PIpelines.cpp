@@ -1,4 +1,5 @@
 #include "Pipelines.h"
+#include "InstanceData.h"
 
 std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice device, VkRenderPass renderPass)
 {
@@ -38,14 +39,29 @@ Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, std::stri
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
-    auto bindingDescription = Vertex::getBindingDescription();
-    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+    // --- Binding descriptions
+    std::array<VkVertexInputBindingDescription, VertexBinding::BINDING_COUNT> bindingDescriptions{};
+    bindingDescriptions[VertexBinding::BINDING_VERTEX] = Vertex::getBindingDescription();
+    bindingDescriptions[VertexBinding::BINDING_INSTANCE] = InstanceData::getBindingDescription();
 
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    auto vertexAttrs = Vertex::getAttributeDescriptions();
+    auto instanceAttrs = InstanceData::getAttributeDescriptions();
+    std::array<VkVertexInputAttributeDescription,
+               Vertex::ATTRIBUTE_COUNT + InstanceData::ATTRIBUTE_COUNT>
+        attributeDescriptions{};
+    size_t i = 0;
+    for (auto &attr : vertexAttrs)
+        attributeDescriptions[i++] = attr;
+    for (auto &attr : instanceAttrs)
+        attributeDescriptions[i++] = attr;
+
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+    vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
     vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
+    // --- Input assembly
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
