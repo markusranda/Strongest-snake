@@ -4,6 +4,7 @@
 struct Colors
 {
     static constexpr uint32_t WHITE = 0xFFFFFF;
+    static constexpr uint32_t BLACK = 0x000000;
     static constexpr uint32_t SKY_BLUE = 0xA6D9F7;
     static constexpr uint32_t SAND_BEIGE = 0xF8E1A1;
     static constexpr uint32_t GROUND_BEIGE = 0x89724a;

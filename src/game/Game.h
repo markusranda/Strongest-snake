@@ -6,7 +6,6 @@
 #include "engine/Camera.h"
 #include "Collision.h"
 #include "../tusj/Colors.h"
-#include <glm/glm.hpp>
 #include <GLFW/glfw3.h>
 #include <unordered_map>
 #include <deque>
@@ -14,6 +13,10 @@
 #include <cstdlib>
 #include "engine/Transform.h"
 #include "SnakeMath.h"
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <glm/gtx/string_cast.hpp>
+#include <glm/gtx/rotate_vector.hpp>
 
 struct Ground
 {
@@ -22,7 +25,7 @@ struct Ground
 };
 struct Player
 {
-    Entity entity;
+    std::array<Entity, 4> entities;
 };
 struct Background
 {
@@ -53,6 +56,8 @@ struct Game
 
     glm::vec2 playerVelocity = {0.0f, 0.0f};
 
+    const float angleMax = SnakeMath::PI / 10;
+
     // Timing
     double lastTime = 0.0;
 
@@ -81,17 +86,22 @@ struct Game
             engine.transforms.insert_or_assign(background.entity, backgroundTranslate);
 
             // ---- Player ----
-            auto playerEntity = engine.ecs.createEntity();
-            Transform transform = Transform{
-                glm::vec2{std::floor(columns / 2) * cellSize, 1 * cellSize},
-                glm::vec2{cellSize, cellSize},
-                "player"};
-            engine.transforms.insert_or_assign(playerEntity, transform);
-            player = {playerEntity};
-            engine.quads.insert_or_assign(
-                playerEntity,
-                Quad{ShaderType::FlatColor, RenderLayer::World, Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), "player"});
+            for (size_t i = 0; i < 4; i++)
+            {
+                auto entity = engine.ecs.createEntity();
+                Transform transform = Transform{
+                    glm::vec2{std::floor(columns / 2) * cellSize - (i * cellSize), cellSize},
+                    glm::vec2{cellSize, cellSize},
+                    glm::vec2{1.0f, 0.5f},
+                    "player"};
+                engine.transforms.insert_or_assign(entity, transform);
+                player.entities[i] = entity;
+                engine.quads.insert_or_assign(
+                    entity,
+                    Quad{ShaderType::DirArrow, RenderLayer::World, Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), "player"});
+            }
 
+            // --- Camera ---
             camera = Camera{window.width, window.height};
 
             // --- Ground ----
@@ -164,7 +174,7 @@ struct Game
 
     void updateCamera()
     {
-        Transform playerTransform = engine.transforms.at(player.entity);
+        Transform playerTransform = engine.transforms.at(player.entities.front());
         camera.position = playerTransform.position - glm::vec2(window.width / 2.0f, window.height / 2.0f);
 
         engine.transforms.at(background.entity).position.x = camera.position.x;
@@ -173,22 +183,34 @@ struct Game
 
     void updateGame(double delta)
     {
-        auto &playerTransform = engine.transforms.at(player.entity);
+        auto &playerTransform = engine.transforms.at(player.entities.front());
 
         // Constants / parameters
         const float dt = static_cast<float>(delta) / 1000.0f;
         glm::vec2 acceleration = {0.0f, 0.0f};
-
         GLFWwindow *handle = window.getHandle();
 
         // --- Rotation ---
+        auto change = rotationSpeed * dt;
+        bool leftPressed = false;
+        bool rightPressed = false;
         if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS)
-            playerTransform.rotation -= rotationSpeed * dt;
+        {
+            leftPressed = true;
+
+            auto &currentTransform = engine.transforms.at(player.entities[0]);
+            currentTransform.rotation -= change;
+        }
         if (glfwGetKey(handle, GLFW_KEY_D) == GLFW_PRESS)
-            playerTransform.rotation += rotationSpeed * dt;
+        {
+            rightPressed = true;
+
+            auto &currentTransform = engine.transforms.at(player.entities[0]);
+            currentTransform.rotation += change;
+        }
 
         // --- Forward direction ---
-        glm::vec2 forward = glm::vec2(SnakeMath::fastCos(playerTransform.rotation), SnakeMath::fastSin(playerTransform.rotation));
+        glm::vec2 forward = SnakeMath::getRotationVector2(playerTransform.rotation);
 
         // --- Thrust ---
         if (glfwGetKey(handle, GLFW_KEY_W) == GLFW_PRESS)
@@ -202,13 +224,36 @@ struct Game
 
         // --- Position integration ---
         playerTransform.position += playerVelocity * dt;
+        for (size_t i = 1; i < player.entities.size(); ++i)
+        {
+            auto &prev = engine.transforms.at(player.entities[i - 1]);
+            auto &curr = engine.transforms.at(player.entities[i]);
+
+            // Direction the previous segment is facing
+            glm::vec2 dir = SnakeMath::getRotationVector2(prev.rotation);
+
+            // The hinge position (back edge of previous segment)
+            glm::vec2 hinge = prev.position - dir * float(cellSize);
+
+            // Place the current segment so its front edge touches the hinge
+            curr.position = hinge;
+
+            if (leftPressed)
+            {
+                curr.rotation = prev.rotation * (i * 0.4f);
+            }
+            else if (rightPressed)
+            {
+                curr.rotation = prev.rotation * (i * 0.4f);
+            }
+        }
 
         checkCollision();
     }
 
     void checkCollision()
     {
-        auto playerTransform = engine.transforms.at(player.entity);
+        auto playerTransform = engine.transforms.at(player.entities.front());
         for (auto &[entity, ground] : grounds)
         {
             auto groundTransform = engine.transforms.at(entity);
@@ -217,6 +262,52 @@ struct Game
                 ground.dead = true;
             }
         }
+    }
+
+    void drawDebugBox(glm::vec2 point)
+    {
+        auto randomEntiy = engine.ecs.createEntity();
+        Transform randomTrans = Transform{
+            point - (float)(8 / 2),
+            glm::vec2{8, 8},
+            "player"};
+        engine.transforms.insert_or_assign(randomEntiy, randomTrans);
+        engine.quads.insert_or_assign(
+            randomEntiy,
+            Quad{ShaderType::Border, RenderLayer::World, Colors::fromHex(Colors::BLACK, 1.0f), "player"});
+    }
+
+    glm::vec2 rotatePoint(glm::vec2 point, glm::vec2 pivot, float theta)
+    {
+        float s = sinf(theta);
+        float c = cosf(theta);
+
+        // Translate point to origin
+        float x = point.x - pivot.x;
+        float y = point.y - pivot.y;
+
+        // Rotate
+        float xNew = x * c - y * s;
+        float yNew = x * s + y * c;
+
+        // Translate back
+        return {xNew + pivot.x, yNew + pivot.y};
+    }
+
+    bool canRotate(Transform &a, Transform &b, float change)
+    {
+        float currentDiff = a.rotation - b.rotation;
+        float newDiff = (a.rotation - change) - b.rotation;
+
+        Logger::info(
+            "a.rot=" + std::to_string(a.rotation) +
+            ", b.rot=" + std::to_string(b.rotation) +
+            ", change=" + std::to_string(change) +
+            ", currentDiff=" + std::to_string(currentDiff) +
+            ", newDiff=" + std::to_string(newDiff) +
+            ", angleMax=" + std::to_string(angleMax));
+
+        return abs(newDiff) <= angleMax;
     }
 
     // --- Rendering ---

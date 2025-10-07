@@ -13,6 +13,7 @@ struct Transform
 
     Transform(glm::vec2 position, glm::vec2 size, char *name = "not defined") : position(position), size(size), name(name) {}
     Transform(glm::vec2 position, glm::vec2 size, float rotation, char *name = "not defined") : position(position), size(size), rotation(rotation), name(name) {}
+    Transform(glm::vec2 position, glm::vec2 size, glm::vec2 pivotPoint, char *name = "not defined") : position(position), size(size), pivotPoint(pivotPoint), name(name) {}
 
     glm::mat4 Transform::transformToModelMatrix()
     {

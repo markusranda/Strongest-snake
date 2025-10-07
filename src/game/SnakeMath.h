@@ -3,7 +3,10 @@
 namespace SnakeMath
 {
     constexpr float PI = 3.14159265358979323846f;
-    inline float fastSin(float x)
+    constexpr float TWO_PI = 2.0f * PI;
+
+    // TODO Fix before use
+    inline float fSin(float x)
     {
         // normalize to -PI..PI
         x = fmodf(x + PI, 2 * PI) - PI;
@@ -14,8 +17,22 @@ namespace SnakeMath
         y = P * (y * fabsf(y) - y) + y;
         return y;
     }
-    inline float fastCos(float x)
+
+    // TODO Fix before use
+    inline float fCos(float x)
     {
-        return fastSin(x + SnakeMath::PI * 0.5f);
+        return fSin(x + SnakeMath::PI * 0.5f);
+    }
+
+    inline glm::vec2 getRotationVector2(float rotation)
+    {
+        return glm::vec2(cos(rotation), sin(rotation));
+    }
+
+    // TODO Fix before use
+    inline float fMod(float a, float b)
+    {
+        int val = (int)(a * 100000) % (int)(b * 100000);
+        return val / 1000.0f;
     }
 }
