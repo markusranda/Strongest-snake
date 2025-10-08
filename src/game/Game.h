@@ -92,7 +92,6 @@ struct Game
                 Transform transform = Transform{
                     glm::vec2{std::floor(columns / 2) * cellSize - (i * cellSize), cellSize},
                     glm::vec2{cellSize, cellSize},
-                    glm::vec2{1.0f, 0.5f},
                     "player"};
                 engine.transforms.insert_or_assign(entity, transform);
                 player.entities[i] = entity;
@@ -197,16 +196,53 @@ struct Game
         if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS)
         {
             leftPressed = true;
-
-            auto &currentTransform = engine.transforms.at(player.entities[0]);
-            currentTransform.rotation -= change;
         }
         if (glfwGetKey(handle, GLFW_KEY_D) == GLFW_PRESS)
         {
             rightPressed = true;
+        }
 
-            auto &currentTransform = engine.transforms.at(player.entities[0]);
-            currentTransform.rotation += change;
+        // --- Snake bevior ---
+        if (leftPressed)
+        {
+            float radius = 75.0f;
+            Transform transform = engine.transforms.at(player.entities[2]);
+            glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
+            glm::vec2 leftDir = glm::vec2(forward.y, -forward.x);
+            glm::vec2 leftPos = transform.position + leftDir * radius;
+
+            float rotationSpeed = 5.0f; // tweak this
+            float maxDistance = radius; // Increase to stop earlier
+
+            for (size_t i = 0; i < 2; i++)
+            {
+                // Move segment
+                Entity entity = player.entities[i];
+                Transform &transform = engine.transforms.at(entity);
+                glm::vec2 center = transform.position - leftPos;
+                glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
+
+                // Rotate segment
+                glm::vec2 tangent = glm::normalize(glm::vec2(center.y, -center.x));
+                float currentAngle = atan2(forward.y, forward.x);
+                float targetAngle = atan2(tangent.y, tangent.x);
+                float deltaAngle = targetAngle - currentAngle;
+                if (deltaAngle > SnakeMath::PI)
+                    deltaAngle -= 2.0f * SnakeMath::PI;
+                if (deltaAngle < -SnakeMath::PI)
+                    deltaAngle += 2.0f * SnakeMath::PI;
+
+                float dist = glm::length(transform.position - leftPos);
+                Logger::info(std::to_string(dist) + ", " + std::to_string(maxDistance));
+                if (dist < maxDistance)
+                    continue;
+
+                Logger::info("Not Skipped");
+
+                transform.position = transform.position - dt * (center);
+                transform.rotation += deltaAngle * dt * rotationSpeed;
+                break;
+            }
         }
 
         // --- Forward direction ---
@@ -222,31 +258,12 @@ struct Game
         // --- Apply friction ---
         playerVelocity -= playerVelocity * friction * dt;
 
-        // --- Position integration ---
-        playerTransform.position += playerVelocity * dt;
-        for (size_t i = 1; i < player.entities.size(); ++i)
-        {
-            auto &prev = engine.transforms.at(player.entities[i - 1]);
-            auto &curr = engine.transforms.at(player.entities[i]);
+        // Move all
+        // for (auto &entity : player.entities)
+        //     engine.transforms.at(entity).position += playerVelocity * dt;
 
-            // Direction the previous segment is facing
-            glm::vec2 dir = SnakeMath::getRotationVector2(prev.rotation);
-
-            // The hinge position (back edge of previous segment)
-            glm::vec2 hinge = prev.position - dir * float(cellSize);
-
-            // Place the current segment so its front edge touches the hinge
-            curr.position = hinge;
-
-            if (leftPressed)
-            {
-                curr.rotation = prev.rotation * (i * 0.4f);
-            }
-            else if (rightPressed)
-            {
-                curr.rotation = prev.rotation * (i * 0.4f);
-            }
-        }
+        // Move one
+        engine.transforms.at(player.entities[0]).position += playerVelocity * dt;
 
         checkCollision();
     }
@@ -275,39 +292,6 @@ struct Game
         engine.quads.insert_or_assign(
             randomEntiy,
             Quad{ShaderType::Border, RenderLayer::World, Colors::fromHex(Colors::BLACK, 1.0f), "player"});
-    }
-
-    glm::vec2 rotatePoint(glm::vec2 point, glm::vec2 pivot, float theta)
-    {
-        float s = sinf(theta);
-        float c = cosf(theta);
-
-        // Translate point to origin
-        float x = point.x - pivot.x;
-        float y = point.y - pivot.y;
-
-        // Rotate
-        float xNew = x * c - y * s;
-        float yNew = x * s + y * c;
-
-        // Translate back
-        return {xNew + pivot.x, yNew + pivot.y};
-    }
-
-    bool canRotate(Transform &a, Transform &b, float change)
-    {
-        float currentDiff = a.rotation - b.rotation;
-        float newDiff = (a.rotation - change) - b.rotation;
-
-        Logger::info(
-            "a.rot=" + std::to_string(a.rotation) +
-            ", b.rot=" + std::to_string(b.rotation) +
-            ", change=" + std::to_string(change) +
-            ", currentDiff=" + std::to_string(currentDiff) +
-            ", newDiff=" + std::to_string(newDiff) +
-            ", angleMax=" + std::to_string(angleMax));
-
-        return abs(newDiff) <= angleMax;
     }
 
     // --- Rendering ---
