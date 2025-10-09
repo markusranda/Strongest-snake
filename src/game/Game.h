@@ -17,6 +17,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <glm/gtx/rotate_vector.hpp>
+#include <iostream>
 
 struct Ground
 {
@@ -37,6 +38,12 @@ struct Game
     // Core engine + window
     Window window;
     Engine engine;
+
+    // Timing
+    uint32_t frameCount = 0;
+    double lastTime = 0.0;
+    float fpsTimeSum = 0.0f;
+    float fps = 0.0f;
 
     bool gameOver = false;
     Background background;
@@ -60,9 +67,6 @@ struct Game
     // Rotation
     float rotationRadius = 75.0f;       // Increase to stop earlier
     float maxDistance = rotationRadius; // Increase to stop earlier
-
-    // Timing
-    double lastTime = 0.0;
 
     Game(Window &w)
         : window(w),
@@ -148,6 +152,8 @@ struct Game
             updateLifecycle();
 
             engine.draw(camera);
+
+            updateFPSCounter(delta);
         }
     }
 
@@ -334,6 +340,22 @@ struct Game
             transform.position = transform.position - dt * (localCenter);
             transform.rotation += deltaAngle * dt * rotationSpeed;
             break;
+        }
+    }
+
+    void updateFPSCounter(float dt)
+    {
+        frameCount++;
+
+        if (frameCount >= 10)
+        {
+            fps = frameCount / (fpsTimeSum / 1000.0f);
+            frameCount = 0;
+            fpsTimeSum = 0.0;
+        }
+        else
+        {
+            fpsTimeSum += dt;
         }
     }
 };
