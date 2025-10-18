@@ -151,7 +151,7 @@ struct Game
             updateCamera();
             updateLifecycle();
 
-            engine.draw(camera);
+            engine.draw(camera, fps);
 
             updateFPSCounter(delta);
         }

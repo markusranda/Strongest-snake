@@ -81,7 +81,7 @@ public:
     void cleanup();
 
     // Draw functions
-    void draw(Camera &camera);
+    void draw(Camera &camera, float fps);
 
 private:
     uint32_t width;

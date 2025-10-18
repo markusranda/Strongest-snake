@@ -529,7 +529,37 @@ bool Engine::checkValidationLayerSupport()
     return true;
 }
 
-void Engine::draw(Camera &camera)
+// void Engine::draw2(Camera &camera)
+// {
+//     uint32_t imageIndex = prepareDraw();
+//     if (imageIndex < 0)
+//     {
+//         Logger::debug("Skipping draw : Recreating swapchain");
+//         return;
+//     }
+
+//     std::vector<InstanceData> instances = BuildTextInstances(
+//         "FPS: ",
+//         glm::vec2(-1.0f, -1.0f));
+
+//     uploadToInstanceBuffer(instances);
+
+//     DrawCmd dc(
+//         RenderLayer::World,
+//         ShaderType::Font,
+//         0.0f, 0,
+//         6, 0,
+//         static_cast<uint32_t>(instances.size()),
+//         0);
+
+//     std::vector<DrawCmd> cmdList = {dc};
+
+//     drawCmdList(cmdList, camera);
+
+//     endDraw(imageIndex);
+// }
+
+void Engine::draw(Camera &camera, float fps)
 {
     uint32_t imageIndex = prepareDraw();
     if (imageIndex < 0)
@@ -538,24 +568,86 @@ void Engine::draw(Camera &camera)
         return;
     }
 
-    std::vector<InstanceData> instances = BuildTextInstances(
-        "FPS: ",
+    // Step 1: Sort entities
+    std::vector<std::pair<uint64_t, Entity>> sorted;
+    sorted.reserve(quads.size());
+
+    for (auto &[entity, quad] : quads)
+    {
+        uint64_t key = makeDrawKey(quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak);
+        sorted.emplace_back(key, entity);
+    }
+
+    std::sort(sorted.begin(), sorted.end(), [](auto &a, auto &b)
+              { return a.first < b.first; });
+
+    // Step 2: Collect all instance data
+    std::vector<InstanceData> instances;
+    std::vector<DrawCmd> drawCmds;
+
+    ShaderType currentShader = ShaderType::COUNT;
+    RenderLayer currentLayer = RenderLayer::World;
+
+    uint32_t instanceOffset = 0;
+
+    for (auto &[key, entity] : sorted)
+    {
+        auto &quad = quads.at(entity);
+        auto &transform = transforms.at(entity);
+
+        bool newBatch = (quad.shaderType != currentShader) || (quad.renderLayer != currentLayer);
+
+        if (newBatch && !instances.empty())
+        {
+            uint32_t count = instances.size() - instanceOffset;
+            drawCmds.emplace_back(currentLayer,
+                                  currentShader,
+                                  quad.z,
+                                  quad.tiebreak,
+                                  6,
+                                  0,
+                                  count,
+                                  instanceOffset);
+            instanceOffset = instances.size();
+        }
+
+        instances.push_back({transform.transformToModelMatrix(), quad.color});
+        currentShader = quad.shaderType;
+        currentLayer = quad.renderLayer;
+    }
+
+    // Fetch all text instances
+    std::vector<InstanceData> textInstances = BuildTextInstances(
+        "FPS: " + std::to_string(fps),
         glm::vec2(-1.0f, -1.0f));
-
-    uploadToInstanceBuffer(instances);
-
+    uint32_t textOffset = instances.size();
+    instances.insert(instances.end(), textInstances.begin(), textInstances.end());
     DrawCmd dc(
-        RenderLayer::World,
+        RenderLayer::World, // Add new layer for UI
         ShaderType::Font,
         0.0f, 0,
         6, 0,
-        static_cast<uint32_t>(instances.size()),
-        0);
+        static_cast<uint32_t>(textInstances.size()),
+        textOffset);
+    drawCmds.emplace_back(dc);
 
-    std::vector<DrawCmd> cmdList = {dc};
+    // Last batch
+    if (!instances.empty())
+    {
+        uint32_t count = instances.size() - instanceOffset;
+        drawCmds.emplace_back(currentLayer,
+                              currentShader,
+                              0.0f,
+                              0,
+                              6,
+                              0,
+                              count,
+                              instanceOffset);
+    }
 
-    drawCmdList(cmdList, camera);
-
+    // Step 3: Upload once, then draw all
+    uploadToInstanceBuffer(instances);
+    drawCmdList(drawCmds, camera);
     endDraw(imageIndex);
 }
 
