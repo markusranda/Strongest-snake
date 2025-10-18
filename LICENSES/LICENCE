@@ -1,0 +1,11 @@
+This project currently has no finalized license.
+
+All original code is © [Your Name or Alias] [Year].
+
+External components:
+
+ - stb_image.h by Sean Barrett
+   Public Domain or MIT License (see LICENSES/stb_image.LICENSE.txt)
+
+When this project is made public or distributed, a definitive license
+(e.g., MIT, Apache-2.0, or proprietary) will be applied.

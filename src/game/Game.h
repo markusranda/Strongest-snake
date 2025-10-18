@@ -80,7 +80,7 @@ struct Game
         try
         {
             Logger::info(std::filesystem::current_path().string());
-            engine.initVulkan();
+            engine.initVulkan("assets/fonts.png");
 
             // --- Background ---
             background = {engine.ecs.createEntity()};

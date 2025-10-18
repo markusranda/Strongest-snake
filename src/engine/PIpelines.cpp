@@ -1,18 +1,19 @@
 #include "Pipelines.h"
 #include "InstanceData.h"
 
-std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice device, VkRenderPass renderPass)
+std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice device, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout)
 {
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
-    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag.spv", renderPass);
-    pipelines[static_cast<size_t>(ShaderType::SnakeSkin)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/snakeskin.spv", renderPass);
-    pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/border.spv", renderPass);
-    pipelines[static_cast<size_t>(ShaderType::DirArrow)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/dir_arrow.spv", renderPass);
+    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag.spv", renderPass, textureSetLayout);
+    pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_font.spv", "shaders/frag.spv", renderPass, textureSetLayout);
+    pipelines[static_cast<size_t>(ShaderType::SnakeSkin)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/snakeskin.spv", renderPass, textureSetLayout);
+    pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/border.spv", renderPass, textureSetLayout);
+    pipelines[static_cast<size_t>(ShaderType::DirArrow)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/dir_arrow.spv", renderPass, textureSetLayout);
 
     return pipelines;
 }
 
-Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, std::string fragPath, VkRenderPass renderPass)
+Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, std::string fragPath, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout)
 {
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
@@ -125,8 +126,8 @@ Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, std::stri
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &textureSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 

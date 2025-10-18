@@ -14,7 +14,7 @@ layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec2 fragUV;
 
 void main() {
-    gl_Position = push.viewProj * instanceModel * vec4(inPos, 0.0, 1.0);
+    gl_Position = instanceModel * vec4(inPos, 0.0, 1.0);
     fragColor = instanceColor;
     fragUV = instanceUV.xy + inUV * instanceUV.zw;
 }

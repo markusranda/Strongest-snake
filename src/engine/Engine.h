@@ -6,8 +6,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "engine/Window.h"
-#include "engine/SwapChain.h"
+#include "Window.h"
+#include "SwapChain.h"
 #include "InstanceData.h"
 #include "Logger.h"
 #include "Vertex.h"
@@ -17,6 +17,10 @@
 #include "EntityManager.h"
 #include "Camera.h"
 #include "Transform.h"
+#include "Texture.h"
+#include "Debug.h"
+#include "Pipelines.h"
+#include "Draworder.h"
 
 #include <iostream>
 #include <fstream>
@@ -32,6 +36,10 @@
 #include <optional>
 #include <set>
 #include <random>
+#include <chrono>
+
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/string_cast.hpp>
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -68,7 +76,7 @@ public:
 
     Engine(uint32_t width, uint32_t height, Window &window);
 
-    void initVulkan();
+    void initVulkan(std::string texturePath);
     void awaitDeviceIdle();
     void cleanup();
 
@@ -119,6 +127,12 @@ private:
     uint32_t vertexCapacity = 0;
     void *instanceBufferMapped = nullptr;
 
+    // Texture
+    VkDescriptorSetLayout textureSetLayout;
+    Texture fontTexture;
+    VkDescriptorPool descriptorPool;
+    VkDescriptorSet descriptorSet;
+
     void createStaticVertexBuffer();
     uint32_t prepareDraw();
     void endDraw(uint32_t imageIndex);
@@ -130,6 +144,9 @@ private:
     void pickPhysicalDevice();
     void createSwapChain();
     void createLogicalDevice();
+    void createTexture(std::string texturePath);
+    void createDescriptorPool();
+    void createDescriptorSet();
     void createRenderPass();
     void createGraphicsPipeline();
     void createFramebuffers();

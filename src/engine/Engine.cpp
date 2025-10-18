@@ -1,17 +1,8 @@
 #include "Engine.h"
-#include "Debug.h"
-#include "Buffer.h"
-#include <thread>
-#include <chrono>
-#include "Pipelines.h"
-#include "Draworder.h"
-
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/string_cast.hpp>
 
 Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
-void Engine::initVulkan()
+void Engine::initVulkan(std::string texturePath)
 {
     try
     {
@@ -21,13 +12,16 @@ void Engine::initVulkan()
         createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
+        createCommandPool();
         createSwapChain();
         createRenderPass();
         createGraphicsPipeline();
+        createTexture(texturePath);
+        createDescriptorPool();
+        createDescriptorSet();
         createStaticVertexBuffer();
         createFramebuffers();
         createImagesInFlight();
-        createCommandPool();
         createCommandBuffers();
         createSyncObjects();
         Logger::info("Engine is complete");
@@ -209,6 +203,59 @@ void Engine::createLogicalDevice()
     vkGetDeviceQueue(device, queueFamilies.presentFamily.value(), 0, &presentQueue);
 }
 
+void Engine::createTexture(std::string texturePath)
+{
+    fontTexture = LoadTexture(texturePath,
+                              device,
+                              physicalDevice,
+                              commandPool,
+                              graphicsQueue);
+}
+
+void Engine::createDescriptorPool()
+{
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSize.descriptorCount = 1;
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = 1;
+
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
+        throw std::runtime_error("failed to create descriptor pool!");
+}
+
+void Engine::createDescriptorSet()
+{
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &textureSetLayout;
+
+    if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS)
+        throw std::runtime_error("failed to allocate descriptor set!");
+
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    imageInfo.imageView = fontTexture.view;
+    imageInfo.sampler = fontTexture.sampler;
+
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet = descriptorSet;
+    descriptorWrite.dstBinding = 0;
+    descriptorWrite.dstArrayElement = 0;
+    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pImageInfo = &imageInfo;
+
+    vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+}
+
 void Engine::createRenderPass()
 {
     VkAttachmentDescription colorAttachment{};
@@ -255,7 +302,21 @@ void Engine::createRenderPass()
 
 void Engine::createGraphicsPipeline()
 {
-    pipelines = CreateGraphicsPipelines(device, renderPass);
+    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
+    samplerLayoutBinding.binding = 0;
+    samplerLayoutBinding.descriptorCount = 1;
+    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerLayoutBinding.pImmutableSamplers = nullptr;
+    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &samplerLayoutBinding;
+
+    vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &textureSetLayout);
+
+    pipelines = CreateGraphicsPipelines(device, renderPass, textureSetLayout);
 }
 
 void Engine::createFramebuffers()
@@ -477,71 +538,23 @@ void Engine::draw(Camera &camera)
         return;
     }
 
-    // Step 1: Sort entities
-    std::vector<std::pair<uint64_t, Entity>> sorted;
-    sorted.reserve(quads.size());
+    std::vector<InstanceData> instances = BuildTextInstances(
+        "FPS: ",
+        glm::vec2(-1.0f, -1.0f));
 
-    for (auto &[entity, quad] : quads)
-    {
-        uint64_t key = makeDrawKey(quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak);
-        sorted.emplace_back(key, entity);
-    }
-
-    std::sort(sorted.begin(), sorted.end(), [](auto &a, auto &b)
-              { return a.first < b.first; });
-
-    // Step 2: Collect all instance data
-    std::vector<InstanceData> instances;
-    std::vector<DrawCmd> drawCmds;
-
-    ShaderType currentShader = ShaderType::COUNT;
-    RenderLayer currentLayer = RenderLayer::World;
-
-    uint32_t instanceOffset = 0;
-
-    for (auto &[key, entity] : sorted)
-    {
-        auto &quad = quads.at(entity);
-        auto &transform = transforms.at(entity);
-
-        bool newBatch = (quad.shaderType != currentShader) || (quad.renderLayer != currentLayer);
-
-        if (newBatch && !instances.empty())
-        {
-            uint32_t count = instances.size() - instanceOffset;
-            drawCmds.emplace_back(currentLayer,
-                                  currentShader,
-                                  quad.z,
-                                  quad.tiebreak,
-                                  6,
-                                  0,
-                                  count,
-                                  instanceOffset);
-            instanceOffset = instances.size();
-        }
-
-        instances.push_back({transform.transformToModelMatrix(), quad.color});
-        currentShader = quad.shaderType;
-        currentLayer = quad.renderLayer;
-    }
-
-    // Last batch
-    if (!instances.empty())
-    {
-        uint32_t count = instances.size() - instanceOffset;
-        drawCmds.emplace_back(currentLayer,
-                              currentShader,
-                              0.0f,
-                              0,
-                              6,
-                              0,
-                              count,
-                              instanceOffset);
-    }
-
-    // Step 3: Upload once, then draw all
     uploadToInstanceBuffer(instances);
-    drawCmdList(drawCmds, camera);
+
+    DrawCmd dc(
+        RenderLayer::World,
+        ShaderType::Font,
+        0.0f, 0,
+        6, 0,
+        static_cast<uint32_t>(instances.size()),
+        0);
+
+    std::vector<DrawCmd> cmdList = {dc};
+
+    drawCmdList(cmdList, camera);
 
     endDraw(imageIndex);
 }
@@ -591,7 +604,7 @@ uint32_t Engine::prepareDraw()
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapchain.getExtent();
 
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    VkClearValue clearColor = {{{0.5f, 0.5f, 0.5f, 1.0f}}};
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearColor;
 
@@ -622,6 +635,13 @@ void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
     for (const auto &dc : drawCmds)
     {
         const Pipeline &pipeline = pipelines[(size_t)dc.shaderType];
+
+        vkCmdBindDescriptorSets(cmd,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                pipeline.layout,
+                                0,
+                                1, &descriptorSet,
+                                0, nullptr);
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
 
