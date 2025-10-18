@@ -4,7 +4,7 @@
 std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice device, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout)
 {
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
-    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag.spv", renderPass, textureSetLayout);
+    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_flat.spv", renderPass, textureSetLayout);
     pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_font.spv", "shaders/frag.spv", renderPass, textureSetLayout);
     pipelines[static_cast<size_t>(ShaderType::SnakeSkin)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/snakeskin.spv", renderPass, textureSetLayout);
     pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/border.spv", renderPass, textureSetLayout);

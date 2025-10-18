@@ -610,8 +610,8 @@ void Engine::draw(Camera &camera, float fps)
                                   instanceOffset);
             instanceOffset = instances.size();
         }
-
-        instances.push_back({transform.transformToModelMatrix(), quad.color});
+        InstanceData instance = {transform.transformToModelMatrix(), quad.color};
+        instances.push_back(instance);
         currentShader = quad.shaderType;
         currentLayer = quad.renderLayer;
     }
