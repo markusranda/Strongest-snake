@@ -1,5 +1,8 @@
 #include "Engine.h"
 
+// PROFILING
+#include "tracy/Tracy.hpp"
+
 Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
 void Engine::initVulkan(std::string texturePath)
@@ -529,38 +532,9 @@ bool Engine::checkValidationLayerSupport()
     return true;
 }
 
-// void Engine::draw2(Camera &camera)
-// {
-//     uint32_t imageIndex = prepareDraw();
-//     if (imageIndex < 0)
-//     {
-//         Logger::debug("Skipping draw : Recreating swapchain");
-//         return;
-//     }
-
-//     std::vector<InstanceData> instances = BuildTextInstances(
-//         "FPS: ",
-//         glm::vec2(-1.0f, -1.0f));
-
-//     uploadToInstanceBuffer(instances);
-
-//     DrawCmd dc(
-//         RenderLayer::World,
-//         ShaderType::Font,
-//         0.0f, 0,
-//         6, 0,
-//         static_cast<uint32_t>(instances.size()),
-//         0);
-
-//     std::vector<DrawCmd> cmdList = {dc};
-
-//     drawCmdList(cmdList, camera);
-
-//     endDraw(imageIndex);
-// }
-
 void Engine::draw(Camera &camera, float fps)
 {
+    ZoneScoped; // PROFILER
     uint32_t imageIndex = prepareDraw();
     if (imageIndex < 0)
     {
@@ -653,6 +627,7 @@ void Engine::draw(Camera &camera, float fps)
 
 uint32_t Engine::prepareDraw()
 {
+    ZoneScoped; // PROFILER
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(
@@ -720,6 +695,7 @@ uint32_t Engine::prepareDraw()
 
 void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
 {
+    ZoneScoped; // PROFILER
     VkCommandBuffer cmd = commandBuffers[currentFrame];
 
     glm::mat4 viewProj = camera.getViewProj();
@@ -756,6 +732,7 @@ void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
 
 void Engine::endDraw(uint32_t imageIndex)
 {
+    ZoneScoped; // PROFILER
     VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
 
     vkCmdEndRenderPass(commandBuffer);
@@ -814,6 +791,7 @@ void Engine::createStaticVertexBuffer()
 
 void Engine::uploadToInstanceBuffer(const std::vector<InstanceData> &instances)
 {
+    ZoneScoped; // PROFILER
     VkDeviceSize copySize = sizeof(InstanceData) * instances.size();
 
     // Resize if capacity too small

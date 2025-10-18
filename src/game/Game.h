@@ -19,6 +19,9 @@
 #include <glm/gtx/rotate_vector.hpp>
 #include <iostream>
 
+// PROFILING
+#include "tracy/Tracy.hpp"
+
 struct Ground
 {
     Entity entity;
@@ -136,8 +139,12 @@ struct Game
     {
         Logger::info("Starting game loop");
 
+        tracy::SetThreadName("MainThread"); // Optional, nice for visualization
+
         while (!window.shouldClose())
         {
+            ZoneScoped; // PROFILER
+
             window.pollEvents();
 
             double currentTime = glfwGetTime() * 1000.0;
@@ -148,7 +155,9 @@ struct Game
                 throw std::runtime_error("You fucked up");
 
             updateGame(delta);
+
             updateCamera();
+
             updateLifecycle();
 
             engine.draw(camera, fps);
@@ -160,6 +169,7 @@ struct Game
     // --- Game logic ---
     void updateLifecycle()
     {
+        ZoneScoped; // PROFILER
         for (auto it = grounds.begin(); it != grounds.end();)
         {
             auto entity = it->second.entity;
@@ -179,6 +189,7 @@ struct Game
 
     void updateCamera()
     {
+        ZoneScoped; // PROFILER
         Transform playerTransform = engine.transforms.at(player.entities.front());
         camera.position = playerTransform.position - glm::vec2(window.width / 2.0f, window.height / 2.0f);
 
@@ -188,6 +199,7 @@ struct Game
 
     void updateGame(double delta)
     {
+        ZoneScoped; // PROFILER
 
         // Constants / parameters
         const float dt = static_cast<float>(delta) / 1000.0f;
@@ -345,6 +357,7 @@ struct Game
 
     void updateFPSCounter(float dt)
     {
+        ZoneScoped; // PROFILER
         frameCount++;
 
         if (frameCount >= 10)
