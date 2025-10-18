@@ -2,6 +2,9 @@
 #include "vector"
 #include <cstdint>
 #include <functional>
+#include <utility>
+#include "Transform.h"
+#include "Quad.h"
 
 struct Entity
 {
@@ -33,8 +36,23 @@ struct EntityManager
 {
     std::vector<uint8_t> generations;  // generation per slot
     std::vector<uint32_t> freeIndices; // pool of free slots
+    std::vector<Transform> transforms;
+    std::vector<uint32_t> entityToTransform;
+    std::vector<uint32_t> transformToEntity;
+    std::vector<Quad> quads;
+    std::vector<uint32_t> entityToQuad;
+    std::vector<uint32_t> quadToEntity;
+    const uint32_t RESIZE_INCREMENT = 2048;
 
-    Entity createEntity()
+    EntityManager()
+    {
+        transforms.reserve(RESIZE_INCREMENT);
+        entityToTransform.resize(RESIZE_INCREMENT, UINT32_MAX);
+        quads.reserve(RESIZE_INCREMENT);
+        entityToQuad.resize(RESIZE_INCREMENT, UINT32_MAX);
+    }
+
+    Entity createEntity(Transform transform, Quad quad)
     {
         uint32_t index;
         if (!freeIndices.empty())
@@ -51,7 +69,34 @@ struct EntityManager
         }
 
         uint8_t gen = generations[index];
-        return Entity{(gen << 24) | index};
+        Entity entity = Entity{(gen << 24) | index};
+
+        // Transforms
+        transforms.push_back(transform);
+        if (entityToTransform.size() <= entityIndex(entity))
+        {
+            entityToTransform.resize(entityIndex(entity) + RESIZE_INCREMENT, UINT32_MAX);
+        }
+        entityToTransform[entityIndex(entity)] = transforms.size() - 1;
+        if (transformToEntity.size() <= entityIndex(entity))
+        {
+            transformToEntity.resize(entityIndex(entity) + RESIZE_INCREMENT, UINT32_MAX);
+        }
+        transformToEntity[transforms.size() - 1] = entityIndex(entity);
+
+        // Quads
+        quads.push_back(quad);
+        if (entityToQuad.size() <= entityIndex(entity))
+        {
+            entityToQuad.resize(entityToQuad.size() + RESIZE_INCREMENT, UINT32_MAX);
+        }
+        entityToQuad[entityIndex(entity)] = quads.size() - 1;
+        if (quadToEntity.size() <= entityIndex(entity))
+        {
+            quadToEntity.resize(quadToEntity.size() + RESIZE_INCREMENT, UINT32_MAX);
+        }
+        quadToEntity[quads.size() - 1] = entityIndex(entity);
+        return entity;
     }
 
     void destroyEntity(Entity e)
@@ -59,11 +104,65 @@ struct EntityManager
         uint32_t index = entityIndex(e);
         uint8_t gen = entityGen(e);
 
+        if (index >= generations.size())
+            return;
+
         // Safety: only recycle if it’s actually the right generation
         if (generations[index] == gen)
         {
-            generations[index]++;         // bump generation
+            if (++generations[index] == 0)
+                generations[index] = 1;
+            else
+                generations[index]++;     // bump generation
             freeIndices.push_back(index); // recycle slot
+        }
+
+        // --- Transforms ---
+        {
+            uint32_t tIndex = entityToTransform[entityIndex(e)];
+            uint32_t tLastIndex = transforms.size() - 1;
+
+            // We ony swap if current index isn't the last element
+            if (tIndex != tLastIndex)
+            {
+                transforms[tIndex] = std::move(transforms[tLastIndex]);
+
+                uint32_t movedEntity = transformToEntity[tLastIndex];
+                if (movedEntity != UINT32_MAX)
+                {
+                    transformToEntity[tIndex] = movedEntity;
+                    entityToTransform[movedEntity] = tIndex;
+                }
+            }
+
+            transforms.pop_back();
+            transformToEntity.pop_back();
+            entityToTransform[entityIndex(e)] = UINT32_MAX;
+            ;
+        }
+
+        // --- Quads ---
+        {
+            uint32_t qIndex = entityToQuad[entityIndex(e)];
+            uint32_t qLastIndex = quads.size() - 1;
+
+            // We ony swap if current index isn't the last element
+            if (qIndex != qLastIndex)
+            {
+                quads[qIndex] = std::move(quads[qLastIndex]);
+
+                uint32_t movedEntity = quadToEntity[qLastIndex];
+                if (movedEntity != UINT32_MAX)
+                {
+                    quadToEntity[qIndex] = movedEntity;
+                    entityToQuad[movedEntity] = qIndex;
+                }
+            }
+
+            quads.pop_back();
+            quadToEntity.pop_back();
+            entityToQuad[entityIndex(e)] = UINT32_MAX;
+            ;
         }
     }
 
@@ -73,6 +172,4 @@ struct EntityManager
         uint8_t gen = entityGen(e);
         return generations[index] == gen;
     }
-
-private:
 };

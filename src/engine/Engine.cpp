@@ -11,7 +11,7 @@ void Engine::initVulkan(std::string texturePath)
     {
         Logger::info("Engine is being created");
         createInstance();
-        setupDebugMessenger();
+        createDebugMessenger();
         createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
@@ -43,8 +43,6 @@ void Engine::awaitDeviceIdle()
 {
     vkDeviceWaitIdle(device);
 }
-
-void Engine::cleanup() {}
 
 void Engine::createInstance()
 {
@@ -91,7 +89,7 @@ void Engine::createInstance()
     }
 }
 
-void Engine::setupDebugMessenger()
+void Engine::createDebugMessenger()
 {
     if (!enableValidationLayers)
         return;
@@ -543,13 +541,14 @@ void Engine::draw(Camera &camera, float fps)
     }
 
     // Step 1: Sort entities
-    std::vector<std::pair<uint64_t, Entity>> sorted;
-    sorted.reserve(quads.size());
+    std::vector<std::pair<uint64_t, uint32_t>> sorted;
+    sorted.reserve(ecs.quads.size());
 
-    for (auto &[entity, quad] : quads)
+    for (auto it = ecs.quads.begin(); it < ecs.quads.end(); it++)
     {
-        uint64_t key = makeDrawKey(quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak);
-        sorted.emplace_back(key, entity);
+        size_t index = it - ecs.quads.begin();
+        uint64_t key = makeDrawKey(it->renderLayer, it->shaderType, it->z, it->tiebreak);
+        sorted.emplace_back(key, ecs.quadToEntity[index]);
     }
 
     std::sort(sorted.begin(), sorted.end(), [](auto &a, auto &b)
@@ -564,11 +563,13 @@ void Engine::draw(Camera &camera, float fps)
 
     uint32_t instanceOffset = 0;
 
-    for (auto &[key, entity] : sorted)
+    for (auto &[key, entityId] : sorted)
     {
-        auto &quad = quads.at(entity);
-        auto &transform = transforms.at(entity);
-
+        auto qIndex = ecs.entityToQuad[entityId];
+        if (qIndex == UINT32_MAX)
+            continue;
+        Quad &quad = ecs.quads[qIndex];
+        Transform &transform = ecs.transforms[ecs.entityToTransform[entityId]];
         bool newBatch = (quad.shaderType != currentShader) || (quad.renderLayer != currentLayer);
 
         if (newBatch && !instances.empty())

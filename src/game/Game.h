@@ -86,26 +86,20 @@ struct Game
             engine.initVulkan("assets/fonts.png");
 
             // --- Background ---
-            background = {engine.ecs.createEntity()};
-            auto backgroundTranslate = Transform{glm::vec2{0, 0}, glm::vec2{window.width, window.height}};
-            engine.quads.insert_or_assign(
-                background.entity,
-                Quad{ShaderType::FlatColor, RenderLayer::Background, Colors::fromHex(Colors::SKY_BLUE, 1.0f), "background"});
-            engine.transforms.insert_or_assign(background.entity, backgroundTranslate);
+            Transform backgroundTransform = Transform{glm::vec2{0, 0}, glm::vec2{window.width, window.height}};
+            Quad backgroundQuad = Quad{ShaderType::FlatColor, RenderLayer::Background, Colors::fromHex(Colors::SKY_BLUE, 1.0f), "background"};
+            background = {engine.ecs.createEntity(backgroundTransform, backgroundQuad)};
 
             // ---- Player ----
             for (size_t i = 0; i < 4; i++)
             {
-                auto entity = engine.ecs.createEntity();
                 Transform transform = Transform{
                     glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize},
                     glm::vec2{snakeSize, snakeSize},
                     "player"};
-                engine.transforms.insert_or_assign(entity, transform);
+                Quad quad = Quad{ShaderType::DirArrow, RenderLayer::World, Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), "player"};
+                auto entity = engine.ecs.createEntity(transform, quad);
                 player.entities[i] = entity;
-                engine.quads.insert_or_assign(
-                    entity,
-                    Quad{ShaderType::DirArrow, RenderLayer::World, Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), "player"});
             }
 
             // --- Camera ---
@@ -116,12 +110,10 @@ struct Game
             {
                 for (uint32_t x = 0; x < columns; x++)
                 {
-                    auto entity = engine.ecs.createEntity();
-                    Transform t{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
-                    Quad q{ShaderType::Border, RenderLayer::World, Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), "ground"};
+                    Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
+                    Quad q = Quad{ShaderType::Border, RenderLayer::World, Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), "ground"};
+                    Entity entity = engine.ecs.createEntity(t, q);
                     grounds.insert_or_assign(entity, Ground{entity, false});
-                    engine.transforms.insert_or_assign(entity, t);
-                    engine.quads.insert_or_assign(entity, q);
                 }
             }
         }
@@ -169,20 +161,11 @@ struct Game
     // --- Game logic ---
     void updateLifecycle()
     {
-        ZoneScoped; // PROFILER
-        for (auto it = grounds.begin(); it != grounds.end();)
+        for (auto &[entity, ground] : grounds)
         {
-            auto entity = it->second.entity;
-            if (it->second.dead)
+            if (ground.dead)
             {
-                engine.quads.erase(entity);
-                engine.transforms.erase(entity);
-                it = grounds.erase(it);
-                engine.ecs.destroyEntity(entity);
-            }
-            else
-            {
-                ++it;
+                engine.ecs.destroyEntity(ground.entity);
             }
         }
     }
@@ -190,11 +173,14 @@ struct Game
     void updateCamera()
     {
         ZoneScoped; // PROFILER
-        Transform playerTransform = engine.transforms.at(player.entities.front());
-        camera.position = playerTransform.position - glm::vec2(window.width / 2.0f, window.height / 2.0f);
+        auto playerIndexT = engine.ecs.entityToTransform[player.entities.front().id];
+        auto backgroundIndexT = engine.ecs.entityToTransform[entityIndex(background.entity)];
 
-        engine.transforms.at(background.entity).position.x = camera.position.x;
-        engine.transforms.at(background.entity).position.y = camera.position.y;
+        Transform &playerTransform = engine.ecs.transforms[playerIndexT];
+        Transform &backgroundTransform = engine.ecs.transforms[backgroundIndexT];
+
+        camera.position = playerTransform.position - glm::vec2(window.width / 2.0f, window.height / 2.0f);
+        backgroundTransform.position = camera.position;
     }
 
     void updateGame(double delta)
@@ -223,33 +209,38 @@ struct Game
 
     void checkCollision()
     {
-        auto playerTransform = engine.transforms.at(player.entities.front());
+        auto playerIndexT = engine.ecs.entityToTransform[player.entities.front().id];
+        Transform &playerTransform = engine.ecs.transforms[playerIndexT];
+
+        std::vector<Entity> deadGrounds;
         for (auto &[entity, ground] : grounds)
         {
-            auto groundTransform = engine.transforms.at(entity);
+            auto gIndexT = engine.ecs.entityToTransform[entityIndex(entity)];
+
+            // Cleanup dead entities
+            if (gIndexT == UINT32_MAX)
+            {
+                deadGrounds.push_back(entity);
+                continue;
+            }
+
+            Transform &groundTransform = engine.ecs.transforms[gIndexT];
             if (rectIntersects(playerTransform.position, playerTransform.size, groundTransform.position, groundTransform.size))
             {
                 ground.dead = true;
             }
         }
-    }
 
-    void drawDebugBox(glm::vec2 point)
-    {
-        auto randomEntiy = engine.ecs.createEntity();
-        Transform randomTrans = Transform{
-            point - (float)(8 / 2),
-            glm::vec2{8, 8},
-            "player"};
-        engine.transforms.insert_or_assign(randomEntiy, randomTrans);
-        engine.quads.insert_or_assign(
-            randomEntiy,
-            Quad{ShaderType::Border, RenderLayer::World, Colors::fromHex(Colors::BLACK, 1.0f), "player"});
+        for (auto &entity : deadGrounds)
+        {
+            grounds.erase(entity);
+        }
     }
 
     void moveForward(float dt)
     {
-        auto &playerTransform = engine.transforms.at(player.entities.front());
+        auto playerIndexT = engine.ecs.entityToTransform[player.entities.front().id];
+        Transform &playerTransform = engine.ecs.transforms[playerIndexT];
         glm::vec2 acceleration = {0.0f, 0.0f};
         glm::vec2 forward = SnakeMath::getRotationVector2(playerTransform.rotation);
         acceleration = forward * thrustPower;
@@ -263,10 +254,14 @@ struct Game
         // All non head segments gets to make a move
         for (size_t i = 1; i < player.entities.size(); i++)
         {
-            glm::vec2 prevPos = engine.transforms.at(player.entities[i - 1]).position;
-            glm::vec2 &pos = engine.transforms.at(player.entities[i]).position;
-
+            auto tIndex1 = engine.ecs.entityToTransform[player.entities[i - 1].id];
+            auto tIndex2 = engine.ecs.entityToTransform[player.entities[i].id];
+            Transform &t1 = engine.ecs.transforms[tIndex1];
+            Transform &t2 = engine.ecs.transforms[tIndex2];
+            glm::vec2 prevPos = t1.position;
+            glm::vec2 &pos = t2.position;
             glm::vec2 dir = prevPos - pos;
+
             float dist = glm::length(dir);
             if (dist > snakeSize)
             {
@@ -275,16 +270,19 @@ struct Game
             }
 
             // Optionally adjust rotation
-            engine.transforms.at(player.entities[i]).rotation = atan2(dir.y, dir.x);
+            t2.rotation = atan2(dir.y, dir.x);
         }
 
         // Move head
-        engine.transforms.at(player.entities[0]).position += playerVelocity * dt;
+        auto headIndex = engine.ecs.entityToTransform[(player.entities[0]).id];
+        Transform &head = engine.ecs.transforms[headIndex];
+        head.position += playerVelocity * dt;
     }
 
     void rotateHeadLeft(float dt)
     {
-        Transform transform = engine.transforms.at(player.entities[2]);
+        auto tIndex = engine.ecs.entityToTransform[player.entities[2].id];
+        Transform &transform = engine.ecs.transforms[tIndex];
         glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
         glm::vec2 leftDir = glm::vec2(forward.y, -forward.x);
         glm::vec2 radiusCenter = transform.position + leftDir * rotationRadius;
@@ -296,9 +294,10 @@ struct Game
         {
             // Move segment
             Entity entity = player.entities[i];
-            Transform &transform = engine.transforms.at(entity);
-            glm::vec2 localCenter = transform.position - radiusCenter;
-            glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
+            auto segmentIndex = engine.ecs.entityToTransform[entityIndex(entity)];
+            Transform &segment = engine.ecs.transforms[segmentIndex];
+            glm::vec2 localCenter = segment.position - radiusCenter;
+            glm::vec2 forward = SnakeMath::getRotationVector2(segment.rotation);
 
             // Rotate segment
             glm::vec2 tangent = glm::normalize(glm::vec2(localCenter.y, -localCenter.x));
@@ -310,19 +309,20 @@ struct Game
             if (deltaAngle < -SnakeMath::PI)
                 deltaAngle += 2.0f * SnakeMath::PI;
 
-            float dist = glm::length(transform.position - radiusCenter);
+            float dist = glm::length(segment.position - radiusCenter);
             if (dist < maxDistance)
                 continue;
 
-            transform.position = transform.position - dt * (localCenter);
-            transform.rotation += deltaAngle * dt * rotationSpeed;
+            segment.position = segment.position - dt * (localCenter);
+            segment.rotation += deltaAngle * dt * rotationSpeed;
             break;
         }
     }
 
     void rotateHeadRight(float dt)
     {
-        Transform transform = engine.transforms.at(player.entities[2]);
+        auto tIndex = engine.ecs.entityToTransform[player.entities[2].id];
+        Transform &transform = engine.ecs.transforms[tIndex];
         glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
         glm::vec2 rightDir = glm::vec2(-forward.y, forward.x);
         glm::vec2 radiusCenter = transform.position + rightDir * rotationRadius;
@@ -331,9 +331,10 @@ struct Game
         {
             // Move segment
             Entity entity = player.entities[i];
-            Transform &transform = engine.transforms.at(entity);
-            glm::vec2 localCenter = transform.position - radiusCenter;
-            glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
+            auto segmentIndex = engine.ecs.entityToTransform[entityIndex(entity)];
+            Transform &segment = engine.ecs.transforms[segmentIndex];
+            glm::vec2 localCenter = segment.position - radiusCenter;
+            glm::vec2 forward = SnakeMath::getRotationVector2(segment.rotation);
 
             // Rotate segment
             glm::vec2 tangent = glm::normalize(glm::vec2(-localCenter.y, localCenter.x));
@@ -345,12 +346,12 @@ struct Game
             if (deltaAngle < -SnakeMath::PI)
                 deltaAngle += 2.0f * SnakeMath::PI;
 
-            float dist = glm::length(transform.position - radiusCenter);
+            float dist = glm::length(segment.position - radiusCenter);
             if (dist < maxDistance)
                 continue;
 
-            transform.position = transform.position - dt * (localCenter);
-            transform.rotation += deltaAngle * dt * rotationSpeed;
+            segment.position = segment.position - dt * (localCenter);
+            segment.rotation += deltaAngle * dt * rotationSpeed;
             break;
         }
     }

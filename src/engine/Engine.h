@@ -69,21 +69,7 @@ const int MAX_FRAMES_IN_FLIGHT = 3;
 class Engine
 {
 public:
-    // Transforms
-    std::unordered_map<Entity, Transform> transforms;
-    std::unordered_map<Entity, Quad> quads;
     EntityManager ecs;
-
-    Engine(uint32_t width, uint32_t height, Window &window);
-
-    void initVulkan(std::string texturePath);
-    void awaitDeviceIdle();
-    void cleanup();
-
-    // Draw functions
-    void draw(Camera &camera, float fps);
-
-private:
     uint32_t width;
     uint32_t height;
     Window window;
@@ -133,17 +119,12 @@ private:
     VkDescriptorPool descriptorPool;
     VkDescriptorSet descriptorSet;
 
-    void createStaticVertexBuffer();
-    uint32_t prepareDraw();
-    void endDraw(uint32_t imageIndex);
-    void drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera);
-    void uploadToInstanceBuffer(const std::vector<InstanceData> &instances);
-    void createInstance();
-    void setupDebugMessenger();
-    void createSurface();
-    void pickPhysicalDevice();
-    void createSwapChain();
+    Engine(uint32_t width, uint32_t height, Window &window);
+
+    // Init
+    void initVulkan(std::string texturePath);
     void createLogicalDevice();
+    void createSwapChain();
     void createTexture(std::string texturePath);
     void createDescriptorPool();
     void createDescriptorSet();
@@ -154,6 +135,18 @@ private:
     void createCommandBuffers();
     void createSyncObjects();
     void createImagesInFlight();
+    void createInstance();
+    void createStaticVertexBuffer();
+    void createDebugMessenger();
+
+    void awaitDeviceIdle();
+    uint32_t prepareDraw();
+    void draw(Camera &camera, float fps);
+    void endDraw(uint32_t imageIndex);
+    void drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera);
+    void uploadToInstanceBuffer(const std::vector<InstanceData> &instances);
+    void createSurface();
+    void pickPhysicalDevice();
     void destroySyncObjects();
     void recreateSwapchain();
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
@@ -163,4 +156,6 @@ private:
     VkShaderModule createShaderModule(const std::vector<char> &code);
     std::vector<const char *> getRequiredExtensions();
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+
+private:
 };
