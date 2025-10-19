@@ -3,6 +3,9 @@
 // PROFILING
 #include "tracy/Tracy.hpp"
 
+// TODO LIST:
+// - Make sure that this engine supports resize of window
+
 Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
 void Engine::initVulkan(std::string texturePath)
