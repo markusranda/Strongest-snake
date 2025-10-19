@@ -44,6 +44,7 @@ void Engine::initVulkan(std::string texturePath)
 
 void Engine::awaitDeviceIdle()
 {
+    ZoneScopedN("Awaiting device idle");
     vkDeviceWaitIdle(device);
 }
 
@@ -638,14 +639,16 @@ void Engine::draw(Camera &camera, float fps)
     uploadToInstanceBuffer();
     drawCmdList(drawCmds, camera);
     endDraw(imageIndex);
+
+    FrameMark;
 }
 
 uint32_t Engine::prepareDraw()
 {
     ZoneScoped; // PROFILER
-    vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    waitForFence(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(
+    VkResult result = acquireNextImageKHR(
         device,
         swapchain.getHandle(),
         UINT64_MAX,
@@ -655,7 +658,7 @@ uint32_t Engine::prepareDraw()
 
     if (imagesInFlight[imageIndex] != VK_NULL_HANDLE)
     {
-        vkWaitForFences(device, 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
+        waitForFence(device, 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
     }
 
     // Mark this image as now being in use by this frame
@@ -706,6 +709,18 @@ uint32_t Engine::prepareDraw()
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     return imageIndex;
+}
+
+void Engine::waitForFence(VkDevice device, uint32_t fenceCount, const VkFence *pFences, VkBool32 waitAll, uint64_t timeout)
+{
+    ZoneScopedN("vkWaitForFences");
+    vkWaitForFences(device, fenceCount, pFences, waitAll, timeout);
+}
+
+VkResult Engine::acquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t *pImageIndex)
+{
+    ZoneScopedN("vkAcquireNextImageKHR");
+    return vkAcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, pImageIndex);
 }
 
 void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
@@ -855,6 +870,7 @@ void Engine::uploadToInstanceBuffer()
 
 void Engine::recreateSwapchain()
 {
+    ZoneScopedN("Sort Entities");
     Logger::info("Recreating swapchain");
 
     int width = 0, height = 0;

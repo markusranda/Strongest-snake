@@ -140,6 +140,8 @@ public:
     void createStaticVertexBuffer();
     void createDebugMessenger();
 
+    VkResult acquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t *pImageIndex);
+    void waitForFence(VkDevice device, uint32_t fenceCount, const VkFence *pFences, VkBool32 waitAll, uint64_t timeout);
     void awaitDeviceIdle();
     uint32_t prepareDraw();
     void draw(Camera &camera, float fps);
