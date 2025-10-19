@@ -2,6 +2,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+// PROFILING
+#include "tracy/Tracy.hpp"
+
 struct Transform
 {
     glm::vec2 position;
@@ -11,12 +14,16 @@ struct Transform
     glm::vec2 pivotPoint = {0.5f, 0.5f};
     const char *name = "not defined";
 
+    // TODO Implement dirty flag so we know if we need to update this guy or not
+
     Transform(glm::vec2 position, glm::vec2 size, char *name = "not defined") : position(position), size(size), name(name) {}
     Transform(glm::vec2 position, glm::vec2 size, float rotation, char *name = "not defined") : position(position), size(size), rotation(rotation), name(name) {}
     Transform(glm::vec2 position, glm::vec2 size, glm::vec2 pivotPoint, char *name = "not defined") : position(position), size(size), pivotPoint(pivotPoint), name(name) {}
 
     glm::mat4 Transform::transformToModelMatrix()
     {
+        ZoneScopedN("Transform to model");
+
         // --- sanity checks ---
         if (size.x <= 0 || size.y <= 0)
         {
@@ -28,10 +35,13 @@ struct Transform
             assert(false && "Transform.size must be positive!");
         }
 
-        assert(!std::isnan(position.x) && !std::isnan(position.y) && "Transform.position contains NaN!");
-        assert(!std::isinf(position.x) && !std::isinf(position.y) && "Transform.position contains Inf!");
-        assert(!std::isnan(rotation) && !std::isinf(rotation) && "Transform.rotation invalid!");
-        assert(pivotPoint.x >= 0 && pivotPoint.x <= 1 && pivotPoint.y >= 0 && pivotPoint.y <= 1 && "Transform.pivotPoint out of range!");
+        // DEBUG PURPOSE ONLY
+        // assert(!std::isnan(position.x) && !std::isnan(position.y) && "Transform.position contains NaN!");
+        // assert(!std::isinf(position.x) && !std::isinf(position.y) && "Transform.position contains Inf!");
+        // assert(!std::isnan(rotation) && !std::isinf(rotation) && "Transform.rotation invalid!");
+        // assert(pivotPoint.x >= 0 && pivotPoint.x <= 1 && pivotPoint.y >= 0 && pivotPoint.y <= 1 && "Transform.pivotPoint out of range!");
+
+        // TODO Move model calculation to the vertex shader.
 
         // --- calc ---
         glm::vec2 pivotOffset = this->size * this->pivotPoint;

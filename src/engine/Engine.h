@@ -106,6 +106,7 @@ public:
     VkBuffer instanceBuffer = VK_NULL_HANDLE;
     VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
     uint32_t maxIntancesPerFrame = 0;
+    std::vector<InstanceData> instances;
 
     // Vertices
     VkBuffer vertexBuffer = VK_NULL_HANDLE;
@@ -144,7 +145,7 @@ public:
     void draw(Camera &camera, float fps);
     void endDraw(uint32_t imageIndex);
     void drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera);
-    void uploadToInstanceBuffer(const std::vector<InstanceData> &instances);
+    void uploadToInstanceBuffer();
     void createSurface();
     void pickPhysicalDevice();
     void destroySyncObjects();
@@ -153,7 +154,6 @@ public:
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);
     bool checkValidationLayerSupport();
     static std::vector<char> readFile(const std::string &filename);
-    VkShaderModule createShaderModule(const std::vector<char> &code);
     std::vector<const char *> getRequiredExtensions();
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 

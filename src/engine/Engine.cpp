@@ -544,71 +544,82 @@ void Engine::draw(Camera &camera, float fps)
     std::vector<std::pair<uint64_t, uint32_t>> sorted;
     sorted.reserve(ecs.quads.size());
 
-    for (auto it = ecs.quads.begin(); it < ecs.quads.end(); it++)
     {
-        size_t index = it - ecs.quads.begin();
-        uint64_t key = makeDrawKey(it->renderLayer, it->shaderType, it->z, it->tiebreak);
-        sorted.emplace_back(key, ecs.quadToEntity[index]);
+        ZoneScopedN("Sort Entities");
+        for (auto it = ecs.quads.begin(); it < ecs.quads.end(); it++)
+        {
+            size_t index = it - ecs.quads.begin();
+            uint64_t key = makeDrawKey(it->renderLayer, it->shaderType, it->z, it->tiebreak);
+            sorted.emplace_back(key, ecs.quadToEntity[index]);
+        }
+
+        std::sort(sorted.begin(), sorted.end(), [](auto &a, auto &b)
+                  { return a.first < b.first; });
     }
-
-    std::sort(sorted.begin(), sorted.end(), [](auto &a, auto &b)
-              { return a.first < b.first; });
-
     // Step 2: Collect all instance data
-    std::vector<InstanceData> instances;
     std::vector<DrawCmd> drawCmds;
 
     ShaderType currentShader = ShaderType::COUNT;
     RenderLayer currentLayer = RenderLayer::World;
-
     uint32_t instanceOffset = 0;
 
-    for (auto &[key, entityId] : sorted)
     {
-        auto qIndex = ecs.entityToQuad[entityId];
-        if (qIndex == UINT32_MAX)
-            continue;
-        Quad &quad = ecs.quads[qIndex];
-        Transform &transform = ecs.transforms[ecs.entityToTransform[entityId]];
-        bool newBatch = (quad.shaderType != currentShader) || (quad.renderLayer != currentLayer);
+        ZoneScopedN("Build world InstanceData");
 
-        if (newBatch && !instances.empty())
+        instances.clear();
+        for (auto &[key, entityId] : sorted)
         {
-            uint32_t count = instances.size() - instanceOffset;
-            drawCmds.emplace_back(currentLayer,
-                                  currentShader,
-                                  quad.z,
-                                  quad.tiebreak,
-                                  6,
-                                  0,
-                                  count,
-                                  instanceOffset);
-            instanceOffset = instances.size();
+            auto qIndex = ecs.entityToQuad[entityId];
+            if (qIndex == UINT32_MAX)
+                continue;
+            Quad &quad = ecs.quads[qIndex];
+            Transform &transform = ecs.transforms[ecs.entityToTransform[entityId]];
+            bool newBatch = (quad.shaderType != currentShader) || (quad.renderLayer != currentLayer);
+
+            if (newBatch && !instances.empty())
+            {
+                uint32_t count = instances.size() - instanceOffset;
+                drawCmds.emplace_back(currentLayer,
+                                      currentShader,
+                                      quad.z,
+                                      quad.tiebreak,
+                                      6,
+                                      0,
+                                      count,
+                                      instanceOffset);
+                instanceOffset = instances.size();
+            }
+            InstanceData instance = {transform.transformToModelMatrix(), quad.color};
+            instances.push_back(instance);
+            currentShader = quad.shaderType;
+            currentLayer = quad.renderLayer;
         }
-        InstanceData instance = {transform.transformToModelMatrix(), quad.color};
-        instances.push_back(instance);
-        currentShader = quad.shaderType;
-        currentLayer = quad.renderLayer;
     }
 
     // Fetch all text instances
-    std::vector<InstanceData> textInstances = BuildTextInstances(
-        "FPS: " + std::to_string(fps),
-        glm::vec2(-1.0f, -1.0f));
-    uint32_t textOffset = instances.size();
-    instances.insert(instances.end(), textInstances.begin(), textInstances.end());
-    DrawCmd dc(
-        RenderLayer::World, // Add new layer for UI
-        ShaderType::Font,
-        0.0f, 0,
-        6, 0,
-        static_cast<uint32_t>(textInstances.size()),
-        textOffset);
-    drawCmds.emplace_back(dc);
+    {
+        ZoneScopedN("Build text InstanceData");
+
+        std::vector<InstanceData> textInstances = BuildTextInstances(
+            "FPS: " + std::to_string(fps),
+            glm::vec2(-1.0f, -1.0f));
+        uint32_t textOffset = instances.size();
+        instances.insert(instances.end(), textInstances.begin(), textInstances.end());
+        DrawCmd dc(
+            RenderLayer::World, // Add new layer for UI
+            ShaderType::Font,
+            0.0f, 0,
+            6, 0,
+            static_cast<uint32_t>(textInstances.size()),
+            textOffset);
+        drawCmds.emplace_back(dc);
+    }
 
     // Last batch
     if (!instances.empty())
     {
+        ZoneScopedN("Adding last batch of drawCmds");
+
         uint32_t count = instances.size() - instanceOffset;
         drawCmds.emplace_back(currentLayer,
                               currentShader,
@@ -621,7 +632,7 @@ void Engine::draw(Camera &camera, float fps)
     }
 
     // Step 3: Upload once, then draw all
-    uploadToInstanceBuffer(instances);
+    uploadToInstanceBuffer();
     drawCmdList(drawCmds, camera);
     endDraw(imageIndex);
 }
@@ -790,7 +801,7 @@ void Engine::createStaticVertexBuffer()
     vertexCapacity = static_cast<uint32_t>(unitVerts.size());
 }
 
-void Engine::uploadToInstanceBuffer(const std::vector<InstanceData> &instances)
+void Engine::uploadToInstanceBuffer()
 {
     ZoneScoped; // PROFILER
     VkDeviceSize copySize = sizeof(InstanceData) * instances.size();
