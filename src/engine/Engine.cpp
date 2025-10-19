@@ -838,9 +838,12 @@ void Engine::uploadToInstanceBuffer()
             instanceBufferMemory);
 
         // map once, persistently
-        assert(
-            vkMapMemory(device, instanceBufferMemory, 0, totalSize, 0, &instanceBufferMapped) == VK_SUCCESS &&
-            "failed to map memory during instance buffer creation");
+        VkResult result = vkMapMemory(device, instanceBufferMemory, 0, totalSize, 0, &instanceBufferMapped);
+        if (result != VK_SUCCESS)
+        {
+            fprintf(stderr, "FATAL: vkMapMemory failed during instance buffer creation (code %d)\n", result);
+            abort();
+        }
     }
 
     // Write to the correct frame slice
