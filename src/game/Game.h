@@ -161,6 +161,7 @@ struct Game
     // --- Game logic ---
     void updateLifecycle()
     {
+        ZoneScoped; // PROFILER
         for (auto &[entity, ground] : grounds)
         {
             if (ground.dead)

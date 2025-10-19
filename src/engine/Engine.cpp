@@ -550,12 +550,12 @@ void Engine::draw(Camera &camera, float fps)
         std::sort(ecs.renderables.begin(), ecs.renderables.end(), [](Renderable &a, Renderable &b)
                   { return a.drawkey < b.drawkey; });
     }
+
     // Step 2: Collect all instance data
     std::vector<DrawCmd> drawCmds;
     ShaderType currentShader = ShaderType::COUNT;
     RenderLayer currentLayer = RenderLayer::World;
     uint32_t instanceOffset = 0;
-
     {
         ZoneScopedN("Build world InstanceData");
 
