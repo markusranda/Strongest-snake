@@ -589,7 +589,7 @@ void Engine::draw(Camera &camera, float fps)
                                       instanceOffset);
                 instanceOffset = instances.size();
             }
-            InstanceData instance = {transform.transformToModelMatrix(), quad.color};
+            InstanceData instance = {transform.model, quad.color};
             instances.push_back(instance);
             currentShader = quad.shaderType;
             currentLayer = quad.renderLayer;
@@ -803,6 +803,9 @@ void Engine::createStaticVertexBuffer()
 
 void Engine::uploadToInstanceBuffer()
 {
+    // TODO  Rewrite instanceBuffer in Engine to use three seperate buffer based on the three different frames
+    // that exist at the same time. This means we can allocate a new buffer without bothering the gpu. Pack it in a FrameResource.
+
     ZoneScoped; // PROFILER
     VkDeviceSize copySize = sizeof(InstanceData) * instances.size();
 

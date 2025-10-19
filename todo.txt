@@ -1,1 +1,0 @@
-- Rewrite instanceBuffer in Engine to use three seperate buffer based on the three different frames that exist at the same time. This means we can allocate a new buffer without bothering the gpu. Pack it in a FrameResource.

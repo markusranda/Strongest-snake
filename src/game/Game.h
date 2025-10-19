@@ -181,6 +181,7 @@ struct Game
 
         camera.position = playerTransform.position - glm::vec2(window.width / 2.0f, window.height / 2.0f);
         backgroundTransform.position = camera.position;
+        backgroundTransform.commit();
     }
 
     void updateGame(double delta)
@@ -271,12 +272,14 @@ struct Game
 
             // Optionally adjust rotation
             t2.rotation = atan2(dir.y, dir.x);
+            t2.commit();
         }
 
         // Move head
         auto headIndex = engine.ecs.entityToTransform[(player.entities[0]).id];
         Transform &head = engine.ecs.transforms[headIndex];
         head.position += playerVelocity * dt;
+        head.commit();
     }
 
     void rotateHeadLeft(float dt)
@@ -315,6 +318,7 @@ struct Game
 
             segment.position = segment.position - dt * (localCenter);
             segment.rotation += deltaAngle * dt * rotationSpeed;
+            segment.commit();
             break;
         }
     }
@@ -352,6 +356,7 @@ struct Game
 
             segment.position = segment.position - dt * (localCenter);
             segment.rotation += deltaAngle * dt * rotationSpeed;
+            segment.commit();
             break;
         }
     }
