@@ -545,24 +545,13 @@ void Engine::draw(Camera &camera, float fps)
     }
 
     // Step 1: Sort entities
-    std::vector<std::pair<uint64_t, uint32_t>> sorted;
-    sorted.reserve(ecs.quads.size());
-
     {
         ZoneScopedN("Sort Entities");
-        for (auto it = ecs.quads.begin(); it < ecs.quads.end(); it++)
-        {
-            size_t index = it - ecs.quads.begin();
-            uint64_t key = makeDrawKey(it->renderLayer, it->shaderType, it->z, it->tiebreak);
-            sorted.emplace_back(key, ecs.quadToEntity[index]);
-        }
-
-        std::sort(sorted.begin(), sorted.end(), [](auto &a, auto &b)
-                  { return a.first < b.first; });
+        std::sort(ecs.renderables.begin(), ecs.renderables.end(), [](Renderable &a, Renderable &b)
+                  { return a.drawkey < b.drawkey; });
     }
     // Step 2: Collect all instance data
     std::vector<DrawCmd> drawCmds;
-
     ShaderType currentShader = ShaderType::COUNT;
     RenderLayer currentLayer = RenderLayer::World;
     uint32_t instanceOffset = 0;
@@ -571,13 +560,10 @@ void Engine::draw(Camera &camera, float fps)
         ZoneScopedN("Build world InstanceData");
 
         instances.clear();
-        for (auto &[key, entityId] : sorted)
+        for (auto &renderable : ecs.renderables)
         {
-            auto qIndex = ecs.entityToQuad[entityId];
-            if (qIndex == UINT32_MAX)
-                continue;
-            Quad &quad = ecs.quads[qIndex];
-            Transform &transform = ecs.transforms[ecs.entityToTransform[entityId]];
+            Quad &quad = ecs.quads[ecs.entityToQuad[entityIndex(renderable.entity)]];
+            Transform &transform = ecs.transforms[ecs.entityToTransform[entityIndex(renderable.entity)]];
             bool newBatch = (quad.shaderType != currentShader) || (quad.renderLayer != currentLayer);
 
             if (newBatch && !instances.empty())

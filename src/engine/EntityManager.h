@@ -5,6 +5,7 @@
 #include <utility>
 #include "Transform.h"
 #include "Quad.h"
+#include "Draworder.h"
 
 struct Entity
 {
@@ -16,7 +17,11 @@ struct Entity
     }
 };
 
-inline uint32_t entityIndex(Entity e) { return e.id & 0x00FFFFFF; }
+inline uint32_t
+entityIndex(Entity e)
+{
+    return e.id & 0x00FFFFFF;
+}
 inline uint8_t entityGen(Entity e) { return (e.id >> 24) & 0xFF; }
 
 // Specialize std::hash for Entity
@@ -32,24 +37,41 @@ namespace std
     };
 }
 
+struct Renderable
+{
+    Entity entity;
+    uint64_t drawkey;
+};
+
 struct EntityManager
 {
     std::vector<uint8_t> generations;  // generation per slot
     std::vector<uint32_t> freeIndices; // pool of free slots
+
+    // --- Dense ---
     std::vector<Transform> transforms;
-    std::vector<uint32_t> entityToTransform;
-    std::vector<uint32_t> transformToEntity;
     std::vector<Quad> quads;
+    std::vector<Renderable> renderables;
+
+    // --- Sparse ---
+    std::vector<uint32_t> entityToTransform;
+    std::vector<size_t> transformToEntity;
     std::vector<uint32_t> entityToQuad;
-    std::vector<uint32_t> quadToEntity;
+    std::vector<size_t> quadToEntity;
+    std::vector<uint32_t> entityToRenderable;
+    std::vector<size_t> renderableToEntity;
     const uint32_t RESIZE_INCREMENT = 2048;
 
     EntityManager()
     {
+        // --- Dense ---
         transforms.reserve(RESIZE_INCREMENT);
-        entityToTransform.resize(RESIZE_INCREMENT, UINT32_MAX);
         quads.reserve(RESIZE_INCREMENT);
+
+        // --- Sparse ---
+        entityToTransform.resize(RESIZE_INCREMENT, UINT32_MAX);
         entityToQuad.resize(RESIZE_INCREMENT, UINT32_MAX);
+        entityToRenderable.resize(RESIZE_INCREMENT, UINT32_MAX);
     }
 
     Entity createEntity(Transform transform, Quad quad)
@@ -96,6 +118,22 @@ struct EntityManager
             quadToEntity.resize(quadToEntity.size() + RESIZE_INCREMENT, UINT32_MAX);
         }
         quadToEntity[quads.size() - 1] = entityIndex(entity);
+
+        // Renderables
+        Renderable renderable = {entity, makeDrawKey(quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak)};
+        renderables.push_back(renderable);
+        if (entityToRenderable.size() <= entityIndex(entity))
+        {
+            entityToRenderable.resize(entityToRenderable.size() + RESIZE_INCREMENT, UINT32_MAX);
+        }
+        entityToRenderable[entityIndex(entity)] = renderables.size() - 1;
+
+        if (renderableToEntity.size() <= entityIndex(entity))
+        {
+            renderableToEntity.resize(renderableToEntity.size() + RESIZE_INCREMENT, UINT32_MAX);
+        }
+        renderableToEntity[renderables.size() - 1] = entityIndex(entity);
+
         return entity;
     }
 
@@ -162,7 +200,29 @@ struct EntityManager
             quads.pop_back();
             quadToEntity.pop_back();
             entityToQuad[entityIndex(e)] = UINT32_MAX;
-            ;
+        }
+
+        // --- Renderable ---
+        {
+            uint32_t index = entityToRenderable[entityIndex(e)];
+            uint32_t lastIndex = renderables.size() - 1;
+
+            // We ony swap if current index isn't the last element
+            if (index != lastIndex)
+            {
+                renderables[index] = std::move(renderables[lastIndex]);
+
+                uint32_t movedEntity = renderableToEntity[lastIndex];
+                if (movedEntity != UINT32_MAX)
+                {
+                    renderableToEntity[index] = movedEntity;
+                    entityToRenderable[movedEntity] = index;
+                }
+            }
+
+            renderables.pop_back();
+            renderableToEntity.pop_back();
+            entityToRenderable[entityIndex(e)] = UINT32_MAX;
         }
     }
 
