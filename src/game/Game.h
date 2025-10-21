@@ -367,9 +367,9 @@ struct Game
         ZoneScoped; // PROFILER
         frameCount++;
 
-        if (frameCount >= 10)
+        if (frameCount >= 400)
         {
-            fps = frameCount / (fpsTimeSum / 1000.0f);
+            fps = round(frameCount / (fpsTimeSum / 1000.0f));
             frameCount = 0;
             fpsTimeSum = 0.0;
         }

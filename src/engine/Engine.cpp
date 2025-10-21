@@ -591,7 +591,7 @@ void Engine::draw(Camera &camera, float fps)
         ZoneScopedN("Build text InstanceData");
 
         std::vector<InstanceData> textInstances = BuildTextInstances(
-            "FPS: " + std::to_string(fps),
+            "FPS: " + std::to_string((int)fps),
             glm::vec2(-1.0f, -1.0f));
         uint32_t textOffset = instances.size();
         instances.insert(instances.end(), textInstances.begin(), textInstances.end());
