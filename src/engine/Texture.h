@@ -1,8 +1,9 @@
 #pragma once
 #include <vulkan/vulkan.h>
-#include <stb_image.h>
+#include <libs/stb_image.h>
 #include <stdexcept>
 #include "Buffer.h"
+#include <Logger.h>
 
 struct Texture
 {

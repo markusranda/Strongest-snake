@@ -6,6 +6,26 @@
 #include "game/Game.h"
 #include "Logger.h"
 
+#define TRACY_ENABLE
+#include "tracy/Tracy.hpp"
+#include <cstdlib>
+#include <new>
+
+void *operator new(std::size_t sz)
+{
+    void *ptr = std::malloc(sz);
+    TracyAlloc(ptr, sz); // Tracy tracks it
+    if (!ptr)
+        throw std::bad_alloc();
+    return ptr;
+}
+
+void operator delete(void *ptr) noexcept
+{
+    TracyFree(ptr); // Tracy sees the free
+    std::free(ptr);
+}
+
 const uint32_t WIDTH = 1920;
 const uint32_t HEIGHT = 1080;
 
