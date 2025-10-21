@@ -143,7 +143,7 @@ public:
     VkResult acquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t *pImageIndex);
     void waitForFence(VkDevice device, uint32_t fenceCount, const VkFence *pFences, VkBool32 waitAll, uint64_t timeout);
     void awaitDeviceIdle();
-    uint32_t prepareDraw();
+    int32_t prepareDraw();
     void draw(Camera &camera, float fps);
     void endDraw(uint32_t imageIndex);
     void drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera);

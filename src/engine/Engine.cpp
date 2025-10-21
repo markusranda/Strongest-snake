@@ -537,7 +537,7 @@ bool Engine::checkValidationLayerSupport()
 void Engine::draw(Camera &camera, float fps)
 {
     ZoneScoped; // PROFILER
-    uint32_t imageIndex = prepareDraw();
+    int32_t imageIndex = prepareDraw();
     if (imageIndex < 0)
     {
         Logger::debug("Skipping draw : Recreating swapchain");
@@ -629,7 +629,7 @@ void Engine::draw(Camera &camera, float fps)
     FrameMark;
 }
 
-uint32_t Engine::prepareDraw()
+int32_t Engine::prepareDraw()
 {
     ZoneScoped; // PROFILER
     waitForFence(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
