@@ -6,7 +6,10 @@
 #include "game/Game.h"
 #include "Logger.h"
 
-#define TRACY_ENABLE
+// ______________________________
+//         TRACY TIME
+// ______________________________
+#ifdef _DEBUG
 #include "tracy/Tracy.hpp"
 #include <cstdlib>
 #include <new>
@@ -25,6 +28,7 @@ void operator delete(void *ptr) noexcept
     TracyFree(ptr); // Tracy sees the free
     std::free(ptr);
 }
+#endif
 
 const uint32_t WIDTH = 1920;
 const uint32_t HEIGHT = 1080;
