@@ -220,14 +220,18 @@ struct Game
 
     void checkCollision()
     {
+        ZoneScoped; // PROFILER
         uint32_t pEntity = entityIndex(player.entities.front());
         uint32_t tIndex = engine.ecs.entityToTransform[pEntity];
+        uint32_t mIndex = engine.ecs.entityToMesh[pEntity];
         Transform &playerTransform = engine.ecs.transforms[tIndex];
+        Mesh &playerMesh = engine.ecs.meshes[mIndex];
 
         std::vector<Entity> deadGrounds;
         for (auto &[entity, ground] : grounds)
         {
             auto gIndexT = engine.ecs.entityToTransform[entityIndex(entity)];
+            auto gIndexM = engine.ecs.entityToMesh[entityIndex(entity)];
 
             // Cleanup dead entities
             if (gIndexT == UINT32_MAX)
@@ -237,7 +241,10 @@ struct Game
             }
 
             Transform &groundTransform = engine.ecs.transforms[gIndexT];
-            if (rectIntersects(playerTransform.position, playerTransform.size, groundTransform.position, groundTransform.size))
+            Mesh &groundMesh = engine.ecs.meshes[gIndexM];
+            AABB &playerAABB = computeWorldAABB(playerMesh, playerTransform);
+            AABB &groundAABB = computeWorldAABB(groundMesh, groundTransform);
+            if (rectIntersects(playerAABB, groundAABB))
             {
                 ground.dead = true;
             }

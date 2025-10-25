@@ -798,11 +798,8 @@ void Engine::endDraw(uint32_t imageIndex)
 
 void Engine::createStaticVertexBuffer()
 {
-    const auto &qVerts = MeshRegistry::quadVertices();
-    const auto &tVerts = MeshRegistry::triangleVertices();
-    VkDeviceSize qSize = sizeof(Vertex) * qVerts.size();
-    VkDeviceSize tSize = sizeof(Vertex) * tVerts.size();
-    VkDeviceSize size = qSize + tSize;
+    const auto vertices = MeshRegistry::vertices;
+    VkDeviceSize size = sizeof(Vertex) * vertices.size();
 
     CreateBuffer(device, physicalDevice,
                  size,
@@ -813,8 +810,7 @@ void Engine::createStaticVertexBuffer()
 
     void *data;
     vkMapMemory(device, vertexBufferMemory, 0, size, 0, &data);
-    memcpy(data, qVerts.data(), (size_t)qSize);
-    memcpy(static_cast<char *>(data) + (size_t)qSize, tVerts.data(), (size_t)tSize);
+    memcpy(data, vertices.data(), (size_t)size);
     vkUnmapMemory(device, vertexBufferMemory);
 
     vertexCapacity = static_cast<uint32_t>(size);

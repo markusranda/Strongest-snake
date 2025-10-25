@@ -8,25 +8,29 @@ namespace MeshRegistry
     static constexpr Mesh triangle = Mesh(6, 3, "Triangle");
 
     // --- Vertices ---
-    static const std::array<Vertex, 6> &quadVertices()
+    // !! Remember to update count if increasing number of vertices !!
+    static const std::vector<Vertex> vertices = {
+        // Quad
+        Vertex{{0.0f, 0.0f}, {0.0f, 0.0f}},
+        Vertex{{1.0f, 0.0f}, {1.0f, 0.0f}},
+        Vertex{{0.0f, 1.0f}, {0.0f, 1.0f}},
+        Vertex{{0.0f, 1.0f}, {0.0f, 1.0f}},
+        Vertex{{1.0f, 0.0f}, {1.0f, 0.0f}},
+        Vertex{{1.0f, 1.0f}, {1.0f, 1.0f}},
+        // Triangle
+        Vertex{{0.0f, 0.0f}, {0.0f, 0.0f}},
+        Vertex{{1.0f, 0.5f}, {1.0f, 0.5f}},
+        Vertex{{0.0f, 1.0f}, {0.0f, 1.0f}},
+    };
+
+    static std::vector<Vertex> getVertices(const Mesh &mesh)
     {
-        static const std::array<Vertex, 6> verts = {
-            Vertex{{0.0f, 0.0f}, {0.0f, 0.0f}},
-            Vertex{{1.0f, 0.0f}, {1.0f, 0.0f}},
-            Vertex{{0.0f, 1.0f}, {0.0f, 1.0f}},
-            Vertex{{0.0f, 1.0f}, {0.0f, 1.0f}},
-            Vertex{{1.0f, 0.0f}, {1.0f, 0.0f}},
-            Vertex{{1.0f, 1.0f}, {1.0f, 1.0f}},
-        };
-        return verts;
-    }
-    static const std::array<Vertex, 3> &triangleVertices()
-    {
-        static const std::array<Vertex, 3> verts = {
-            Vertex{{0.0f, 0.0f}, {0.0f, 0.0f}},
-            Vertex{{1.0f, 0.5f}, {1.0f, 0.5f}},
-            Vertex{{0.0f, 1.0f}, {0.0f, 1.0f}},
-        };
-        return verts;
+        auto it = vertices.begin();
+        auto start = it + mesh.vertexOffset;
+        auto end = start + mesh.vertexCount;
+
+        assert(start >= vertices.begin() && end <= vertices.end() && "Mesh vertex range out of bounds");
+
+        return std::vector<Vertex>(start, end);
     }
 }
