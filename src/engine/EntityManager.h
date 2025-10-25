@@ -4,7 +4,6 @@
 #include <functional>
 #include <utility>
 #include "Transform.h"
-#include "Quad.h"
 #include "Draworder.h"
 
 struct Entity
@@ -72,6 +71,14 @@ struct Material
     ShaderType shaderType;
 };
 
+struct Mesh
+{
+    uint32_t vertexOffset;
+    uint32_t vertexCount;
+
+    constexpr Mesh(uint32_t vOff = 0, uint32_t vCount = 0) : vertexOffset(vOff), vertexCount(vCount) {}
+};
+
 struct EntityManager
 {
     std::vector<uint8_t> generations;  // generation per slot
@@ -79,19 +86,19 @@ struct EntityManager
 
     // --- Dense ---
     std::vector<Transform> transforms;
-    std::vector<Quad> quads;
+    std::vector<Mesh> meshes;
     std::vector<Renderable> renderables;
     std::vector<Material> materials;
     std::vector<Renderable> sortedRenderables;
 
     // --- Sparse ---
     std::vector<uint32_t> entityToTransform;
-    std::vector<uint32_t> entityToQuad;
+    std::vector<uint32_t> entityToMesh;
     std::vector<uint32_t> entityToRenderable;
     std::vector<uint32_t> entityToMaterial;
 
     std::vector<size_t> transformToEntity;
-    std::vector<size_t> quadToEntity;
+    std::vector<size_t> meshToEntity;
     std::vector<size_t> renderableToEntity;
     std::vector<size_t> materialToEntity;
     const uint32_t RESIZE_INCREMENT = 2048;
@@ -100,11 +107,11 @@ struct EntityManager
     {
         // --- Dense ---
         transforms.reserve(RESIZE_INCREMENT);
-        quads.reserve(RESIZE_INCREMENT);
+        meshes.reserve(RESIZE_INCREMENT);
         renderables.reserve(RESIZE_INCREMENT);
     }
 
-    Entity createEntity(Transform transform, Quad quad, Material material, RenderLayer renderLayer)
+    Entity createEntity(Transform transform, Mesh mesh, Material material, RenderLayer renderLayer)
     {
         uint32_t index;
         if (!freeIndices.empty())
@@ -127,7 +134,7 @@ struct EntityManager
         Renderable renderable = {entity, 0.0f, 0, renderLayer};
         renderable.makeDrawKey(material.shaderType);
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
-        addToStore<Quad>(quads, entityToQuad, quadToEntity, entity, quad);
+        addToStore<Mesh>(meshes, entityToMesh, meshToEntity, entity, mesh);
         addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
         addToStore<Material>(materials, entityToMaterial, materialToEntity, entity, material);
         sortedRenderables.push_back(renderable);
@@ -179,8 +186,9 @@ struct EntityManager
 
         // --- Remove from stores ---
         removeFromStore<Transform>(transforms, entityToTransform, transformToEntity, e);
-        removeFromStore<Quad>(quads, entityToQuad, quadToEntity, e);
+        removeFromStore<Mesh>(meshes, entityToMesh, meshToEntity, e);
         removeFromStore<Renderable>(renderables, entityToRenderable, renderableToEntity, e);
+        removeFromStore<Material>(materials, entityToMaterial, materialToEntity, e);
 
         // --- Sort renderables ---
         {

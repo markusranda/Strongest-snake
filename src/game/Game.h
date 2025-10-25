@@ -2,6 +2,7 @@
 #include "engine/Engine.h"
 #include "engine/Window.h"
 #include "engine/Vertex.h"
+#include "engine/MeshRegistry.h"
 #include "engine/EntityManager.h"
 #include "engine/Camera.h"
 #include "Collision.h"
@@ -55,7 +56,7 @@ struct Game
     std::unordered_map<Entity, Ground> grounds;
 
     // Game settings
-    const uint32_t rows = 200;
+    const uint32_t rows = 10;
     const uint32_t columns = 20;
     const uint32_t groundSize = 64;
 
@@ -86,10 +87,11 @@ struct Game
             engine.initVulkan("assets/fonts.png");
 
             // --- Background ---
-            Transform backgroundTransform = Transform{glm::vec2{0, 0}, glm::vec2{window.width, window.height}};
-            Quad backgroundQuad = Quad{};
-            Material material = Material{Colors::fromHex(Colors::SKY_BLUE, 1.0f), ShaderType::FlatColor};
-            background = {engine.ecs.createEntity(backgroundTransform, backgroundQuad, material, RenderLayer::Background)};
+            {
+                Transform transform = Transform{glm::vec2{0, 0}, glm::vec2{window.width, window.height}};
+                Material material = Material{Colors::fromHex(Colors::SKY_BLUE, 1.0f), ShaderType::FlatColor};
+                background = {engine.ecs.createEntity(transform, MeshRegistry::quad, material, RenderLayer::Background)};
+            }
 
             // ---- Player ----
             {
@@ -97,20 +99,18 @@ struct Game
                     glm::vec2{std::floor(columns / 2) * snakeSize, snakeSize},
                     glm::vec2{snakeSize, snakeSize},
                     "player"};
-                Quad quad = Quad{};
                 Material material = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::DirArrow};
-                Entity entity = engine.ecs.createEntity(transform, quad, material, RenderLayer::World);
+                Entity entity = engine.ecs.createEntity(transform, MeshRegistry::quad, material, RenderLayer::World);
                 player.entities[0] = entity;
 
                 for (size_t i = 1; i < 4; i++)
                 {
                     Transform transform = Transform{
-                    glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize},
-                    glm::vec2{snakeSize, snakeSize},
-                    "player"};
-                    Quad quad = Quad{};
-                    auto entity = engine.ecs.createEntity(transform, quad, material, RenderLayer::World);
-                player.entities[i] = entity;
+                        glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize},
+                        glm::vec2{snakeSize, snakeSize},
+                        "player"};
+                    Entity entity = engine.ecs.createEntity(transform, MeshRegistry::quad, material, RenderLayer::World);
+                    player.entities[i] = entity;
                 }
             }
             // --- Camera ---
@@ -118,15 +118,14 @@ struct Game
 
             // --- Ground ----
             {
-                Quad q = Quad{};
                 Material m = Material{Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), ShaderType::Border};
-            for (uint32_t y = 2; y < rows; y++)
-            {
-                for (uint32_t x = 0; x < columns; x++)
+                for (uint32_t y = 2; y < rows; y++)
                 {
-                    Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
-                        Entity entity = engine.ecs.createEntity(t, q, m, RenderLayer::World);
-                    grounds.insert_or_assign(entity, Ground{entity, false});
+                    for (uint32_t x = 0; x < columns; x++)
+                    {
+                        Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
+                        Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World);
+                        grounds.insert_or_assign(entity, Ground{entity, false});
                     }
                 }
             }

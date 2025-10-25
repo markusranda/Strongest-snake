@@ -556,22 +556,25 @@ void Engine::draw(Camera &camera, float fps)
         for (auto &renderable : ecs.sortedRenderables)
         {
             uint32_t rEntity = entityIndex(renderable.entity);
-            Quad &quad = ecs.quads[ecs.entityToQuad[rEntity]];
+            Mesh &mesh = ecs.meshes[ecs.entityToMesh[rEntity]];
             Transform &transform = ecs.transforms[ecs.entityToTransform[entityIndex(renderable.entity)]];
             Material &material = ecs.materials[ecs.entityToMaterial[entityIndex(renderable.entity)]];
             bool newBatch = (material.shaderType != currentShader) || (renderable.renderLayer != currentLayer);
 
             if (newBatch && !instances.empty())
             {
-                uint32_t count = instances.size() - instanceOffset;
-                drawCmds.emplace_back(currentLayer,
-                                      currentShader,
-                                      renderable.z,
-                                      renderable.tiebreak,
-                                      6,
-                                      0,
-                                      count,
-                                      instanceOffset);
+                uint32_t instanceCount = instances.size() - instanceOffset;
+                DrawCmd drawCmd{
+                    currentLayer,
+                    currentShader,
+                    renderable.z,
+                    renderable.tiebreak,
+                    mesh.vertexCount,
+                    mesh.vertexOffset,
+                    instanceCount,
+                    instanceOffset,
+                };
+                drawCmds.push_back(drawCmd);
                 instanceOffset = instances.size();
             }
             InstanceData instance = {transform.model, material.color};
@@ -605,14 +608,14 @@ void Engine::draw(Camera &camera, float fps)
     {
         ZoneScopedN("Adding last batch of drawCmds");
 
-        uint32_t count = instances.size() - instanceOffset;
+        uint32_t instanceCount = instances.size() - instanceOffset;
         drawCmds.emplace_back(currentLayer,
                               currentShader,
                               0.0f,
                               0,
                               6,
                               0,
-                              count,
+                              instanceCount,
                               instanceOffset);
     }
 
@@ -782,8 +785,11 @@ void Engine::endDraw(uint32_t imageIndex)
 
 void Engine::createStaticVertexBuffer()
 {
-    const auto &unitVerts = Quad::getUnitVertices();
-    VkDeviceSize size = sizeof(Vertex) * unitVerts.size();
+    const auto &qVerts = MeshRegistry::quadVertices();
+    const auto &tVerts = MeshRegistry::triangleVertices();
+    VkDeviceSize qSize = sizeof(Vertex) * qVerts.size();
+    VkDeviceSize tSize = sizeof(Vertex) * tVerts.size();
+    VkDeviceSize size = qSize + tSize;
 
     CreateBuffer(device, physicalDevice,
                  size,
@@ -794,10 +800,11 @@ void Engine::createStaticVertexBuffer()
 
     void *data;
     vkMapMemory(device, vertexBufferMemory, 0, size, 0, &data);
-    memcpy(data, unitVerts.data(), (size_t)size);
+    memcpy(data, qVerts.data(), (size_t)qSize);
+    memcpy(static_cast<char *>(data) + (size_t)qSize, tVerts.data(), (size_t)tSize);
     vkUnmapMemory(device, vertexBufferMemory);
 
-    vertexCapacity = static_cast<uint32_t>(unitVerts.size());
+    vertexCapacity = static_cast<uint32_t>(size);
 }
 
 void Engine::uploadToInstanceBuffer()

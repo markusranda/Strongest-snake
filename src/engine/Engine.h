@@ -11,7 +11,7 @@
 #include "InstanceData.h"
 #include "Logger.h"
 #include "Vertex.h"
-#include "Quad.h"
+#include "MeshRegistry.h"
 #include "Pipelines.h"
 #include "Draworder.h"
 #include "EntityManager.h"
