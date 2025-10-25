@@ -91,17 +91,27 @@ struct Game
             background = {engine.ecs.createEntity(backgroundTransform, backgroundQuad)};
 
             // ---- Player ----
-            for (size_t i = 0; i < 4; i++)
             {
                 Transform transform = Transform{
+                    glm::vec2{std::floor(columns / 2) * snakeSize, snakeSize},
+                    glm::vec2{snakeSize, snakeSize},
+                    "player"};
+                // TODO Implement triangle for player head
+                Quad quad = Quad{ShaderType::DirArrow, RenderLayer::World, Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), "player"};
+                Entity entity = engine.ecs.createEntity(transform, quad);
+                player.entities[0] = entity;
+
+                for (size_t i = 1; i < 4; i++)
+                {
+                    Transform transform = Transform{
                     glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize},
                     glm::vec2{snakeSize, snakeSize},
                     "player"};
                 Quad quad = Quad{ShaderType::DirArrow, RenderLayer::World, Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), "player"};
                 auto entity = engine.ecs.createEntity(transform, quad);
                 player.entities[i] = entity;
+                }
             }
-
             // --- Camera ---
             camera = Camera{window.width, window.height};
 
@@ -211,8 +221,9 @@ struct Game
 
     void checkCollision()
     {
-        auto playerIndexT = engine.ecs.entityToTransform[player.entities.front().id];
-        Transform &playerTransform = engine.ecs.transforms[playerIndexT];
+        uint32_t pEntity = entityIndex(player.entities.front());
+        uint32_t tIndex = engine.ecs.entityToTransform[pEntity];
+        Transform &playerTransform = engine.ecs.transforms[tIndex];
 
         std::vector<Entity> deadGrounds;
         for (auto &[entity, ground] : grounds)

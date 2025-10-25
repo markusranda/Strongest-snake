@@ -57,9 +57,9 @@ void Engine::createInstance()
 
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "Hello Triangle";
+    appInfo.pApplicationName = "Strongest snake";
     appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.pEngineName = "No Engine";
+    appInfo.pEngineName = "<insert-engine-name-here>";
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.apiVersion = VK_API_VERSION_1_0;
 
@@ -544,13 +544,6 @@ void Engine::draw(Camera &camera, float fps)
         return;
     }
 
-    // Step 1: Sort entities
-    {
-        ZoneScopedN("Sort Entities");
-        std::sort(ecs.renderables.begin(), ecs.renderables.end(), [](Renderable &a, Renderable &b)
-                  { return a.drawkey < b.drawkey; });
-    }
-
     // Step 2: Collect all instance data
     std::vector<DrawCmd> drawCmds;
     ShaderType currentShader = ShaderType::COUNT;
@@ -560,9 +553,10 @@ void Engine::draw(Camera &camera, float fps)
         ZoneScopedN("Build world InstanceData");
 
         instances.clear();
-        for (auto &renderable : ecs.renderables)
+        for (auto &renderable : ecs.sortedRenderables)
         {
-            Quad &quad = ecs.quads[ecs.entityToQuad[entityIndex(renderable.entity)]];
+            uint32_t rEntity = entityIndex(renderable.entity);
+            Quad &quad = ecs.quads[ecs.entityToQuad[rEntity]];
             Transform &transform = ecs.transforms[ecs.entityToTransform[entityIndex(renderable.entity)]];
             bool newBatch = (quad.shaderType != currentShader) || (quad.renderLayer != currentLayer);
 

@@ -52,6 +52,7 @@ struct EntityManager
     std::vector<Transform> transforms;
     std::vector<Quad> quads;
     std::vector<Renderable> renderables;
+    std::vector<Renderable> sortedRenderables;
 
     // --- Sparse ---
     std::vector<uint32_t> entityToTransform;
@@ -67,11 +68,7 @@ struct EntityManager
         // --- Dense ---
         transforms.reserve(RESIZE_INCREMENT);
         quads.reserve(RESIZE_INCREMENT);
-
-        // --- Sparse ---
-        entityToTransform.resize(RESIZE_INCREMENT, UINT32_MAX);
-        entityToQuad.resize(RESIZE_INCREMENT, UINT32_MAX);
-        entityToRenderable.resize(RESIZE_INCREMENT, UINT32_MAX);
+        renderables.reserve(RESIZE_INCREMENT);
     }
 
     Entity createEntity(Transform transform, Quad quad)
@@ -93,55 +90,45 @@ struct EntityManager
         uint8_t gen = generations[index];
         Entity entity = Entity{(gen << 24) | index};
 
-        // Transforms
-        transforms.push_back(transform);
-        if (entityToTransform.size() <= entityIndex(entity))
-        {
-            entityToTransform.resize(entityIndex(entity) + RESIZE_INCREMENT, UINT32_MAX);
-        }
-        entityToTransform[entityIndex(entity)] = transforms.size() - 1;
-        if (transformToEntity.size() <= entityIndex(entity))
-        {
-            transformToEntity.resize(entityIndex(entity) + RESIZE_INCREMENT, UINT32_MAX);
-        }
-        transformToEntity[transforms.size() - 1] = entityIndex(entity);
-
-        // Quads
-        quads.push_back(quad);
-        if (entityToQuad.size() <= entityIndex(entity))
-        {
-            entityToQuad.resize(entityToQuad.size() + RESIZE_INCREMENT, UINT32_MAX);
-        }
-        entityToQuad[entityIndex(entity)] = quads.size() - 1;
-        if (quadToEntity.size() <= entityIndex(entity))
-        {
-            quadToEntity.resize(quadToEntity.size() + RESIZE_INCREMENT, UINT32_MAX);
-        }
-        quadToEntity[quads.size() - 1] = entityIndex(entity);
-
-        // Renderables
+        // ---- Add to stores ----
         Renderable renderable = {entity, makeDrawKey(quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak)};
-        renderables.push_back(renderable);
-        if (entityToRenderable.size() <= entityIndex(entity))
-        {
-            entityToRenderable.resize(entityToRenderable.size() + RESIZE_INCREMENT, UINT32_MAX);
-        }
-        entityToRenderable[entityIndex(entity)] = renderables.size() - 1;
-
-        if (renderableToEntity.size() <= entityIndex(entity))
-        {
-            renderableToEntity.resize(renderableToEntity.size() + RESIZE_INCREMENT, UINT32_MAX);
-        }
-        renderableToEntity[renderables.size() - 1] = entityIndex(entity);
+        addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
+        addToStore<Quad>(quads, entityToQuad, quadToEntity, entity, quad);
+        addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
+        sortedRenderables.push_back(renderable);
 
         return entity;
     }
 
+    template <typename A>
+    void addToStore(std::vector<A> &denseStorage, std::vector<uint32_t> &sparseToDense, std::vector<size_t> &denseToSparse, Entity &entity, A &item)
+    {
+        size_t denseIndex = denseStorage.size();
+        uint32_t sparseIndex = entityIndex(entity);
+
+        // Do resize
+        if (sparseToDense.size() <= sparseIndex)
+        {
+            sparseToDense.resize(sparseToDense.size() + RESIZE_INCREMENT, UINT32_MAX);
+        }
+        if (denseToSparse.size() <= denseIndex)
+        {
+            denseToSparse.resize(denseToSparse.size() + RESIZE_INCREMENT, UINT32_MAX);
+        }
+
+        // Add to stores
+        denseStorage.push_back(item);
+        sparseToDense[sparseIndex] = denseIndex;
+        denseToSparse[denseIndex] = sparseIndex;
+    }
+
     void destroyEntity(Entity e)
     {
+
         uint32_t index = entityIndex(e);
         uint8_t gen = entityGen(e);
 
+        Logger::debug("Destroying entity: " + std::to_string(index));
         if (index >= generations.size())
             return;
 
@@ -155,75 +142,40 @@ struct EntityManager
             freeIndices.push_back(index); // recycle slot
         }
 
-        // --- Transforms ---
+        // --- Remove from stores ---
+        removeFromStore<Transform>(transforms, entityToTransform, transformToEntity, e);
+        removeFromStore<Quad>(quads, entityToQuad, quadToEntity, e);
+        removeFromStore<Renderable>(renderables, entityToRenderable, renderableToEntity, e);
+
+        // --- Sort renderables ---
         {
-            uint32_t tIndex = entityToTransform[entityIndex(e)];
-            uint32_t tLastIndex = transforms.size() - 1;
+            ZoneScopedN("Sort renderables");
+            sortedRenderables = renderables;
+            std::sort(sortedRenderables.begin(), sortedRenderables.end(), [](Renderable &a, Renderable &b)
+                      { return a.drawkey < b.drawkey; });
+        }
+    }
 
-            // We ony swap if current index isn't the last element
-            if (tIndex != tLastIndex)
-            {
-                transforms[tIndex] = std::move(transforms[tLastIndex]);
+    template <typename A>
+    void removeFromStore(std::vector<A> &denseStorage, std::vector<uint32_t> &sparseToDense, std::vector<size_t> &denseToSparse, Entity &e)
+    {
 
-                uint32_t movedEntity = transformToEntity[tLastIndex];
-                if (movedEntity != UINT32_MAX)
-                {
-                    transformToEntity[tIndex] = movedEntity;
-                    entityToTransform[movedEntity] = tIndex;
-                }
-            }
+        uint32_t denseIndex = sparseToDense[entityIndex(e)];
+        uint32_t lastIndex = denseStorage.size() - 1;
 
-            transforms.pop_back();
-            transformToEntity.pop_back();
-            entityToTransform[entityIndex(e)] = UINT32_MAX;
-            ;
+        // We ony swap if current denseIndex isn't the last element
+        if (denseIndex != lastIndex)
+        {
+            // Overwrite current slot with last slot
+            denseStorage[denseIndex] = std::move(denseStorage[lastIndex]);
+            uint32_t movedEntity = denseToSparse[lastIndex];
+            denseToSparse[denseIndex] = movedEntity;
+            sparseToDense[movedEntity] = denseIndex;
         }
 
-        // --- Quads ---
-        {
-            uint32_t qIndex = entityToQuad[entityIndex(e)];
-            uint32_t qLastIndex = quads.size() - 1;
-
-            // We ony swap if current index isn't the last element
-            if (qIndex != qLastIndex)
-            {
-                quads[qIndex] = std::move(quads[qLastIndex]);
-
-                uint32_t movedEntity = quadToEntity[qLastIndex];
-                if (movedEntity != UINT32_MAX)
-                {
-                    quadToEntity[qIndex] = movedEntity;
-                    entityToQuad[movedEntity] = qIndex;
-                }
-            }
-
-            quads.pop_back();
-            quadToEntity.pop_back();
-            entityToQuad[entityIndex(e)] = UINT32_MAX;
-        }
-
-        // --- Renderable ---
-        {
-            uint32_t index = entityToRenderable[entityIndex(e)];
-            uint32_t lastIndex = renderables.size() - 1;
-
-            // We ony swap if current index isn't the last element
-            if (index != lastIndex)
-            {
-                renderables[index] = std::move(renderables[lastIndex]);
-
-                uint32_t movedEntity = renderableToEntity[lastIndex];
-                if (movedEntity != UINT32_MAX)
-                {
-                    renderableToEntity[index] = movedEntity;
-                    entityToRenderable[movedEntity] = index;
-                }
-            }
-
-            renderables.pop_back();
-            renderableToEntity.pop_back();
-            entityToRenderable[entityIndex(e)] = UINT32_MAX;
-        }
+        denseStorage.pop_back();
+        denseToSparse.pop_back();
+        sparseToDense[entityIndex(e)] = UINT32_MAX;
     }
 
     bool isAlive(Entity e) const
