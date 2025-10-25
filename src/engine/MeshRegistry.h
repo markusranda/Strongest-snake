@@ -24,7 +24,7 @@ namespace MeshRegistry
     {
         static const std::array<Vertex, 3> verts = {
             Vertex{{0.0f, 0.0f}, {0.0f, 0.0f}},
-            Vertex{{1.0f, 0.0f}, {1.0f, 0.0f}},
+            Vertex{{1.0f, 0.5f}, {1.0f, 0.5f}},
             Vertex{{0.0f, 1.0f}, {0.0f, 1.0f}},
         };
         return verts;
