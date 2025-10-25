@@ -6,12 +6,6 @@
 
 struct Quad
 {
-    float z = 0.0f;
-    uint8_t tiebreak = 0;
-    const char *name = "quad";
-
-    Quad(const char *name = "quad") : name(name) {}
-
     static const std::array<Vertex, 6> &getUnitVertices()
     {
         static const std::array<Vertex, 6> verts = {

@@ -40,14 +40,36 @@ namespace std
 struct Renderable
 {
     Entity entity;
+    float z = 0.0f;
+    uint8_t tiebreak = 0;
+    RenderLayer renderLayer;
     uint64_t drawkey;
+
+    // 64-bit draw key
+    // [ 8 bits layer ] [ 16 bits shaderType ] [ 32 bits z-sort value ] [ 8 bits tie-break ]
+    // | 63 .... 56 | 55 .... 40 | 39 ............ 8 | 7 .... 0 |
+    // |   Layer    |  Shader    |     Z-Sort       |   Tie    |
+    inline void makeDrawKey(ShaderType shader)
+    {
+        static_assert(sizeof(RenderLayer) == 1, "RenderLayer must be 8 bits");
+        static_assert(sizeof(ShaderType) == 2, "ShaderType must be 16 bits");
+
+        uint64_t key = 0;
+        key |= (uint64_t(renderLayer) & 0xFF) << 56;
+        key |= (uint64_t(shader) & 0xFFFF) << 40;
+        uint32_t zBits = static_cast<uint32_t>((1.0f - z) * 0xFFFFFFFFu);
+        key |= (uint64_t)zBits << 8;
+        key |= tiebreak;
+
+        // Commit
+        drawkey = key;
+    }
 };
 
 struct Material
 {
     glm::vec4 color;
     ShaderType shaderType;
-    RenderLayer renderLayer;
 };
 
 struct EntityManager
@@ -82,7 +104,7 @@ struct EntityManager
         renderables.reserve(RESIZE_INCREMENT);
     }
 
-    Entity createEntity(Transform transform, Quad quad, Material material)
+    Entity createEntity(Transform transform, Quad quad, Material material, RenderLayer renderLayer)
     {
         uint32_t index;
         if (!freeIndices.empty())
@@ -102,7 +124,8 @@ struct EntityManager
         Entity entity = Entity{(gen << 24) | index};
 
         // ---- Add to stores ----
-        Renderable renderable = {entity, makeDrawKey(material.renderLayer, material.shaderType, quad.z, quad.tiebreak)};
+        Renderable renderable = {entity, 0.0f, 0, renderLayer};
+        renderable.makeDrawKey(material.shaderType);
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
         addToStore<Quad>(quads, entityToQuad, quadToEntity, entity, quad);
         addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);

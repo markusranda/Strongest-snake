@@ -559,15 +559,15 @@ void Engine::draw(Camera &camera, float fps)
             Quad &quad = ecs.quads[ecs.entityToQuad[rEntity]];
             Transform &transform = ecs.transforms[ecs.entityToTransform[entityIndex(renderable.entity)]];
             Material &material = ecs.materials[ecs.entityToMaterial[entityIndex(renderable.entity)]];
-            bool newBatch = (material.shaderType != currentShader) || (material.renderLayer != currentLayer);
+            bool newBatch = (material.shaderType != currentShader) || (renderable.renderLayer != currentLayer);
 
             if (newBatch && !instances.empty())
             {
                 uint32_t count = instances.size() - instanceOffset;
                 drawCmds.emplace_back(currentLayer,
                                       currentShader,
-                                      quad.z,
-                                      quad.tiebreak,
+                                      renderable.z,
+                                      renderable.tiebreak,
                                       6,
                                       0,
                                       count,
@@ -577,7 +577,7 @@ void Engine::draw(Camera &camera, float fps)
             InstanceData instance = {transform.model, material.color};
             instances.push_back(instance);
             currentShader = material.shaderType;
-            currentLayer = material.renderLayer;
+            currentLayer = renderable.renderLayer;
         }
     }
 
