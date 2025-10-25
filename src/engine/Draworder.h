@@ -1,7 +1,6 @@
 #pragma once
 #include "Shadertype.h"
 #include "RenderLayer.h"
-#include "Quad.h"
 
 struct DrawCmd
 {
