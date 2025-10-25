@@ -95,21 +95,16 @@ struct Game
 
             // ---- Player ----
             {
-                Transform transform = Transform{
-                    glm::vec2{std::floor(columns / 2) * snakeSize, snakeSize},
-                    glm::vec2{snakeSize, snakeSize},
-                    "player"};
-                Material material = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::DirArrow};
-                Entity entity = engine.ecs.createEntity(transform, MeshRegistry::quad, material, RenderLayer::World);
-                player.entities[0] = entity;
+                Material m = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::DirArrow};
+                {
+                    Transform t = Transform{glm::vec2{std::floor(columns / 2) * snakeSize, snakeSize}, glm::vec2{snakeSize, snakeSize}, "player"};
+                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World);
+                }
 
                 for (size_t i = 1; i < 4; i++)
                 {
-                    Transform transform = Transform{
-                        glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize},
-                        glm::vec2{snakeSize, snakeSize},
-                        "player"};
-                    Entity entity = engine.ecs.createEntity(transform, MeshRegistry::quad, material, RenderLayer::World);
+                    Transform t = Transform{glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize}, glm::vec2{snakeSize, snakeSize}, "player"};
+                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World);
                     player.entities[i] = entity;
                 }
             }

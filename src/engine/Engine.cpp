@@ -548,6 +548,10 @@ void Engine::draw(Camera &camera, float fps)
     std::vector<DrawCmd> drawCmds;
     ShaderType currentShader = ShaderType::COUNT;
     RenderLayer currentLayer = RenderLayer::World;
+    uint32_t currentVertexCount = UINT32_MAX;
+    uint32_t currentVertexOffset = UINT32_MAX;
+    float currentZ;
+    uint8_t currentTiebreak;
     uint32_t instanceOffset = 0;
     {
         ZoneScopedN("Build world InstanceData");
@@ -559,7 +563,7 @@ void Engine::draw(Camera &camera, float fps)
             Mesh &mesh = ecs.meshes[ecs.entityToMesh[rEntity]];
             Transform &transform = ecs.transforms[ecs.entityToTransform[entityIndex(renderable.entity)]];
             Material &material = ecs.materials[ecs.entityToMaterial[entityIndex(renderable.entity)]];
-            bool newBatch = (material.shaderType != currentShader) || (renderable.renderLayer != currentLayer);
+            bool newBatch = (material.shaderType != currentShader) || (renderable.renderLayer != currentLayer) || (mesh.vertexOffset != currentVertexOffset) || (mesh.vertexCount != currentVertexCount);
 
             if (newBatch && !instances.empty())
             {
@@ -567,10 +571,10 @@ void Engine::draw(Camera &camera, float fps)
                 DrawCmd drawCmd{
                     currentLayer,
                     currentShader,
-                    renderable.z,
-                    renderable.tiebreak,
-                    mesh.vertexCount,
-                    mesh.vertexOffset,
+                    currentZ,
+                    currentTiebreak,
+                    currentVertexCount,
+                    currentVertexOffset,
                     instanceCount,
                     instanceOffset,
                 };
@@ -581,6 +585,10 @@ void Engine::draw(Camera &camera, float fps)
             instances.push_back(instance);
             currentShader = material.shaderType;
             currentLayer = renderable.renderLayer;
+            currentZ = renderable.z;
+            currentTiebreak = renderable.tiebreak;
+            currentVertexCount = mesh.vertexCount;
+            currentVertexOffset = mesh.vertexOffset;
         }
     }
 
@@ -611,10 +619,10 @@ void Engine::draw(Camera &camera, float fps)
         uint32_t instanceCount = instances.size() - instanceOffset;
         drawCmds.emplace_back(currentLayer,
                               currentShader,
-                              0.0f,
-                              0,
-                              6,
-                              0,
+                              currentZ,
+                              currentTiebreak,
+                              currentVertexCount,
+                              currentVertexOffset,
                               instanceCount,
                               instanceOffset);
     }
@@ -716,6 +724,11 @@ void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
 
     for (const auto &dc : drawCmds)
     {
+        assert(dc.vertexCount > 0 && "DrawCmd has zero vertexCount");
+        assert(dc.instanceCount > 0 && "DrawCmd has zero instanceCount");
+        assert(dc.firstVertex + dc.vertexCount <= vertexCapacity &&
+               "DrawCmd vertex range exceeds vertex buffer capacity!");
+
         const Pipeline &pipeline = pipelines[(size_t)dc.shaderType];
 
         vkCmdBindDescriptorSets(cmd,

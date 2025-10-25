@@ -4,8 +4,8 @@
 namespace MeshRegistry
 {
     // --- Meshes ---
-    static constexpr Mesh quad = Mesh{0, 6};
-    static constexpr Mesh triangle = Mesh{6, 3};
+    static constexpr Mesh quad = Mesh(0, 6, "Quad");
+    static constexpr Mesh triangle = Mesh(6, 3, "Triangle");
 
     // --- Vertices ---
     static const std::array<Vertex, 6> &quadVertices()
