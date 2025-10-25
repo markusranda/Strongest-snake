@@ -5,8 +5,8 @@
 #include "engine/MeshRegistry.h"
 #include "engine/EntityManager.h"
 #include "engine/Camera.h"
-#include "Collision.h"
-#include "../tusj/Colors.h"
+#include "engine/Collision.h"
+#include "Colors.h"
 #include <GLFW/glfw3.h>
 #include <unordered_map>
 #include <deque>
@@ -226,12 +226,14 @@ struct Game
         uint32_t mIndex = engine.ecs.entityToMesh[pEntity];
         Transform &playerTransform = engine.ecs.transforms[tIndex];
         Mesh &playerMesh = engine.ecs.meshes[mIndex];
+        AABB &playerAABB = computeWorldAABB(playerMesh, playerTransform);
 
         std::vector<Entity> deadGrounds;
         for (auto &[entity, ground] : grounds)
         {
             auto gIndexT = engine.ecs.entityToTransform[entityIndex(entity)];
             auto gIndexM = engine.ecs.entityToMesh[entityIndex(entity)];
+            auto gIndexC = engine.ecs.entityToCollisionBox[entityIndex(entity)];
 
             // Cleanup dead entities
             if (gIndexT == UINT32_MAX)
@@ -242,8 +244,7 @@ struct Game
 
             Transform &groundTransform = engine.ecs.transforms[gIndexT];
             Mesh &groundMesh = engine.ecs.meshes[gIndexM];
-            AABB &playerAABB = computeWorldAABB(playerMesh, playerTransform);
-            AABB &groundAABB = computeWorldAABB(groundMesh, groundTransform);
+            AABB &groundAABB = engine.ecs.collisionBoxes[gIndexC];
             if (rectIntersects(playerAABB, groundAABB))
             {
                 ground.dead = true;

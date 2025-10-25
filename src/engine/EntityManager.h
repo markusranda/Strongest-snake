@@ -4,7 +4,10 @@
 #include <functional>
 #include <utility>
 #include "Transform.h"
+#include "AABB.h"
+#include "Collision.h"
 #include "Draworder.h"
+#include "Mesh.h"
 
 struct Entity
 {
@@ -16,8 +19,7 @@ struct Entity
     }
 };
 
-inline uint32_t
-entityIndex(Entity e)
+inline uint32_t entityIndex(Entity e)
 {
     return e.id & 0x00FFFFFF;
 }
@@ -71,15 +73,6 @@ struct Material
     ShaderType shaderType;
 };
 
-struct Mesh
-{
-    uint32_t vertexOffset;
-    uint32_t vertexCount;
-    char *name;
-
-    constexpr Mesh(uint32_t vOff = 0, uint32_t vCount = 0, char *name = "unnamed_mesh") : vertexOffset(vOff), vertexCount(vCount), name(name) {}
-};
-
 struct EntityManager
 {
     std::vector<uint8_t> generations;  // generation per slot
@@ -89,19 +82,23 @@ struct EntityManager
     std::vector<Transform> transforms;
     std::vector<Mesh> meshes;
     std::vector<Renderable> renderables;
-    std::vector<Material> materials;
     std::vector<Renderable> sortedRenderables;
+    std::vector<Material> materials;
+    std::vector<AABB> collisionBoxes;
 
     // --- Sparse ---
     std::vector<uint32_t> entityToTransform;
     std::vector<uint32_t> entityToMesh;
     std::vector<uint32_t> entityToRenderable;
     std::vector<uint32_t> entityToMaterial;
+    std::vector<uint32_t> entityToCollisionBox;
 
     std::vector<size_t> transformToEntity;
     std::vector<size_t> meshToEntity;
     std::vector<size_t> renderableToEntity;
     std::vector<size_t> materialToEntity;
+    std::vector<size_t> collisionBoxToEntity;
+
     const uint32_t RESIZE_INCREMENT = 2048;
 
     EntityManager()
@@ -134,10 +131,12 @@ struct EntityManager
         // ---- Add to stores ----
         Renderable renderable = {entity, 0.0f, 0, renderLayer};
         renderable.makeDrawKey(material.shaderType);
+        AABB aabb = computeWorldAABB(mesh, transform);
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
         addToStore<Mesh>(meshes, entityToMesh, meshToEntity, entity, mesh);
         addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
         addToStore<Material>(materials, entityToMaterial, materialToEntity, entity, material);
+        addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, aabb);
         sortedRenderables.push_back(renderable);
 
         return entity;
@@ -171,7 +170,6 @@ struct EntityManager
         uint32_t index = entityIndex(e);
         uint8_t gen = entityGen(e);
 
-        Logger::debug("Destroying entity: " + std::to_string(index));
         if (index >= generations.size())
             return;
 
@@ -190,6 +188,7 @@ struct EntityManager
         removeFromStore<Mesh>(meshes, entityToMesh, meshToEntity, e);
         removeFromStore<Renderable>(renderables, entityToRenderable, renderableToEntity, e);
         removeFromStore<Material>(materials, entityToMaterial, materialToEntity, e);
+        removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
 
         // --- Sort renderables ---
         {

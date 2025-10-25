@@ -1,17 +1,12 @@
 #pragma once
 #include "glm/vec2.hpp"
-#include "Engine/MeshRegistry.h"
+#include "MeshRegistry.h"
+#include "AABB.h"
 
 // PROFILING
 #include "tracy/Tracy.hpp"
 
-struct AABB
-{
-    glm::vec2 min; // bottom-left corner
-    glm::vec2 max; // top-right corner
-};
-
-AABB computeWorldAABB(const Mesh &mesh, const Transform &t)
+inline AABB computeWorldAABB(const Mesh &mesh, const Transform &t)
 {
     ZoneScoped;
     glm::vec2 min(FLT_MAX), max(-FLT_MAX);

@@ -1,5 +1,5 @@
 #pragma once
-#include "EntityManager.h"
+#include "Mesh.h"
 
 namespace MeshRegistry
 {
