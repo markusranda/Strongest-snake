@@ -43,6 +43,13 @@ struct Renderable
     uint64_t drawkey;
 };
 
+struct Material
+{
+    glm::vec4 color;
+    ShaderType shaderType;
+    RenderLayer renderLayer;
+};
+
 struct EntityManager
 {
     std::vector<uint8_t> generations;  // generation per slot
@@ -52,15 +59,19 @@ struct EntityManager
     std::vector<Transform> transforms;
     std::vector<Quad> quads;
     std::vector<Renderable> renderables;
+    std::vector<Material> materials;
     std::vector<Renderable> sortedRenderables;
 
     // --- Sparse ---
     std::vector<uint32_t> entityToTransform;
-    std::vector<size_t> transformToEntity;
     std::vector<uint32_t> entityToQuad;
-    std::vector<size_t> quadToEntity;
     std::vector<uint32_t> entityToRenderable;
+    std::vector<uint32_t> entityToMaterial;
+
+    std::vector<size_t> transformToEntity;
+    std::vector<size_t> quadToEntity;
     std::vector<size_t> renderableToEntity;
+    std::vector<size_t> materialToEntity;
     const uint32_t RESIZE_INCREMENT = 2048;
 
     EntityManager()
@@ -71,7 +82,7 @@ struct EntityManager
         renderables.reserve(RESIZE_INCREMENT);
     }
 
-    Entity createEntity(Transform transform, Quad quad)
+    Entity createEntity(Transform transform, Quad quad, Material material)
     {
         uint32_t index;
         if (!freeIndices.empty())
@@ -91,10 +102,11 @@ struct EntityManager
         Entity entity = Entity{(gen << 24) | index};
 
         // ---- Add to stores ----
-        Renderable renderable = {entity, makeDrawKey(quad.renderLayer, quad.shaderType, quad.z, quad.tiebreak)};
+        Renderable renderable = {entity, makeDrawKey(material.renderLayer, material.shaderType, quad.z, quad.tiebreak)};
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
         addToStore<Quad>(quads, entityToQuad, quadToEntity, entity, quad);
         addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
+        addToStore<Material>(materials, entityToMaterial, materialToEntity, entity, material);
         sortedRenderables.push_back(renderable);
 
         return entity;

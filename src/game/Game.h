@@ -87,8 +87,9 @@ struct Game
 
             // --- Background ---
             Transform backgroundTransform = Transform{glm::vec2{0, 0}, glm::vec2{window.width, window.height}};
-            Quad backgroundQuad = Quad{ShaderType::FlatColor, RenderLayer::Background, Colors::fromHex(Colors::SKY_BLUE, 1.0f), "background"};
-            background = {engine.ecs.createEntity(backgroundTransform, backgroundQuad)};
+            Quad backgroundQuad = Quad{"background"};
+            Material material = Material{Colors::fromHex(Colors::SKY_BLUE, 1.0f), ShaderType::FlatColor, RenderLayer::Background};
+            background = {engine.ecs.createEntity(backgroundTransform, backgroundQuad, material)};
 
             // ---- Player ----
             {
@@ -96,9 +97,9 @@ struct Game
                     glm::vec2{std::floor(columns / 2) * snakeSize, snakeSize},
                     glm::vec2{snakeSize, snakeSize},
                     "player"};
-                // TODO Implement triangle for player head
-                Quad quad = Quad{ShaderType::DirArrow, RenderLayer::World, Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), "player"};
-                Entity entity = engine.ecs.createEntity(transform, quad);
+                Quad quad = Quad{"player"};
+                Material material = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::DirArrow, RenderLayer::World};
+                Entity entity = engine.ecs.createEntity(transform, quad, material);
                 player.entities[0] = entity;
 
                 for (size_t i = 1; i < 4; i++)
@@ -107,8 +108,8 @@ struct Game
                     glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize},
                     glm::vec2{snakeSize, snakeSize},
                     "player"};
-                Quad quad = Quad{ShaderType::DirArrow, RenderLayer::World, Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), "player"};
-                auto entity = engine.ecs.createEntity(transform, quad);
+                    Quad quad = Quad{"player"};
+                    auto entity = engine.ecs.createEntity(transform, quad, material);
                 player.entities[i] = entity;
                 }
             }
@@ -116,14 +117,17 @@ struct Game
             camera = Camera{window.width, window.height};
 
             // --- Ground ----
+            {
+                Quad q = Quad{"ground"};
+                Material m = Material{Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), ShaderType::Border, RenderLayer::World};
             for (uint32_t y = 2; y < rows; y++)
             {
                 for (uint32_t x = 0; x < columns; x++)
                 {
                     Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
-                    Quad q = Quad{ShaderType::Border, RenderLayer::World, Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), "ground"};
-                    Entity entity = engine.ecs.createEntity(t, q);
+                        Entity entity = engine.ecs.createEntity(t, q, m);
                     grounds.insert_or_assign(entity, Ground{entity, false});
+                    }
                 }
             }
         }

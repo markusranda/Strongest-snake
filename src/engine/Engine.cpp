@@ -558,7 +558,8 @@ void Engine::draw(Camera &camera, float fps)
             uint32_t rEntity = entityIndex(renderable.entity);
             Quad &quad = ecs.quads[ecs.entityToQuad[rEntity]];
             Transform &transform = ecs.transforms[ecs.entityToTransform[entityIndex(renderable.entity)]];
-            bool newBatch = (quad.shaderType != currentShader) || (quad.renderLayer != currentLayer);
+            Material &material = ecs.materials[ecs.entityToMaterial[entityIndex(renderable.entity)]];
+            bool newBatch = (material.shaderType != currentShader) || (material.renderLayer != currentLayer);
 
             if (newBatch && !instances.empty())
             {
@@ -573,10 +574,10 @@ void Engine::draw(Camera &camera, float fps)
                                       instanceOffset);
                 instanceOffset = instances.size();
             }
-            InstanceData instance = {transform.model, quad.color};
+            InstanceData instance = {transform.model, material.color};
             instances.push_back(instance);
-            currentShader = quad.shaderType;
-            currentLayer = quad.renderLayer;
+            currentShader = material.shaderType;
+            currentLayer = material.renderLayer;
         }
     }
 
