@@ -15,7 +15,7 @@
           "type": "cppvsdbg",
           "request": "launch",
           "program": "${workspaceFolder}/build/rigmor/rigmor.exe",
-          "args": ["edit", "0", "ground_top"],
+          "args": ["delete", "0"],
           "cwd": "${workspaceFolder}",
           "console": "integratedTerminal",
           "preLaunchTask": "build-rigmor"

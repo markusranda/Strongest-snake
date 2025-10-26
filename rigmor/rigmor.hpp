@@ -262,6 +262,7 @@ void commandFind(const std::filesystem::path dbPath, const std::string idStr)
         if (region.id == id)
         {
             printRegion(regions[i]);
+            break;
         }
     }
 }
@@ -287,9 +288,9 @@ void commandEdit(const std::filesystem::path dbPath, const std::string idStr, co
         if (regions[i].id == id)
         {
             edited = true;
-
             std::strncpy(regions[i].name, name.c_str(), 32);
             regions[i].name[31] = '\0';
+            break;
         }
     }
 
@@ -302,6 +303,45 @@ void commandEdit(const std::filesystem::path dbPath, const std::string idStr, co
     else
     {
         std::cerr << "Failed to update: failed to find element with provided id\n";
+        return;
+    }
+}
+
+void commandDelete(std::filesystem::path dbPath, const std::string idStr)
+{
+    uint32_t id = tryParseUint32(idStr);
+    std::vector<char> byteBuffer;
+    fileToBuffer(dbPath, byteBuffer);
+    AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
+    size_t regionCount = byteBuffer.size() / sizeof(AtlasRegion);
+
+    bool deleted = false;
+    for (size_t i = 0; i < regionCount; ++i)
+    {
+        AtlasRegion region = regions[i];
+        if (regions[i].id == id)
+        {
+            deleted = true;
+            size_t bytesAfter = byteBuffer.size() - (i + 1) * sizeof(AtlasRegion);
+            std::memmove(
+                byteBuffer.data() + i * sizeof(AtlasRegion),
+                byteBuffer.data() + (i + 1) * sizeof(AtlasRegion),
+                bytesAfter);
+
+            byteBuffer.resize(byteBuffer.size() - sizeof(AtlasRegion));
+            break;
+        }
+    }
+
+    if (deleted)
+    {
+        std::ofstream out(dbPath, std::ios::trunc);
+        out.write(reinterpret_cast<char *>(regions), byteBuffer.size());
+        std::cout << "Delete was successful\n";
+    }
+    else
+    {
+        std::cerr << "Failed to delete: failed to find element with provided id\n";
         return;
     }
 }
@@ -351,7 +391,12 @@ int main(int argc, char *argv[])
         }
         else if (LaunchArg::Delete == firstArg)
         {
-            std::cout << "delete is not yet implemented\n";
+            if (argc < 3)
+            {
+                std::cerr << "Usage: rigmor delete <id>\n";
+                return 1;
+            }
+            commandDelete(dbPath, argv[2]);
         }
         else
         {
