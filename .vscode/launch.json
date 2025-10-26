@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+      {
+          "name": "Debug Strongest Snake",
+          "type": "cppvsdbg",
+          "request": "launch",
+          "program": "${workspaceFolder}/build/Debug/strongest_snake.exe",
+          "cwd": "${workspaceFolder}",
+          "console": "integratedTerminal",
+          "preLaunchTask": "build-strongest-snake"
+      },
+      {
+          "name": "Debug rigmor",
+          "type": "cppvsdbg",
+          "request": "launch",
+          "program": "${workspaceFolder}/build/rigmor/rigmor.exe",
+          "cwd": "${workspaceFolder}",
+          "console": "integratedTerminal",
+          "preLaunchTask": "build-rigmor"
+      }
+  ]
+}

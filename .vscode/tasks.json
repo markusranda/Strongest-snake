@@ -1,0 +1,19 @@
+{
+    "tasks": [
+        {
+            "label": "build-strongest-snake",
+            "type": "shell",
+            "command": "Clear-Host; cmake --build build --config Debug"
+        },
+        {
+            "label": "build-rigmor",
+            "type": "shell",
+            "command": ".\\rigmor\\build.ps1",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            } 
+        }
+    ],
+    "version": "2.0.0"
+}
