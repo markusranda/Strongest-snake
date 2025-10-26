@@ -266,6 +266,48 @@ void commandFind(const std::filesystem::path dbPath, const std::string idStr)
     }
 }
 
+void commandEdit(const std::filesystem::path dbPath, const std::string idStr, const std::string name)
+{
+    if (name.length() > 32)
+    {
+        std::cerr << "Can't have names longer than 32 characters\n";
+        return;
+    }
+
+    uint32_t id = tryParseUint32(idStr);
+    std::vector<char> byteBuffer;
+    fileToBuffer(dbPath, byteBuffer);
+    AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
+    size_t regionCount = byteBuffer.size() / sizeof(AtlasRegion);
+
+    bool edited = false;
+    for (size_t i = 0; i < regionCount; ++i)
+    {
+        AtlasRegion region = regions[i];
+        if (regions[i].id == id)
+        {
+            edited = true;
+
+            std::strncpy(regions[i].name, name.c_str(), 32);
+            regions[i].name[31] = '\0';
+        }
+    }
+
+    if (edited)
+    {
+        std::ofstream out(dbPath, std::ios::trunc);
+        out.write(reinterpret_cast<char *>(regions), byteBuffer.size());
+        std::cout << "Update was successful\n";
+    }
+    else
+    {
+        std::cerr << "Failed to update: failed to find element with provided id\n";
+        return;
+    }
+}
+
+// --- Entrypoint --------------------------------------------------------
+
 int main(int argc, char *argv[])
 {
     // TODO Deal with these hardcoded values laters
@@ -300,7 +342,12 @@ int main(int argc, char *argv[])
         }
         else if (LaunchArg::Edit == firstArg)
         {
-            std::cout << "edit is not yet implemented\n";
+            if (argc < 4)
+            {
+                std::cerr << "Usage: rigmor edit <id> <name>\n";
+                return 1;
+            }
+            commandEdit(dbPath, argv[2], argv[3]);
         }
         else if (LaunchArg::Delete == firstArg)
         {

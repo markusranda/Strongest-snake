@@ -15,7 +15,7 @@
           "type": "cppvsdbg",
           "request": "launch",
           "program": "${workspaceFolder}/build/rigmor/rigmor.exe",
-          "args": ["find", "0"],
+          "args": ["edit", "0", "ground_top"],
           "cwd": "${workspaceFolder}",
           "console": "integratedTerminal",
           "preLaunchTask": "build-rigmor"
