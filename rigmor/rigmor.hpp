@@ -90,6 +90,22 @@ void findAtlasRegions(stbi_uc *pixels, int &width, int &height, int &channels, s
     }
 }
 
+void fileToBuffer(const std::filesystem::path &filename, std::vector<char> &buffer)
+{
+    std::ifstream in(filename, std::ios::binary | std::ios::ate);
+    if (!in)
+    {
+        throw std::runtime_error("Failed to open file");
+    }
+    std::streamsize size = in.tellg();
+    in.seekg(0, std::ios::beg);
+    buffer.resize(size);
+    if (!in.read(buffer.data(), size))
+    {
+        throw std::runtime_error("Failed to read file");
+    }
+}
+
 void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRegion> &updatedRegions, const std::string_view pngPath)
 {
     // All binary writes use little-endian byte order.
@@ -112,18 +128,8 @@ void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRe
         std::ofstream(filename, std::ios::binary).close();
 
     // READ EVERYTHING TO A BUFFER
-    std::ifstream in(filename, std::ios::binary | std::ios::ate);
-    if (!in)
-    {
-        throw std::runtime_error("Failed to open file");
-    }
-    std::streamsize size = in.tellg();
-    in.seekg(0, std::ios::beg);
-    std::vector<char> buffer(size);
-    if (!in.read(buffer.data(), size))
-    {
-        throw std::runtime_error("Failed to read file");
-    }
+    std::vector<char> buffer;
+    fileToBuffer(filename, buffer);
 
     // DO MODIFICATIONS
     std::ofstream out(filename, std::ios::binary | std::ios::app);
@@ -185,6 +191,36 @@ void commandScan(const std::string_view pngPath)
     }
 }
 
+void commandList(const std::filesystem::path dbPath)
+{
+    std::vector<char> byteBuffer;
+    fileToBuffer(dbPath, byteBuffer);
+    AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
+    size_t regionCount = byteBuffer.size() / sizeof(AtlasRegion);
+
+    std::cout << std::left
+              << std::setw(4) << "Id"
+              << std::setw(32) << "Name"
+              << std::setw(4) << "x"
+              << std::setw(4) << "y"
+              << std::setw(6) << "Width"
+              << std::setw(6) << "Height"
+              << "\n";
+    std::cout << std::string(56, '-') << "\n";
+
+    for (size_t i = 0; i < regionCount; ++i)
+    {
+        std::cout << std::left
+                  << std::setw(4) << static_cast<uint32_t>(regions[i].id)
+                  << std::setw(32) << regions[i].name
+                  << std::setw(4) << regions[i].x
+                  << std::setw(4) << regions[i].y
+                  << std::setw(6) << static_cast<uint32_t>(regions[i].width)
+                  << std::setw(6) << static_cast<uint32_t>(regions[i].height)
+                  << "\n";
+    }
+}
+
 int main(int argc, char *argv[])
 {
     // TODO Deal with these hardcoded values laters
@@ -206,7 +242,7 @@ int main(int argc, char *argv[])
         }
         else if (LaunchArg::List == firstArg)
         {
-            std::cout << "list is not yet implemented\n";
+            commandList(dbPath);
         }
         else if (LaunchArg::Find == firstArg)
         {
