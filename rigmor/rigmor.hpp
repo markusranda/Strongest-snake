@@ -108,6 +108,8 @@ void fileToBuffer(const std::filesystem::path &filename, std::vector<char> &buff
 
 void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRegion> &updatedRegions, const std::string_view pngPath)
 {
+    // TODO Instead of just appending, sort all existing data by ID
+
     // All binary writes use little-endian byte order.
     // | Offset | Field     | Type       | Bytes | Description                           |
     // | -----: | --------- | ---------- | ----- | ------------------------------------- |
@@ -363,15 +365,15 @@ int main(int argc, char *argv[])
     try
     {
         char *firstArg = argv[1];
-        if (LaunchArg::Parse == firstArg)
+        if (LaunchArg::Parse == std::string_view(firstArg))
         {
             commandScan(pngPath);
         }
-        else if (LaunchArg::List == firstArg)
+        else if (LaunchArg::List == std::string_view(firstArg))
         {
             commandList(dbPath);
         }
-        else if (LaunchArg::Find == firstArg)
+        else if (LaunchArg::Find == std::string_view(firstArg))
         {
             if (argc < 3)
             {
@@ -380,7 +382,7 @@ int main(int argc, char *argv[])
             }
             commandFind(dbPath, argv[2]);
         }
-        else if (LaunchArg::Edit == firstArg)
+        else if (LaunchArg::Edit == std::string_view(firstArg))
         {
             if (argc < 4)
             {
@@ -389,7 +391,7 @@ int main(int argc, char *argv[])
             }
             commandEdit(dbPath, argv[2], argv[3]);
         }
-        else if (LaunchArg::Delete == firstArg)
+        else if (LaunchArg::Delete == std::string_view(firstArg))
         {
             if (argc < 3)
             {
