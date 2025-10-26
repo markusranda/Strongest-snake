@@ -165,6 +165,40 @@ void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRe
     }
 }
 
+uint32_t tryParseUint32(const std::string &s)
+{
+    try
+    {
+        size_t idx;
+        unsigned long val = std::stoul(s, &idx, 10); // base 10
+
+        if (idx != s.size())
+            throw std::invalid_argument("Extra characters found");
+
+        if (val > std::numeric_limits<uint32_t>::max())
+            throw std::out_of_range("Value exceeds uint32_t");
+
+        return static_cast<uint32_t>(val);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Error parsing '" << s << "': " << e.what() << '\n';
+        throw;
+    }
+}
+
+void printRegion(AtlasRegion &region)
+{
+    std::cout << std::left
+              << std::setw(4) << static_cast<uint32_t>(region.id)
+              << std::setw(32) << region.name
+              << std::setw(4) << region.x
+              << std::setw(4) << region.y
+              << std::setw(6) << static_cast<uint32_t>(region.width)
+              << std::setw(6) << static_cast<uint32_t>(region.height)
+              << "\n";
+}
+
 // --- Commands --------------------------------------------------------
 
 void commandScan(const std::string_view pngPath)
@@ -210,14 +244,25 @@ void commandList(const std::filesystem::path dbPath)
 
     for (size_t i = 0; i < regionCount; ++i)
     {
-        std::cout << std::left
-                  << std::setw(4) << static_cast<uint32_t>(regions[i].id)
-                  << std::setw(32) << regions[i].name
-                  << std::setw(4) << regions[i].x
-                  << std::setw(4) << regions[i].y
-                  << std::setw(6) << static_cast<uint32_t>(regions[i].width)
-                  << std::setw(6) << static_cast<uint32_t>(regions[i].height)
-                  << "\n";
+        printRegion(regions[i]);
+    }
+}
+
+void commandFind(const std::filesystem::path dbPath, const std::string idStr)
+{
+    uint32_t id = tryParseUint32(idStr);
+    std::vector<char> byteBuffer;
+    fileToBuffer(dbPath, byteBuffer);
+    AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
+    size_t regionCount = byteBuffer.size() / sizeof(AtlasRegion);
+
+    for (size_t i = 0; i < regionCount; ++i)
+    {
+        AtlasRegion region = regions[i];
+        if (region.id == id)
+        {
+            printRegion(regions[i]);
+        }
     }
 }
 
@@ -246,7 +291,12 @@ int main(int argc, char *argv[])
         }
         else if (LaunchArg::Find == firstArg)
         {
-            std::cout << "find is not yet implemented\n";
+            if (argc < 3)
+            {
+                std::cerr << "Usage: rigmor find <id>\n";
+                return 1;
+            }
+            commandFind(dbPath, argv[2]);
         }
         else if (LaunchArg::Edit == firstArg)
         {
