@@ -8,6 +8,28 @@ Just one binary file, a predictable layout, and a simple interface for pixel-pre
 
 ---
 
+## Commands
+
+### 1. **scan**
+
+Parses the entire png and updates the db
+
+### 2. **list**
+
+Lists all sprites from db
+
+### 3. **find**
+
+Finds specific sprite
+
+### 4. **edit**
+
+Edits specific sprite
+
+### 5. **delete**
+
+Deletes specific sprite
+
 ## 🧠 Concept
 
 Rigmor’s job is to **walk through a PNG atlas**, detect which _cells_ contain pixel data,  
@@ -108,7 +130,6 @@ rigmor edit 12 name cyberhead_run
 rigmor edit 12 move 480 420
 rigmor edit 12 resize 64 32
 rigmor delete 12
-rigmor export atlas.csv
 ```
 
 ```bash
