@@ -14,7 +14,21 @@
 // Author: Randa
 // ============================================================================
 
-// --- Datastructures --------------------------------------------------------
+// Rigdb schema
+// All binary writes use little-endian byte order.
+// | Offset | Field     | Type       | Bytes | Description                           |
+// | -----: | --------- | ---------- | ----- | ------------------------------------- |
+// |      0 | `id`      | `uint32`   | 4     | Unique identifier (never reused)      |
+// |      4 | `name`    | `char[32]` | 32    | Null-terminated or space-padded ASCII |
+// |     36 | `x`       | `uint16`   | 2     | Top-left X position (pixels)          |
+// |     38 | `y`       | `uint16`   | 2     | Top-left Y position (pixels)          |
+// |     40 | `width`   | `uint8`    | 1     | Width in pixels (≤255)                |
+// |     41 | `height`  | `uint8`    | 1     | Height in pixels (≤255)               |
+// |  42–43 | `padding` | `uint8[2]` | 2     | Reserved for flags or alignment       |
+
+// --------------------------------------------------------
+// Datastructures
+// --------------------------------------------------------
 
 struct AtlasRegion
 {
@@ -26,12 +40,14 @@ struct AtlasRegion
     uint8_t height;
     char padding[2];
 };
-static_assert(sizeof(AtlasRegion) == 44);
+constexpr size_t AtlasRegionSize = sizeof(AtlasRegion);
+static_assert(AtlasRegionSize == 44);
 
 using CellKey = uint32_t;
-CellKey createCellKey(uint16_t cellX, uint16_t cellY)
+CellKey createCellKey(uint16_t cellX, uint16_t cellY, uint16_t numCols)
 {
-    return (cellX << 16) | (cellY & 0xFFFF);
+    return cellY * numCols + cellX;
+    ;
 }
 uint16_t getX(CellKey cellKey)
 {
@@ -53,7 +69,9 @@ namespace LaunchArg
     constexpr std::string_view Delete = "delete"sv;
 }
 
-// --- Helper functions --------------------------------------------------------
+// --------------------------------------------------------
+// Helper functions
+// --------------------------------------------------------
 
 void findAtlasRegions(stbi_uc *pixels, int &width, int &height, int &channels, std::map<CellKey, AtlasRegion> &regions)
 {
@@ -72,9 +90,10 @@ void findAtlasRegions(stbi_uc *pixels, int &width, int &height, int &channels, s
             uint32_t pixel = byte / 4;
             uint16_t x = pixel % width; // column
             uint16_t y = pixel / width; // row
-            uint32_t cellX = x / 32;
-            uint32_t cellY = y / 32;
-            CellKey key = createCellKey(cellX, cellY);
+            uint32_t cellX = x / cellSize;
+            uint32_t cellY = y / cellSize;
+            uint32_t numCols = width / cellSize;
+            CellKey key = createCellKey(cellX, cellY, numCols);
             if (regions.find(key) == regions.end())
             {
                 AtlasRegion region{};
@@ -106,21 +125,52 @@ void fileToBuffer(const std::filesystem::path &filename, std::vector<char> &buff
     }
 }
 
+void radix_sort_blocks(std::vector<char> &buffer)
+{
+    if (buffer.size() % AtlasRegionSize != 0)
+        throw std::runtime_error("Invalid buffer size");
+
+    const size_t n = buffer.size() / AtlasRegionSize;
+    std::vector<char> temp(buffer.size());
+
+    std::vector<uint32_t> keys(n);
+    for (size_t i = 0; i < n; ++i)
+        std::memcpy(&keys[i], &buffer[i * AtlasRegionSize], 4);
+
+    constexpr int BITS_PER_PASS = 8;
+    constexpr int PASSES = 32 / BITS_PER_PASS;
+    constexpr int RADIX = 1 << BITS_PER_PASS;
+
+    std::vector<size_t> count(RADIX), prefix(RADIX);
+
+    for (int pass = 0; pass < PASSES; ++pass)
+    {
+        std::fill(count.begin(), count.end(), 0);
+
+        const int shift = pass * BITS_PER_PASS;
+        for (size_t i = 0; i < n; ++i)
+            ++count[(keys[i] >> shift) & (RADIX - 1)];
+
+        prefix[0] = 0;
+        for (int i = 1; i < RADIX; ++i)
+            prefix[i] = prefix[i - 1] + count[i - 1];
+
+        for (size_t i = 0; i < n; ++i)
+        {
+            const uint32_t k = (keys[i] >> shift) & (RADIX - 1);
+            const size_t pos = prefix[k]++;
+            std::memcpy(&temp[pos * AtlasRegionSize], &buffer[i * AtlasRegionSize], AtlasRegionSize);
+        }
+
+        buffer.swap(temp);
+
+        for (size_t i = 0; i < n; ++i)
+            std::memcpy(&keys[i], &buffer[i * AtlasRegionSize], 4);
+    }
+}
+
 void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRegion> &updatedRegions, const std::string_view pngPath)
 {
-    // TODO Instead of just appending, sort all existing data by ID
-
-    // All binary writes use little-endian byte order.
-    // | Offset | Field     | Type       | Bytes | Description                           |
-    // | -----: | --------- | ---------- | ----- | ------------------------------------- |
-    // |      0 | `id`      | `uint32`   | 4     | Unique identifier (never reused)      |
-    // |      4 | `name`    | `char[32]` | 32    | Null-terminated or space-padded ASCII |
-    // |     36 | `x`       | `uint16`   | 2     | Top-left X position (pixels)          |
-    // |     38 | `y`       | `uint16`   | 2     | Top-left Y position (pixels)          |
-    // |     40 | `width`   | `uint8`    | 1     | Width in pixels (≤255)                |
-    // |     41 | `height`  | `uint8`    | 1     | Height in pixels (≤255)               |
-    // |  42–43 | `padding` | `uint8[2]` | 2     | Reserved for flags or alignment       |
-
     std::filesystem::path p = pngPath;
     std::filesystem::path filename = p.parent_path() / (p.stem().string() + ".rigdb");
     const size_t ROW_LENGTH = 44;
@@ -134,12 +184,6 @@ void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRe
     fileToBuffer(filename, buffer);
 
     // DO MODIFICATIONS
-    std::ofstream out(filename, std::ios::binary | std::ios::app);
-    if (!out)
-    {
-        throw std::runtime_error("Failed to write file");
-    }
-
     for (auto &[keyA, region] : regions)
     {
         // Find out if this region already exists in the buffer
@@ -161,10 +205,20 @@ void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRe
         {
             // If it doesn't exist, we can safely append to the end of buffer
             const char *regionBytes = reinterpret_cast<const char *>(&region);
-            out.write(regionBytes, sizeof(AtlasRegion));
+            buffer.insert(buffer.end(), regionBytes, regionBytes + ROW_LENGTH);
             updatedRegions.push_back(region);
         }
     }
+
+    radix_sort_blocks(buffer);
+    std::ofstream out(filename, std::ios::binary | std::ios::trunc);
+    if (!out)
+    {
+        throw std::runtime_error("Failed to write file");
+    }
+    out.write(buffer.data(), buffer.size());
+    if (!out)
+        throw std::runtime_error("Failed to write entire buffer");
 }
 
 uint32_t tryParseUint32(const std::string &s)
@@ -189,10 +243,23 @@ uint32_t tryParseUint32(const std::string &s)
     }
 }
 
+void printHeader()
+{
+    std::cout << std::left
+              << std::setw(10) << "Id"
+              << std::setw(32) << "Name"
+              << std::setw(4) << "x"
+              << std::setw(4) << "y"
+              << std::setw(6) << "Width"
+              << std::setw(6) << "Height"
+              << "\n";
+    std::cout << std::string(60, '-') << "\n";
+}
+
 void printRegion(AtlasRegion &region)
 {
     std::cout << std::left
-              << std::setw(4) << static_cast<uint32_t>(region.id)
+              << std::setw(10) << static_cast<uint32_t>(region.id)
               << std::setw(32) << region.name
               << std::setw(4) << region.x
               << std::setw(4) << region.y
@@ -201,7 +268,9 @@ void printRegion(AtlasRegion &region)
               << "\n";
 }
 
-// --- Commands --------------------------------------------------------
+// --------------------------------------------------------
+// Commands
+// --------------------------------------------------------
 
 void commandScan(const std::string_view pngPath)
 {
@@ -234,16 +303,7 @@ void commandList(const std::filesystem::path dbPath)
     AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
     size_t regionCount = byteBuffer.size() / sizeof(AtlasRegion);
 
-    std::cout << std::left
-              << std::setw(4) << "Id"
-              << std::setw(32) << "Name"
-              << std::setw(4) << "x"
-              << std::setw(4) << "y"
-              << std::setw(6) << "Width"
-              << std::setw(6) << "Height"
-              << "\n";
-    std::cout << std::string(56, '-') << "\n";
-
+    printHeader();
     for (size_t i = 0; i < regionCount; ++i)
     {
         printRegion(regions[i]);
@@ -348,7 +408,9 @@ void commandDelete(std::filesystem::path dbPath, const std::string idStr)
     }
 }
 
-// --- Entrypoint --------------------------------------------------------
+// --------------------------------------------------------
+// Entrypoint
+// --------------------------------------------------------
 
 int main(int argc, char *argv[])
 {
