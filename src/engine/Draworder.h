@@ -1,19 +1,19 @@
 #pragma once
 #include "Shadertype.h"
 #include "RenderLayer.h"
+#include "AtlasIndex.h"
 
 struct DrawCmd
 {
     ShaderType shaderType;
     RenderLayer renderLayer;
-
     uint32_t vertexCount;   // usually 6 for quads
     uint32_t firstVertex;   // offset in vertex buffer
     uint32_t instanceCount; // how many instances to draw
     uint32_t firstInstance; // instance buffer offset (in instances, not bytes)
-
-    float z; // used only for sorting
+    float z;                // used only for sorting
     uint8_t tiebreak;
+    AtlasIndex atlasIndex;
 
     DrawCmd(RenderLayer layer,
             ShaderType shader,
@@ -22,7 +22,8 @@ struct DrawCmd
             uint32_t vertexCount,
             uint32_t firstVertex,
             uint32_t instanceCount,
-            uint32_t firstInstance)
+            uint32_t firstInstance,
+            AtlasIndex atlasIndex)
         : shaderType(shader),
           renderLayer(layer),
           vertexCount(vertexCount),
@@ -30,7 +31,8 @@ struct DrawCmd
           instanceCount(instanceCount),
           firstInstance(firstInstance),
           z(z),
-          tiebreak(tie)
+          tiebreak(tie),
+          atlasIndex(atlasIndex)
     {
     }
 };

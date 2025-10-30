@@ -6,7 +6,7 @@ enum class ShaderType : uint16_t
     FlatColor,
     SnakeSkin,
     Border,
-    DirArrow,
     Font,
+    Texture,
     COUNT
 };

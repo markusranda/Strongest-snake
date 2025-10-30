@@ -1,13 +1,14 @@
 #pragma once
 #include "vector"
-#include <cstdint>
-#include <functional>
-#include <utility>
 #include "Transform.h"
 #include "AABB.h"
 #include "Collision.h"
 #include "Draworder.h"
 #include "Mesh.h"
+#include "TextureComponent.h"
+#include <cstdint>
+#include <functional>
+#include <utility>
 
 struct Entity
 {
@@ -85,6 +86,7 @@ struct EntityManager
     std::vector<Renderable> sortedRenderables;
     std::vector<Material> materials;
     std::vector<AABB> collisionBoxes;
+    std::vector<glm::vec4> uvTransforms;
 
     // --- Sparse ---
     std::vector<uint32_t> entityToTransform;
@@ -92,12 +94,14 @@ struct EntityManager
     std::vector<uint32_t> entityToRenderable;
     std::vector<uint32_t> entityToMaterial;
     std::vector<uint32_t> entityToCollisionBox;
+    std::vector<uint32_t> entityToUvTransforms;
 
     std::vector<size_t> transformToEntity;
     std::vector<size_t> meshToEntity;
     std::vector<size_t> renderableToEntity;
     std::vector<size_t> materialToEntity;
     std::vector<size_t> collisionBoxToEntity;
+    std::vector<size_t> uvTransformsToEntity;
 
     const uint32_t RESIZE_INCREMENT = 2048;
 
@@ -109,7 +113,12 @@ struct EntityManager
         renderables.reserve(RESIZE_INCREMENT);
     }
 
-    Entity createEntity(Transform transform, Mesh mesh, Material material, RenderLayer renderLayer)
+    Entity createEntity(
+        Transform transform,
+        Mesh mesh,
+        Material material,
+        RenderLayer renderLayer,
+        glm::vec4 uvTransform = glm::vec4{})
     {
         uint32_t index;
         if (!freeIndices.empty())
@@ -137,6 +146,8 @@ struct EntityManager
         addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
         addToStore<Material>(materials, entityToMaterial, materialToEntity, entity, material);
         addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, aabb);
+        addToStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, entity, uvTransform);
+
         sortedRenderables.push_back(renderable);
 
         return entity;
@@ -188,7 +199,9 @@ struct EntityManager
         removeFromStore<Mesh>(meshes, entityToMesh, meshToEntity, e);
         removeFromStore<Renderable>(renderables, entityToRenderable, renderableToEntity, e);
         removeFromStore<Material>(materials, entityToMaterial, materialToEntity, e);
-        removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
+        if (entityToCollisionBox[entityIndex(e)])
+            removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
+        removeFromStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, e);
 
         // --- Sort renderables ---
         {

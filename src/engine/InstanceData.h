@@ -1,4 +1,5 @@
 #pragma once
+#include "Atlas.h"
 #include "VertexBinding.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -8,8 +9,10 @@
 #include <cctype>
 #include <stdexcept>
 
-constexpr glm::vec2 ATLAS_CELL_SIZE = glm::vec2(16.0f, 32.0f);
-constexpr glm::vec2 ATLAS_TEXTURE_SIZE = glm::vec2(1456.0f, 32.0f); // Update this when expanding fonts.png
+constexpr glm::vec2 ATLAS_CELL_SIZE = glm::vec2(32.0f, 32.0f);
+constexpr glm::vec2 FONT_ATLAS_CELL_SIZE = glm::vec2(16.0f, 32.0f);
+constexpr glm::vec2 FONT_ATLAS_SIZE = glm::vec2(1456.0f, 32.0f); // Update this when expanding fonts.png
+constexpr glm::vec2 ATLAS_SIZE = glm::vec2(4096.0f, 4096.0f);    // Update this when expanding atlas.png
 constexpr float CLIP_SPACE_CELL_SIZE = 1.0f / 16;
 
 struct InstanceData
@@ -79,11 +82,11 @@ inline static std::vector<InstanceData> BuildTextInstances(
 
         // Each glyph cell is 16x32, horizontally aligned in the first row
         glm::vec2 uvOffset = glm::vec2(
-            (glyphIndex * ATLAS_CELL_SIZE.x) / ATLAS_TEXTURE_SIZE.x,
+            (glyphIndex * FONT_ATLAS_CELL_SIZE.x) / FONT_ATLAS_SIZE.x,
             0.0f);
         glm::vec2 uvScale = glm::vec2(
-            ATLAS_CELL_SIZE.x / ATLAS_TEXTURE_SIZE.x,
-            ATLAS_CELL_SIZE.y / ATLAS_TEXTURE_SIZE.y);
+            FONT_ATLAS_CELL_SIZE.x / FONT_ATLAS_SIZE.x,
+            FONT_ATLAS_CELL_SIZE.y / FONT_ATLAS_SIZE.y);
 
         InstanceData instance{};
         glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(cursor, 0.0f));

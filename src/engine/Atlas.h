@@ -3,6 +3,11 @@
 
 struct AtlasRegion
 {
-    glm::vec2 position;
-    glm::vec2 size;
+    uint32_t id;
+    char name[32];
+    uint16_t x;
+    uint16_t y;
+    uint8_t width;
+    uint8_t height;
+    char padding[2];
 };

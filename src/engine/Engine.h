@@ -21,6 +21,7 @@
 #include "Debug.h"
 #include "Pipelines.h"
 #include "Draworder.h"
+#include "Atlas.h"
 
 #include <iostream>
 #include <fstream>
@@ -117,18 +118,21 @@ public:
     // Texture
     VkDescriptorSetLayout textureSetLayout;
     Texture fontTexture;
+    Texture atlasTexture;
+    std::unordered_map<std::string, AtlasRegion> atlasRegions;
     VkDescriptorPool descriptorPool;
-    VkDescriptorSet descriptorSet;
+    std::array<VkDescriptorSet, 2> descriptorSets;
 
     Engine(uint32_t width, uint32_t height, Window &window);
 
     // Init
-    void initVulkan(std::string texturePath);
+    void init(std::string atlasPath, std::string fontPath, std::string atlasDataPath);
     void createLogicalDevice();
     void createSwapChain();
-    void createTexture(std::string texturePath);
+    void createTextures(std::string atlasPath, std::string fontPath);
+    void createAtlasData(std::string atlasDataPath);
     void createDescriptorPool();
-    void createDescriptorSet();
+    void createDescriptorSets();
     void createRenderPass();
     void createGraphicsPipeline();
     void createFramebuffers();

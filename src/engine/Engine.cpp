@@ -3,12 +3,9 @@
 // PROFILING
 #include "tracy/Tracy.hpp"
 
-// TODO LIST:
-// - Make sure that this engine supports resize of window
-
 Engine::Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
-void Engine::initVulkan(std::string texturePath)
+void Engine::init(std::string atlasPath, std::string fontPath, std::string atlasDataPath)
 {
     try
     {
@@ -19,12 +16,13 @@ void Engine::initVulkan(std::string texturePath)
         pickPhysicalDevice();
         createLogicalDevice();
         createCommandPool();
+        createTextures(atlasPath, fontPath);
         createSwapChain();
         createRenderPass();
         createGraphicsPipeline();
-        createTexture(texturePath);
+        createAtlasData(atlasDataPath);
         createDescriptorPool();
-        createDescriptorSet();
+        createDescriptorSets();
         createStaticVertexBuffer();
         createFramebuffers();
         createImagesInFlight();
@@ -38,7 +36,7 @@ void Engine::initVulkan(std::string texturePath)
     }
     catch (...)
     {
-        throw std::runtime_error(std::string("Unknown exception thrown in Engine::initVulkan: "));
+        throw std::runtime_error(std::string("Unknown exception thrown in Engine::init: "));
     }
 }
 
@@ -177,15 +175,11 @@ void Engine::createLogicalDevice()
     }
 
     VkPhysicalDeviceFeatures deviceFeatures{};
-
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
-
     createInfo.pEnabledFeatures = &deviceFeatures;
-
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
@@ -208,57 +202,94 @@ void Engine::createLogicalDevice()
     vkGetDeviceQueue(device, queueFamilies.presentFamily.value(), 0, &presentQueue);
 }
 
-void Engine::createTexture(std::string texturePath)
+void Engine::createTextures(std::string atlasPath, std::string fontPath)
 {
-    fontTexture = LoadTexture(texturePath,
+    atlasTexture = LoadTexture(atlasPath,
+                               device,
+                               physicalDevice,
+                               commandPool,
+                               graphicsQueue);
+
+    fontTexture = LoadTexture(fontPath,
                               device,
                               physicalDevice,
                               commandPool,
                               graphicsQueue);
 }
 
+void Engine::createAtlasData(std::string atlasDataPath)
+{
+    std::ifstream in(atlasDataPath, std::ios::binary);
+    if (!in)
+    {
+        throw std::runtime_error("Failed to open file");
+    }
+    char buffer[sizeof(AtlasRegion)];
+    while (in.read(buffer, sizeof(buffer)))
+    {
+        AtlasRegion region = reinterpret_cast<AtlasRegion &>(buffer);
+        atlasRegions[region.name] = region;
+    }
+}
+
 void Engine::createDescriptorPool()
 {
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSize.descriptorCount = 1;
+    poolSize.descriptorCount = 2;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = 1;
+    poolInfo.maxSets = 2;
 
     if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
         throw std::runtime_error("failed to create descriptor pool!");
 }
 
-void Engine::createDescriptorSet()
+void Engine::createDescriptorSets()
 {
+    std::array<VkDescriptorSetLayout, 2> layouts = {textureSetLayout, textureSetLayout};
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = descriptorPool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &textureSetLayout;
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
+    allocInfo.pSetLayouts = layouts.data();
 
-    if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS)
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS)
         throw std::runtime_error("failed to allocate descriptor set!");
 
-    VkDescriptorImageInfo imageInfo{};
-    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    imageInfo.imageView = fontTexture.view;
-    imageInfo.sampler = fontTexture.sampler;
+    VkDescriptorImageInfo fontInfo{};
+    fontInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    fontInfo.imageView = fontTexture.view;
+    fontInfo.sampler = fontTexture.sampler;
 
-    VkWriteDescriptorSet descriptorWrite{};
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = descriptorSet;
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = 0;
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.pImageInfo = &imageInfo;
+    VkDescriptorImageInfo atlasInfo{};
+    atlasInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    atlasInfo.imageView = atlasTexture.view;
+    atlasInfo.sampler = atlasTexture.sampler;
 
-    vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+    std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = descriptorSets[(size_t)AtlasIndex::Sprite];
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pImageInfo = &atlasInfo;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = descriptorSets[(size_t)AtlasIndex::Font];
+    descriptorWrites[1].dstBinding = 0;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pImageInfo = &fontInfo;
+
+    vkUpdateDescriptorSets(device,
+                           static_cast<uint32_t>(descriptorWrites.size()),
+                           descriptorWrites.data(),
+                           0, nullptr);
 }
 
 void Engine::createRenderPass()
@@ -561,8 +592,10 @@ void Engine::draw(Camera &camera, float fps)
         {
             uint32_t rEntity = entityIndex(renderable.entity);
             Mesh &mesh = ecs.meshes[ecs.entityToMesh[rEntity]];
-            Transform &transform = ecs.transforms[ecs.entityToTransform[entityIndex(renderable.entity)]];
-            Material &material = ecs.materials[ecs.entityToMaterial[entityIndex(renderable.entity)]];
+            Transform &transform = ecs.transforms[ecs.entityToTransform[rEntity]];
+            Material &material = ecs.materials[ecs.entityToMaterial[rEntity]];
+            glm::vec4 &uvTransform = ecs.uvTransforms[ecs.entityToUvTransforms[rEntity]];
+
             bool newBatch = (material.shaderType != currentShader) || (renderable.renderLayer != currentLayer) || (mesh.vertexOffset != currentVertexOffset) || (mesh.vertexCount != currentVertexCount);
 
             if (newBatch && !instances.empty())
@@ -577,11 +610,13 @@ void Engine::draw(Camera &camera, float fps)
                     currentVertexOffset,
                     instanceCount,
                     instanceOffset,
+                    AtlasIndex::Sprite,
                 };
                 drawCmds.push_back(drawCmd);
                 instanceOffset = instances.size();
             }
-            InstanceData instance = {transform.model, material.color};
+
+            InstanceData instance = {transform.model, material.color, uvTransform};
             instances.push_back(instance);
             currentShader = material.shaderType;
             currentLayer = renderable.renderLayer;
@@ -607,7 +642,8 @@ void Engine::draw(Camera &camera, float fps)
             0.0f, 0,
             6, 0,
             static_cast<uint32_t>(textInstances.size()),
-            textOffset);
+            textOffset,
+            AtlasIndex::Font);
         drawCmds.emplace_back(dc);
     }
 
@@ -624,7 +660,8 @@ void Engine::draw(Camera &camera, float fps)
                               currentVertexCount,
                               currentVertexOffset,
                               instanceCount,
-                              instanceOffset);
+                              instanceOffset,
+                              AtlasIndex::Sprite);
     }
 
     // Step 3: Upload once, then draw all
@@ -728,18 +765,18 @@ void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
         assert(dc.instanceCount > 0 && "DrawCmd has zero instanceCount");
         assert(dc.firstVertex + dc.vertexCount <= vertexCapacity &&
                "DrawCmd vertex range exceeds vertex buffer capacity!");
+        assert(descriptorSets[(size_t)dc.atlasIndex] != VK_NULL_HANDLE && "Descriptor set missing!");
 
         const Pipeline &pipeline = pipelines[(size_t)dc.shaderType];
-
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
         vkCmdBindDescriptorSets(cmd,
                                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 pipeline.layout,
                                 0,
-                                1, &descriptorSet,
-                                0, nullptr);
-
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-
+                                1,
+                                &descriptorSets[(size_t)dc.atlasIndex],
+                                0,
+                                nullptr);
         vkCmdPushConstants(cmd,
                            pipeline.layout,
                            VK_SHADER_STAGE_VERTEX_BIT,
@@ -748,8 +785,9 @@ void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
                            &viewProj);
 
         // Bind vertex + instance buffer
+        size_t instanceSize = sizeof(InstanceData);
         VkBuffer vertexBuffers[] = {vertexBuffer, instanceBuffer};
-        VkDeviceSize offsets[] = {0, currentFrame * maxIntancesPerFrame * sizeof(InstanceData)};
+        VkDeviceSize offsets[] = {0, currentFrame * maxIntancesPerFrame * instanceSize};
         vkCmdBindVertexBuffers(cmd, 0, 2, vertexBuffers, offsets);
 
         // Issue draw
