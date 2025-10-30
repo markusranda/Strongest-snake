@@ -11,3 +11,18 @@ struct AtlasRegion
     uint8_t height;
     char padding[2];
 };
+
+constexpr glm::vec2 ATLAS_CELL_SIZE = glm::vec2(32.0f, 32.0f);
+constexpr glm::vec2 FONT_ATLAS_CELL_SIZE = glm::vec2(16.0f, 32.0f);
+constexpr glm::vec2 FONT_ATLAS_SIZE = glm::vec2(1456.0f, 32.0f); // Update this when expanding fonts.png
+constexpr glm::vec2 ATLAS_SIZE = glm::vec2(4096.0f, 4096.0f);    // Update this when expanding atlas.png
+
+inline glm::vec4 getUvTransform(AtlasRegion &region)
+{
+    return glm::vec4{
+        region.x * ATLAS_CELL_SIZE.x / ATLAS_SIZE.x,
+        region.y * ATLAS_CELL_SIZE.y / ATLAS_SIZE.y,
+        ATLAS_CELL_SIZE.x / ATLAS_SIZE.x,
+        ATLAS_CELL_SIZE.y / ATLAS_SIZE.y,
+    };
+}

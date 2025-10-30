@@ -97,16 +97,21 @@ struct Game
             // ---- Player ----
             {
                 {
-                    Material m = Material{Colors::fromHex(Colors::STRAWBERRY_RED, 1.0f), ShaderType::FlatColor};
+                    Material m = Material{Colors::fromHex(Colors::STRAWBERRY_RED, 1.0f), ShaderType::Texture};
                     Transform t = Transform{glm::vec2{std::floor(columns / 2) * snakeSize, snakeSize}, glm::vec2{snakeSize, snakeSize}, "player"};
-                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World);
+                    AtlasRegion region = engine.atlasRegions["drill_head"];
+                    glm::vec4 uvTransform = getUvTransform(region);
+
+                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, uvTransform);
                 }
 
+                AtlasRegion region = engine.atlasRegions["snake_skin"];
+                glm::vec4 uvTransform = getUvTransform(region);
                 for (size_t i = 1; i < 4; i++)
                 {
-                    Material m = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::FlatColor};
+                    Material m = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::Texture};
                     Transform t = Transform{glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize}, glm::vec2{snakeSize, snakeSize}, "player"};
-                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World);
+                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, uvTransform);
                     player.entities[i] = entity;
                 }
             }
@@ -118,9 +123,9 @@ struct Game
                 Material m = Material{Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), ShaderType::Texture};
                 for (uint32_t y = 2; y < rows; y++)
                 {
-                    AtlasRegion region;
                     for (uint32_t x = 0; x < columns; x++)
                     {
+                        AtlasRegion region;
                         if (y == 2)
                         {
                             region = engine.atlasRegions["ground_top"];
@@ -131,12 +136,7 @@ struct Game
                         }
 
                         Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
-                        glm::vec4 uvTransform = {
-                            region.x * ATLAS_CELL_SIZE.x / ATLAS_SIZE.x,
-                            region.y * ATLAS_CELL_SIZE.y / ATLAS_SIZE.y,
-                            ATLAS_CELL_SIZE.x / ATLAS_SIZE.x,
-                            ATLAS_CELL_SIZE.y / ATLAS_SIZE.y,
-                        };
+                        glm::vec4 uvTransform = getUvTransform(region);
 
                         Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, uvTransform);
                         grounds.insert_or_assign(entity, Ground{entity, false});

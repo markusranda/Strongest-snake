@@ -7,7 +7,6 @@ std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipel
     pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_flat.spv", renderPass, textureSetLayout);
     pipelines[static_cast<size_t>(ShaderType::Texture)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_texture.spv", renderPass, textureSetLayout);
     pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_font.spv", "shaders/frag_font.spv", renderPass, textureSetLayout);
-    pipelines[static_cast<size_t>(ShaderType::SnakeSkin)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/snakeskin.spv", renderPass, textureSetLayout);
     pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/border.spv", renderPass, textureSetLayout);
 
     return pipelines;

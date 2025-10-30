@@ -9,12 +9,6 @@
 #include <cctype>
 #include <stdexcept>
 
-constexpr glm::vec2 ATLAS_CELL_SIZE = glm::vec2(32.0f, 32.0f);
-constexpr glm::vec2 FONT_ATLAS_CELL_SIZE = glm::vec2(16.0f, 32.0f);
-constexpr glm::vec2 FONT_ATLAS_SIZE = glm::vec2(1456.0f, 32.0f); // Update this when expanding fonts.png
-constexpr glm::vec2 ATLAS_SIZE = glm::vec2(4096.0f, 4096.0f);    // Update this when expanding atlas.png
-constexpr float CLIP_SPACE_CELL_SIZE = 1.0f / 16;
-
 struct InstanceData
 {
     alignas(16) glm::mat4 model;
@@ -67,6 +61,7 @@ inline static std::vector<InstanceData> BuildTextInstances(
     const std::string &text,
     glm::vec2 startPos)
 {
+    constexpr float CLIP_SPACE_CELL_SIZE = 1.0f / 16;
     std::vector<InstanceData> instances;
     glm::vec2 cursor = startPos;
 
