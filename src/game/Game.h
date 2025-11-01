@@ -30,7 +30,8 @@
 struct Ground
 {
     Entity entity;
-    uint32_t health = 100;
+    float health = 100;
+    float maxHealth = 100;
     bool dead = false;
     bool dirty = false;
 };
@@ -140,7 +141,7 @@ struct Game
 
             // --- Ground ----
             {
-                Material m = Material{Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
+                Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
                 for (uint32_t y = 8; y < rows; y++)
                 {
                     for (uint32_t x = 0; x < columns; x++)
@@ -227,7 +228,8 @@ struct Game
         {
             if (ground.dirty)
             {
-                // TODO Add update to some kind of material that indicates damage to block
+                Material &m = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(ground.entity)]];
+                m.color.a = ground.health / ground.maxHealth;
                 if (ground.health <= 0)
                 {
                     ground.dead = true;
@@ -339,7 +341,7 @@ struct Game
             playerVelocity *= 0.95;
 
             // optional: accumulate “dig damage” to block
-            float damage = penetration * 1.0f * dt;
+            float damage = 250.0f * dt;
             g.health -= damage;
             g.dirty = true;
         }
