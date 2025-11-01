@@ -8,17 +8,20 @@
 #include "engine/Collision.h"
 #include "engine/TextureComponent.h"
 #include "Colors.h"
-#include <GLFW/glfw3.h>
-#include <unordered_map>
-#include <deque>
-#include <filesystem>
-#include <cstdlib>
 #include "engine/Transform.h"
 #include "SnakeMath.h"
+
+#define MINIAUDIO_IMPLEMENTATION
+#include "../libs/miniaudio.h"
+
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <glm/gtx/rotate_vector.hpp>
+#include <GLFW/glfw3.h>
+#include <unordered_map>
+#include <filesystem>
+#include <cstdlib>
 #include <iostream>
 
 // PROFILING
@@ -27,8 +30,11 @@
 struct Ground
 {
     Entity entity;
-    bool dead;
+    uint32_t health = 100;
+    bool dead = false;
+    bool dirty = false;
 };
+
 struct Player
 {
     std::array<Entity, 4> entities;
@@ -62,16 +68,25 @@ struct Game
     const uint32_t groundSize = 32;
 
     // -- Player ---
-    const float thrustPower = 900.0f; // pixels per second squared
-    const float friction = 6.0f;      // friction coefficient
+    const float thrustPower = 800.0f; // pixels per second squared
+    const float friction = 4.0f;      // friction coefficient
     const uint32_t snakeSize = 32;
 
     glm::vec2 playerVelocity = {0.0f, 0.0f};
-    float rotationSpeed = 5.0f; // tweak this
+    float rotationSpeed = 5.0f;       // tweak this
+    float playerMaxVelocity = 200.0f; // tweak this
 
     // Rotation
     float rotationRadius = 75.0f;       // Increase to stop earlier
     float maxDistance = rotationRadius; // Increase to stop earlier
+
+    // Engine revs
+    float lowRev = 0.75;
+    float highRev = 1.25;
+
+    // Audio
+    ma_engine audioEngine;
+    ma_sound engineIdleAudio;
 
     Game(Window &w)
         : window(w),
@@ -86,6 +101,11 @@ struct Game
         {
             Logger::info(std::filesystem::current_path().string());
             engine.init("assets/atlas.png", "assets/fonts.png", "assets/atlas.rigdb");
+            ma_result result = ma_engine_init(NULL, &audioEngine);
+            if (result != MA_SUCCESS)
+            {
+                throw std::runtime_error("Failed to start audio engine");
+            }
 
             // --- Background ---
             {
@@ -139,10 +159,16 @@ struct Game
                         glm::vec4 uvTransform = getUvTransform(region);
 
                         Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform, true);
-                        grounds.insert_or_assign(entity, Ground{entity, false});
+                        grounds.insert_or_assign(entity, Ground{entity, 100});
                     }
                 }
             }
+
+            // --- AUDIO ---
+            ma_engine_set_volume(&audioEngine, 0.025);
+            ma_sound_init_from_file(&audioEngine, "assets/engine_idle.wav", 0, NULL, NULL, &engineIdleAudio);
+            ma_sound_set_looping(&engineIdleAudio, MA_TRUE);
+            ma_sound_start(&engineIdleAudio);
         }
         catch (const std::exception &e)
         {
@@ -175,6 +201,8 @@ struct Game
 
             updateGame(delta);
 
+            updateEngineRevs();
+
             updateCamera();
 
             updateLifecycle();
@@ -185,6 +213,9 @@ struct Game
 
             updateFPSCounter(delta);
         }
+
+        ma_sound_uninit(&engineIdleAudio);
+        ma_engine_uninit(&audioEngine);
     }
 
     // --- Game logic ---
@@ -194,9 +225,20 @@ struct Game
         std::vector<Entity> deadGrounds;
         for (auto &[entity, ground] : grounds)
         {
-            if (ground.dead)
+            if (ground.dirty)
             {
-                deadGrounds.push_back(entity);
+                // TODO Add update to some kind of material that indicates damage to block
+                if (ground.health <= 0)
+                {
+                    ground.dead = true;
+                }
+
+                if (ground.dead)
+                {
+                    deadGrounds.push_back(entity);
+                }
+
+                ground.dirty = false;
             }
         }
 
@@ -239,61 +281,95 @@ struct Game
             rotateHeadLeft(dt);
         else if (glfwGetKey(handle, GLFW_KEY_D) == GLFW_PRESS)
             rotateHeadRight(dt);
-        if (glfwGetKey(handle, GLFW_KEY_W) == GLFW_PRESS)
-            moveForward(dt);
 
-        checkCollision();
+        bool forward = glfwGetKey(handle, GLFW_KEY_W) == GLFW_PRESS;
+        updateMovement(dt, forward);
     }
 
-    void checkCollision()
+    void updateEngineRevs()
     {
-        ZoneScoped; // PROFILER
-        uint32_t pEntity = entityIndex(player.entities.front());
-        uint32_t tIndex = engine.ecs.entityToTransform[pEntity];
-        uint32_t mIndex = engine.ecs.entityToMesh[pEntity];
-        Transform &playerTransform = engine.ecs.transforms[tIndex];
-        Mesh &playerMesh = engine.ecs.meshes[mIndex];
-        AABB &playerAABB = computeWorldAABB(playerMesh, playerTransform);
-        uint32_t &playerAABBId = engine.ecs.entityToCollisionBox[pEntity];
-        engine.ecs.collisionBoxes[playerAABBId] = playerAABB;
+        Transform &playerTransform = engine.ecs.transforms[entityIndex(player.entities.front())];
+        glm::vec2 forward = SnakeMath::getRotationVector2(playerTransform.rotation);
+        float velocity = glm::dot(playerVelocity, forward);
+        float ratio = velocity / playerMaxVelocity;
+        float revs = ((highRev - lowRev) * ratio) + lowRev;
 
+        ma_sound_set_pitch(&engineIdleAudio, revs);
+    }
+
+    std::vector<Entity> getAllCollisions(Transform &t)
+    {
+        std::vector<Entity> entities{};
         for (size_t i = 0; i < engine.ecs.collisionBoxes.size(); i++)
         {
-            if (i == playerAABBId) // Don't check for collisions on itself
+            AABB &collisionBox = engine.ecs.collisionBoxes[i];
+            Entity collisionEntity = engine.ecs.getEntityFromDense(i, engine.ecs.collisionBoxToEntity);
+            EntityType entityType = engine.ecs.entityTypes[engine.ecs.entityToEntityTypes[entityIndex(collisionEntity)]];
+            if (entityType == EntityType::Player)
                 continue;
 
-            AABB &collisionBox = engine.ecs.collisionBoxes[i];
-            if (rectIntersects(playerAABB, collisionBox))
+            float radius = t.getRadius() * 0.5f;
+            if (circleIntersectsAABB(t.getCenter(), radius, collisionBox) && entityType == EntityType::Ground)
             {
-                Entity collisionEntity = engine.ecs.getEntityFromDense(i, engine.ecs.collisionBoxToEntity);
-                EntityType entityType = engine.ecs.entityTypes[engine.ecs.entityToEntityTypes[entityIndex(collisionEntity)]];
-                // Note: If this becomes cumbersome and large, create some kind of resolver system that looks up a resolve function between two AABB's
-                switch (entityType)
-                {
-                case EntityType::Ground:
-                    grounds[collisionEntity].dead = true;
-                    break;
-                default:
-                    Logger::warn("No collision resolver for type");
-                    break;
-                }
+                entities.push_back(collisionEntity);
             }
+        }
+
+        return entities;
+    }
+
+    void tryMove(Transform &head, Mesh &mesh, const glm::vec2 &targetPos, float dt)
+    {
+        Transform newTransform = head;
+        newTransform.position = targetPos;
+
+        std::vector<Entity> collisions = getAllCollisions(newTransform);
+        if (collisions.size() < 1)
+            return;
+
+        // simulate "digging" resistance
+        for (Entity collisionEntity : collisions)
+        {
+            Ground &g = grounds[collisionEntity];
+            size_t collisionBoxIndex = engine.ecs.entityToCollisionBox[entityIndex(collisionEntity)];
+            float penetration = 0.5f;
+            float resistance = glm::clamp(penetration / 10.0f, 0.0f, 1.0f);
+
+            // reduce velocity
+            playerVelocity *= 0.95;
+
+            // optional: accumulate “dig damage” to block
+            float damage = penetration * 1.0f * dt;
+            g.health -= damage;
+            g.dirty = true;
         }
     }
 
-    void moveForward(float dt)
+    void updateMovement(float dt, bool pressing)
     {
-        auto playerIndexT = engine.ecs.entityToTransform[player.entities.front().id];
-        Transform &playerTransform = engine.ecs.transforms[playerIndexT];
+        uint32_t headEntityId = entityIndex(player.entities.front());
+        auto headIndexT = engine.ecs.entityToTransform[headEntityId];
+        Transform &headT = engine.ecs.transforms[headIndexT];
+        Mesh &headM = engine.ecs.meshes[engine.ecs.entityToMesh[headEntityId]];
+
         glm::vec2 acceleration = {0.0f, 0.0f};
-        glm::vec2 forward = SnakeMath::getRotationVector2(playerTransform.rotation);
+        glm::vec2 forward = SnakeMath::getRotationVector2(headT.rotation);
         acceleration = forward * thrustPower;
 
         // --- Velocity integration ---
-        playerVelocity += acceleration * dt;
-
-        // --- Apply friction ---
+        if (pressing)
+            playerVelocity += acceleration * dt;
+        // Friction
         playerVelocity -= playerVelocity * friction * dt;
+        float speed = glm::length(playerVelocity);
+        // Max speed
+        if (speed > playerMaxVelocity)
+            playerVelocity = glm::normalize(playerVelocity) * playerMaxVelocity;
+
+        // Check collision
+        glm::vec2 targetPos = glm::vec2{headT.position};
+        headT.position += playerVelocity * dt;
+        tryMove(headT, headM, targetPos, dt);
 
         // All non head segments gets to make a move
         for (size_t i = 1; i < player.entities.size(); i++)
@@ -319,10 +395,8 @@ struct Game
         }
 
         // Move head
-        auto headIndex = engine.ecs.entityToTransform[(player.entities[0]).id];
-        Transform &head = engine.ecs.transforms[headIndex];
-        head.position += playerVelocity * dt;
-        head.commit();
+        headT.position += playerVelocity * dt;
+        headT.commit();
     }
 
     void rotateHeadLeft(float dt)

@@ -36,3 +36,12 @@ inline bool rectIntersects(AABB &A, AABB &B)
             A.min.y < B.max.y &&
             A.max.y > B.min.y);
 }
+
+inline bool circleIntersectsAABB(glm::vec2 center, float radius, AABB box)
+{
+    float cx = glm::clamp(center.x, box.min.x, box.max.x);
+    float cy = glm::clamp(center.y, box.min.y, box.max.y);
+    float dx = center.x - cx;
+    float dy = center.y - cy;
+    return (dx * dx + dy * dy) <= radius * radius;
+}

@@ -33,6 +33,16 @@ struct Transform
         model = transformToModelMatrix();
     }
 
+    glm::vec2 getCenter()
+    {
+        return position + size / 2.0f;
+    }
+
+    float getRadius()
+    {
+        return size.x / 2;
+    }
+
     void commit()
     {
         model = transformToModelMatrix();
