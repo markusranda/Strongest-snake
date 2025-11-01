@@ -2,3 +2,5 @@ build
 *.exe
 vcpkg_installed
 .traces
+.vscode/c_cpp_properties.json
+.vscode/settings.json

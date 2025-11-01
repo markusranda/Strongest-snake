@@ -64,7 +64,7 @@ struct Game
     std::unordered_map<Entity, Ground> grounds;
 
     // Game settings
-    const uint32_t rows = 100;
+    const uint32_t rows = 1000;
     const uint32_t columns = 20;
     const uint32_t groundSize = 32;
 
@@ -117,9 +117,11 @@ struct Game
 
             // ---- Player ----
             {
+                // Start off center map above the grass
+                glm::vec2 posCursor = glm::vec2{(columns / 2) * 32.0f, -32.0f};
                 {
-                    Material m = Material{Colors::fromHex(Colors::STRAWBERRY_RED, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite};
-                    Transform t = Transform{glm::vec2{std::floor(columns / 2) * snakeSize, snakeSize}, glm::vec2{snakeSize, snakeSize}, "player"};
+                    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite};
+                    Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
                     AtlasRegion region = engine.atlasRegions["drill_head"];
                     glm::vec4 uvTransform = getUvTransform(region);
 
@@ -130,8 +132,9 @@ struct Game
                 glm::vec4 uvTransform = getUvTransform(region);
                 for (size_t i = 1; i < 4; i++)
                 {
-                    Material m = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
-                    Transform t = Transform{glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize}, glm::vec2{snakeSize, snakeSize}, "player"};
+                    posCursor -= glm::vec2{snakeSize, 0.0f};
+                    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
+                    Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
                     Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, uvTransform);
                     player.entities[i] = entity;
                 }
@@ -142,19 +145,23 @@ struct Game
             // --- Ground ----
             {
                 Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
-                for (uint32_t y = 8; y < rows; y++)
+                uint32_t lastMapIndex = 19;
+                for (uint32_t y = 0; y < rows; y++)
                 {
                     for (uint32_t x = 0; x < columns; x++)
                     {
                         AtlasRegion region;
-                        if (y == 8)
-                        {
-                            region = engine.atlasRegions["ground_top"];
-                        }
-                        else
-                        {
-                            region = engine.atlasRegions["ground_mid"];
-                        }
+                        float ratio = (float)y / (float)rows;
+                        uint32_t spriteIndex = glm::clamp((uint32_t)floor(ratio * lastMapIndex), (uint32_t)1, lastMapIndex);
+                        std::string key = "ground_mid_" + std::to_string(spriteIndex);
+
+                        // Special case first is always the grassy grass
+                        if (y == 0)
+                            key = "ground_mid_0";
+
+                        if (engine.atlasRegions.find(key) == engine.atlasRegions.end())
+                            throw std::runtime_error("you cocked up the ground tiles somehow");
+                        region = engine.atlasRegions[key];
 
                         Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
                         glm::vec4 uvTransform = getUvTransform(region);
