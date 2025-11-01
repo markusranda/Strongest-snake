@@ -74,6 +74,13 @@ struct Material
     ShaderType shaderType;
 };
 
+enum class EntityType : uint8_t
+{
+    Player,
+    Ground,
+    Background
+};
+
 struct EntityManager
 {
     std::vector<uint8_t> generations;  // generation per slot
@@ -87,6 +94,7 @@ struct EntityManager
     std::vector<Material> materials;
     std::vector<AABB> collisionBoxes;
     std::vector<glm::vec4> uvTransforms;
+    std::vector<EntityType> entityTypes;
 
     // --- Sparse ---
     std::vector<uint32_t> entityToTransform;
@@ -95,6 +103,7 @@ struct EntityManager
     std::vector<uint32_t> entityToMaterial;
     std::vector<uint32_t> entityToCollisionBox;
     std::vector<uint32_t> entityToUvTransforms;
+    std::vector<uint32_t> entityToEntityTypes;
 
     std::vector<size_t> transformToEntity;
     std::vector<size_t> meshToEntity;
@@ -102,6 +111,7 @@ struct EntityManager
     std::vector<size_t> materialToEntity;
     std::vector<size_t> collisionBoxToEntity;
     std::vector<size_t> uvTransformsToEntity;
+    std::vector<size_t> entityTypesToEntity;
 
     const uint32_t RESIZE_INCREMENT = 2048;
 
@@ -113,12 +123,7 @@ struct EntityManager
         renderables.reserve(RESIZE_INCREMENT);
     }
 
-    Entity createEntity(
-        Transform transform,
-        Mesh mesh,
-        Material material,
-        RenderLayer renderLayer,
-        glm::vec4 uvTransform = glm::vec4{})
+    Entity createEntity(Transform transform, Mesh mesh, Material material, RenderLayer renderLayer, EntityType entityType, glm::vec4 uvTransform = glm::vec4{}, bool collidable = false)
     {
         uint32_t index;
         if (!freeIndices.empty())
@@ -140,39 +145,22 @@ struct EntityManager
         // ---- Add to stores ----
         Renderable renderable = {entity, 0.0f, 0, renderLayer};
         renderable.makeDrawKey(material.shaderType);
-        AABB aabb = computeWorldAABB(mesh, transform);
+        if (collidable)
+        {
+            AABB aabb = computeWorldAABB(mesh, transform);
+            addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, aabb);
+        }
+
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
         addToStore<Mesh>(meshes, entityToMesh, meshToEntity, entity, mesh);
         addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
         addToStore<Material>(materials, entityToMaterial, materialToEntity, entity, material);
-        addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, aabb);
         addToStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, entity, uvTransform);
+        addToStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, entity, entityType);
 
         sortedRenderables.push_back(renderable);
 
         return entity;
-    }
-
-    template <typename A>
-    void addToStore(std::vector<A> &denseStorage, std::vector<uint32_t> &sparseToDense, std::vector<size_t> &denseToSparse, Entity &entity, A &item)
-    {
-        size_t denseIndex = denseStorage.size();
-        uint32_t sparseIndex = entityIndex(entity);
-
-        // Do resize
-        if (sparseToDense.size() <= sparseIndex)
-        {
-            sparseToDense.resize(sparseToDense.size() + RESIZE_INCREMENT, UINT32_MAX);
-        }
-        if (denseToSparse.size() <= denseIndex)
-        {
-            denseToSparse.resize(denseToSparse.size() + RESIZE_INCREMENT, UINT32_MAX);
-        }
-
-        // Add to stores
-        denseStorage.push_back(item);
-        sparseToDense[sparseIndex] = denseIndex;
-        denseToSparse[denseIndex] = sparseIndex;
     }
 
     void destroyEntity(Entity e)
@@ -202,6 +190,7 @@ struct EntityManager
         if (entityToCollisionBox[entityIndex(e)])
             removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
         removeFromStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, e);
+        removeFromStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, e);
 
         // --- Sort renderables ---
         {
@@ -210,6 +199,35 @@ struct EntityManager
             std::sort(sortedRenderables.begin(), sortedRenderables.end(), [](Renderable &a, Renderable &b)
                       { return a.drawkey < b.drawkey; });
         }
+    }
+
+    inline Entity getEntityFromDense(size_t denseIndex, const std::vector<size_t> &denseToSparse)
+    {
+        uint32_t sparseIndex = (uint32_t)denseToSparse[denseIndex];
+        uint8_t gen = generations[sparseIndex];
+        return Entity{(gen << 24) | sparseIndex};
+    }
+
+    template <typename A>
+    void addToStore(std::vector<A> &denseStorage, std::vector<uint32_t> &sparseToDense, std::vector<size_t> &denseToSparse, Entity &entity, A &item)
+    {
+        size_t denseIndex = denseStorage.size();
+        uint32_t sparseIndex = entityIndex(entity);
+
+        // Do resize
+        if (sparseToDense.size() <= sparseIndex)
+        {
+            sparseToDense.resize(sparseToDense.size() + RESIZE_INCREMENT, UINT32_MAX);
+        }
+        if (denseToSparse.size() <= denseIndex)
+        {
+            denseToSparse.resize(denseToSparse.size() + RESIZE_INCREMENT, UINT32_MAX);
+        }
+
+        // Add to stores
+        denseStorage.push_back(item);
+        sparseToDense[sparseIndex] = denseIndex;
+        denseToSparse[denseIndex] = sparseIndex;
     }
 
     template <typename A>

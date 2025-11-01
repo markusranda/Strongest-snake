@@ -59,7 +59,7 @@ struct Game
     // Game settings
     const uint32_t rows = 100;
     const uint32_t columns = 20;
-    const uint32_t groundSize = 64;
+    const uint32_t groundSize = 16;
 
     // -- Player ---
     const float thrustPower = 900.0f; // pixels per second squared
@@ -91,7 +91,7 @@ struct Game
             {
                 Transform transform = Transform{glm::vec2{0, 0}, glm::vec2{window.width, window.height}};
                 Material material = Material{Colors::fromHex(Colors::SKY_BLUE, 1.0f), ShaderType::FlatColor};
-                background = {engine.ecs.createEntity(transform, MeshRegistry::quad, material, RenderLayer::Background)};
+                background = {engine.ecs.createEntity(transform, MeshRegistry::quad, material, RenderLayer::Background, EntityType::Background)};
             }
 
             // ---- Player ----
@@ -102,7 +102,7 @@ struct Game
                     AtlasRegion region = engine.atlasRegions["drill_head"];
                     glm::vec4 uvTransform = getUvTransform(region);
 
-                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, uvTransform);
+                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, EntityType::Player, uvTransform, true);
                 }
 
                 AtlasRegion region = engine.atlasRegions["snake_skin"];
@@ -111,7 +111,7 @@ struct Game
                 {
                     Material m = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::Texture};
                     Transform t = Transform{glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize}, glm::vec2{snakeSize, snakeSize}, "player"};
-                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, uvTransform);
+                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, uvTransform);
                     player.entities[i] = entity;
                 }
             }
@@ -121,12 +121,12 @@ struct Game
             // --- Ground ----
             {
                 Material m = Material{Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), ShaderType::Texture};
-                for (uint32_t y = 2; y < rows; y++)
+                for (uint32_t y = 8; y < rows; y++)
                 {
                     for (uint32_t x = 0; x < columns; x++)
                     {
                         AtlasRegion region;
-                        if (y == 2)
+                        if (y == 8)
                         {
                             region = engine.atlasRegions["ground_top"];
                         }
@@ -138,7 +138,7 @@ struct Game
                         Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
                         glm::vec4 uvTransform = getUvTransform(region);
 
-                        Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, uvTransform);
+                        Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform, true);
                         grounds.insert_or_assign(entity, Ground{entity, false});
                     }
                 }
@@ -189,20 +189,27 @@ struct Game
     void updateLifecycle()
     {
         ZoneScoped; // PROFILER
+        std::vector<Entity> deadGrounds;
         for (auto &[entity, ground] : grounds)
         {
             if (ground.dead)
             {
-                engine.ecs.destroyEntity(ground.entity);
+                deadGrounds.push_back(entity);
             }
+        }
+
+        for (auto &entity : deadGrounds)
+        {
+            grounds.erase(entity);
+            engine.ecs.destroyEntity(entity);
         }
     }
 
     void updateCamera()
     {
         ZoneScoped; // PROFILER
-        auto playerIndexT = engine.ecs.entityToTransform[player.entities.front().id];
-        auto backgroundIndexT = engine.ecs.entityToTransform[entityIndex(background.entity)];
+        size_t playerIndexT = engine.ecs.entityToTransform[entityIndex(player.entities.front())];
+        size_t backgroundIndexT = engine.ecs.entityToTransform[entityIndex(background.entity)];
 
         Transform &playerTransform = engine.ecs.transforms[playerIndexT];
         Transform &backgroundTransform = engine.ecs.transforms[backgroundIndexT];
@@ -245,33 +252,30 @@ struct Game
         Transform &playerTransform = engine.ecs.transforms[tIndex];
         Mesh &playerMesh = engine.ecs.meshes[mIndex];
         AABB &playerAABB = computeWorldAABB(playerMesh, playerTransform);
+        uint32_t &playerAABBId = engine.ecs.entityToCollisionBox[pEntity];
+        engine.ecs.collisionBoxes[playerAABBId] = playerAABB;
 
-        std::vector<Entity> deadGrounds;
-        for (auto &[entity, ground] : grounds)
+        for (size_t i = 0; i < engine.ecs.collisionBoxes.size(); i++)
         {
-            auto gIndexT = engine.ecs.entityToTransform[entityIndex(entity)];
-            auto gIndexM = engine.ecs.entityToMesh[entityIndex(entity)];
-            auto gIndexC = engine.ecs.entityToCollisionBox[entityIndex(entity)];
-
-            // Cleanup dead entities
-            if (gIndexT == UINT32_MAX)
-            {
-                deadGrounds.push_back(entity);
+            if (i == playerAABBId) // Don't check for collisions on itself
                 continue;
-            }
 
-            Transform &groundTransform = engine.ecs.transforms[gIndexT];
-            Mesh &groundMesh = engine.ecs.meshes[gIndexM];
-            AABB &groundAABB = engine.ecs.collisionBoxes[gIndexC];
-            if (rectIntersects(playerAABB, groundAABB))
+            AABB &collisionBox = engine.ecs.collisionBoxes[i];
+            if (rectIntersects(playerAABB, collisionBox))
             {
-                ground.dead = true;
+                Entity collisionEntity = engine.ecs.getEntityFromDense(i, engine.ecs.collisionBoxToEntity);
+                EntityType entityType = engine.ecs.entityTypes[engine.ecs.entityToEntityTypes[entityIndex(collisionEntity)]];
+                // Note: If this becomes cumbersome and large, create some kind of resolver system that looks up a resolve function between two AABB's
+                switch (entityType)
+                {
+                case EntityType::Ground:
+                    grounds[collisionEntity].dead = true;
+                    break;
+                default:
+                    Logger::warn("No collision resolver for type");
+                    break;
+                }
             }
-        }
-
-        for (auto &entity : deadGrounds)
-        {
-            grounds.erase(entity);
         }
     }
 
