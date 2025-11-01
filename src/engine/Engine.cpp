@@ -577,15 +577,19 @@ void Engine::draw(Camera &camera, float fps)
 
     // Step 2: Collect all instance data
     std::vector<DrawCmd> drawCmds;
-    ShaderType currentShader = ShaderType::COUNT;
-    RenderLayer currentLayer = RenderLayer::World;
-    uint32_t currentVertexCount = UINT32_MAX;
-    uint32_t currentVertexOffset = UINT32_MAX;
-    float currentZ;
-    uint8_t currentTiebreak;
-    uint32_t instanceOffset = 0;
     {
         ZoneScopedN("Build world InstanceData");
+
+        ShaderType currentShader = ShaderType::COUNT;
+        RenderLayer currentLayer = RenderLayer::World;
+        uint32_t currentVertexCount = UINT32_MAX;
+        uint32_t currentVertexOffset = UINT32_MAX;
+        float currentZ;
+        uint8_t currentTiebreak;
+        uint32_t instanceOffset = 0;
+        AtlasIndex currentAtlasIndex = AtlasIndex::Sprite;
+        glm::vec2 currentAtlasOffset;
+        glm::vec2 currentAtlasScale;
 
         instances.clear();
         for (auto &renderable : ecs.sortedRenderables)
@@ -595,13 +599,15 @@ void Engine::draw(Camera &camera, float fps)
             Transform &transform = ecs.transforms[ecs.entityToTransform[rEntity]];
             Material &material = ecs.materials[ecs.entityToMaterial[rEntity]];
             glm::vec4 &uvTransform = ecs.uvTransforms[ecs.entityToUvTransforms[rEntity]];
+            glm::vec2 atlasOffset = glm::vec2{uvTransform.x, uvTransform.y};
+            glm::vec2 atlasScale = glm::vec2{uvTransform.z, uvTransform.w};
 
             bool newBatch = (material.shaderType != currentShader) || (renderable.renderLayer != currentLayer) || (mesh.vertexOffset != currentVertexOffset) || (mesh.vertexCount != currentVertexCount);
 
             if (newBatch && !instances.empty())
             {
                 uint32_t instanceCount = instances.size() - instanceOffset;
-                DrawCmd drawCmd{
+                DrawCmd drawCmd = DrawCmd(
                     currentLayer,
                     currentShader,
                     currentZ,
@@ -610,8 +616,9 @@ void Engine::draw(Camera &camera, float fps)
                     currentVertexOffset,
                     instanceCount,
                     instanceOffset,
-                    AtlasIndex::Sprite,
-                };
+                    material.atlasIndex,
+                    atlasOffset,
+                    atlasScale);
                 drawCmds.push_back(drawCmd);
                 instanceOffset = instances.size();
             }
@@ -624,6 +631,9 @@ void Engine::draw(Camera &camera, float fps)
             currentTiebreak = renderable.tiebreak;
             currentVertexCount = mesh.vertexCount;
             currentVertexOffset = mesh.vertexOffset;
+            currentAtlasIndex = material.atlasIndex;
+            currentAtlasOffset = atlasOffset;
+            currentAtlasScale = atlasScale;
         }
 
         // Last batch
@@ -638,7 +648,9 @@ void Engine::draw(Camera &camera, float fps)
                                   currentVertexOffset,
                                   instanceCount,
                                   instanceOffset,
-                                  AtlasIndex::Sprite);
+                                  currentAtlasIndex,
+                                  currentAtlasOffset,
+                                  currentAtlasScale);
         }
     }
 
@@ -658,7 +670,9 @@ void Engine::draw(Camera &camera, float fps)
             6, 0,
             static_cast<uint32_t>(textInstances.size()),
             textOffset,
-            AtlasIndex::Font);
+            AtlasIndex::Font,
+            glm::vec2{},
+            glm::vec2{});
         drawCmds.emplace_back(dc);
     }
 
@@ -754,7 +768,6 @@ void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
 {
     ZoneScoped; // PROFILER
     VkCommandBuffer cmd = commandBuffers[currentFrame];
-
     glm::mat4 viewProj = camera.getViewProj();
 
     for (const auto &dc : drawCmds)
@@ -766,6 +779,8 @@ void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
         assert(descriptorSets[(size_t)dc.atlasIndex] != VK_NULL_HANDLE && "Descriptor set missing!");
 
         const Pipeline &pipeline = pipelines[(size_t)dc.shaderType];
+        FragPushConstant fragmentPushConstant = FragPushConstant{dc.atlasOffset, dc.atlasScale, globalTime};
+        const size_t constantSize = sizeof(FragPushConstant);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
         vkCmdBindDescriptorSets(cmd,
                                 VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -781,6 +796,12 @@ void Engine::drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
                            0,
                            sizeof(glm::mat4),
                            &viewProj);
+        vkCmdPushConstants(cmd,
+                           pipeline.layout,
+                           VK_SHADER_STAGE_FRAGMENT_BIT,
+                           sizeof(glm::mat4),
+                           sizeof(fragmentPushConstant),
+                           &fragmentPushConstant);
 
         // Bind vertex + instance buffer
         size_t instanceSize = sizeof(InstanceData);

@@ -22,6 +22,7 @@
 #include "Pipelines.h"
 #include "Draworder.h"
 #include "Atlas.h"
+#include "FragPushConstant.h"
 
 #include <iostream>
 #include <fstream>
@@ -122,6 +123,8 @@ public:
     std::unordered_map<std::string, AtlasRegion> atlasRegions;
     VkDescriptorPool descriptorPool;
     std::array<VkDescriptorSet, 2> descriptorSets;
+
+    float globalTime = 0.0f;
 
     Engine(uint32_t width, uint32_t height, Window &window);
 

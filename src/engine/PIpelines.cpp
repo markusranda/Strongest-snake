@@ -1,11 +1,13 @@
 #include "Pipelines.h"
 #include "InstanceData.h"
+#include "FragPushConstant.h"
 
 std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice device, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout)
 {
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
     pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_flat.spv", renderPass, textureSetLayout);
     pipelines[static_cast<size_t>(ShaderType::Texture)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_texture.spv", renderPass, textureSetLayout);
+    pipelines[static_cast<size_t>(ShaderType::TextureScrolling)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_texture_scrolling.spv", renderPass, textureSetLayout);
     pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_font.spv", "shaders/frag_font.spv", renderPass, textureSetLayout);
     pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/border.spv", renderPass, textureSetLayout);
 
@@ -118,17 +120,24 @@ Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, std::stri
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
-    VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; // only vertex shader uses it
-    pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(glm::mat4);
+    VkPushConstantRange vertexPCRange{};
+    vertexPCRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    vertexPCRange.offset = 0;
+    vertexPCRange.size = sizeof(glm::mat4);
+
+    VkPushConstantRange fragPCRange{};
+    fragPCRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragPCRange.offset = sizeof(glm::mat4);
+    fragPCRange.size = sizeof(FragPushConstant);
+
+    std::array<VkPushConstantRange, 2> pushConstantRanges = {vertexPCRange, fragPCRange};
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
     pipelineLayoutInfo.pSetLayouts = &textureSetLayout;
-    pipelineLayoutInfo.pushConstantRangeCount = 1;
-    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+    pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
+    pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
 
     if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
     {

@@ -62,6 +62,7 @@ set(SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/shaders/border.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_font.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture.frag
+    ${CMAKE_SOURCE_DIR}/shaders/frag_texture_scrolling.frag
 )
 
 set(SHADER_OUTPUTS "")

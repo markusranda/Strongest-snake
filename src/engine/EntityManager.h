@@ -72,6 +72,7 @@ struct Material
 {
     glm::vec4 color;
     ShaderType shaderType;
+    AtlasIndex atlasIndex;
 };
 
 enum class EntityType : uint8_t

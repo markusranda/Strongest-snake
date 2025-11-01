@@ -59,7 +59,7 @@ struct Game
     // Game settings
     const uint32_t rows = 100;
     const uint32_t columns = 20;
-    const uint32_t groundSize = 16;
+    const uint32_t groundSize = 32;
 
     // -- Player ---
     const float thrustPower = 900.0f; // pixels per second squared
@@ -90,14 +90,14 @@ struct Game
             // --- Background ---
             {
                 Transform transform = Transform{glm::vec2{0, 0}, glm::vec2{window.width, window.height}};
-                Material material = Material{Colors::fromHex(Colors::SKY_BLUE, 1.0f), ShaderType::FlatColor};
+                Material material = Material{Colors::fromHex(Colors::SKY_BLUE, 1.0f), ShaderType::FlatColor, AtlasIndex::Sprite};
                 background = {engine.ecs.createEntity(transform, MeshRegistry::quad, material, RenderLayer::Background, EntityType::Background)};
             }
 
             // ---- Player ----
             {
                 {
-                    Material m = Material{Colors::fromHex(Colors::STRAWBERRY_RED, 1.0f), ShaderType::Texture};
+                    Material m = Material{Colors::fromHex(Colors::STRAWBERRY_RED, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite};
                     Transform t = Transform{glm::vec2{std::floor(columns / 2) * snakeSize, snakeSize}, glm::vec2{snakeSize, snakeSize}, "player"};
                     AtlasRegion region = engine.atlasRegions["drill_head"];
                     glm::vec4 uvTransform = getUvTransform(region);
@@ -109,7 +109,7 @@ struct Game
                 glm::vec4 uvTransform = getUvTransform(region);
                 for (size_t i = 1; i < 4; i++)
                 {
-                    Material m = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::Texture};
+                    Material m = Material{Colors::fromHex(Colors::MANGO_ORANGE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
                     Transform t = Transform{glm::vec2{std::floor(columns / 2) * snakeSize - (i * snakeSize), snakeSize}, glm::vec2{snakeSize, snakeSize}, "player"};
                     Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, uvTransform);
                     player.entities[i] = entity;
@@ -120,7 +120,7 @@ struct Game
 
             // --- Ground ----
             {
-                Material m = Material{Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), ShaderType::Texture};
+                Material m = Material{Colors::fromHex(Colors::GROUND_BEIGE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
                 for (uint32_t y = 8; y < rows; y++)
                 {
                     for (uint32_t x = 0; x < columns; x++)
@@ -178,6 +178,8 @@ struct Game
             updateCamera();
 
             updateLifecycle();
+
+            engine.globalTime += delta;
 
             engine.draw(camera, fps);
 
