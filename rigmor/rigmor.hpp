@@ -16,7 +16,6 @@
 
 // TODO list
 /**
- * - Make filter function on list to make only <placeholder> visible.
  */
 
 // Rigdb schema
@@ -74,13 +73,16 @@ namespace LaunchArg
     constexpr std::string_view Delete = "delete"sv;
 }
 
+const char DEFAULT_ATLAS_NAME[32] = "<placeholder>";
+
 // --------------------------------------------------------
 // Helper functions
 // --------------------------------------------------------
 
 void findAtlasRegions(stbi_uc *pixels, int &width, int &height, int &channels, std::map<CellKey, AtlasRegion> &regions)
 {
-    char atlasRegionName[32] = "<placeholder>";
+    char atlasRegionName[32]{};
+    std::strncpy(atlasRegionName, DEFAULT_ATLAS_NAME, sizeof(atlasRegionName) - 1);
     uint8_t cellSize = 32;
     int byteCount = width * height * channels; // One pixel is channels number of bytes
     for (uint32_t byte = 0; byte < byteCount; byte += 4)
@@ -301,7 +303,7 @@ void commandScan(const std::string_view pngPath)
     }
 }
 
-void commandList(const std::filesystem::path dbPath)
+void commandList(const std::filesystem::path dbPath, bool onlyMissing = false)
 {
     std::vector<char> byteBuffer;
     fileToBuffer(dbPath, byteBuffer);
@@ -311,7 +313,18 @@ void commandList(const std::filesystem::path dbPath)
     printHeader();
     for (size_t i = 0; i < regionCount; ++i)
     {
-        printRegion(regions[i]);
+        AtlasRegion region = regions[i];
+        if (onlyMissing)
+        {
+            if (std::strcmp(region.name, DEFAULT_ATLAS_NAME) == 0)
+            {
+                printRegion(regions[i]);
+            }
+        }
+        else
+        {
+            printRegion(regions[i]);
+        }
     }
 }
 
@@ -435,13 +448,25 @@ int main(int argc, char *argv[])
         }
         else if (LaunchArg::List == std::string_view(firstArg))
         {
+            if (argc == 3)
+            {
+                if (std::strcmp(argv[2], "--missing") == 0)
+                {
+                    commandList(dbPath, true);
+                    return 0;
+                }
+
+                std::cerr << "Usage: rigmor find --missing\n";
+                return 1;
+            }
+
             commandList(dbPath);
         }
         else if (LaunchArg::Find == std::string_view(firstArg))
         {
             if (argc < 3)
             {
-                std::cerr << "Usage: rigmor find <id>\n";
+                std::cerr << "Usage: rigmor find\n";
                 return 1;
             }
             commandFind(dbPath, argv[2]);
