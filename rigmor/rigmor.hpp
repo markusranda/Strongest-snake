@@ -14,6 +14,11 @@
 // Author: Randa
 // ============================================================================
 
+// TODO list
+/**
+ * - Make filter function on list to make only <placeholder> visible.
+ */
+
 // Rigdb schema
 // All binary writes use little-endian byte order.
 // | Offset | Field     | Type       | Bytes | Description                           |
@@ -329,44 +334,41 @@ void commandFind(const std::filesystem::path dbPath, const std::string idStr)
     }
 }
 
-void commandEdit(const std::filesystem::path dbPath, const std::string idStr, const std::string name)
+void commandEdit(const std::filesystem::path &dbPath, const std::string &idStr, const std::string &name)
 {
-    if (name.length() > 32)
+    if (name.size() > 31)
     {
-        std::cerr << "Can't have names longer than 32 characters\n";
+        std::cerr << "Name too long (max 31 chars)\n";
         return;
     }
 
     uint32_t id = tryParseUint32(idStr);
-    std::vector<char> byteBuffer;
-    fileToBuffer(dbPath, byteBuffer);
-    AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
-    size_t regionCount = byteBuffer.size() / sizeof(AtlasRegion);
+    std::fstream file(dbPath, std::ios::in | std::ios::out | std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Failed to open db file for edit");
 
-    bool edited = false;
-    for (size_t i = 0; i < regionCount; ++i)
+    AtlasRegion region;
+    size_t offset = 0;
+    bool found = false;
+
+    while (file.read(reinterpret_cast<char *>(&region), sizeof(AtlasRegion)))
     {
-        AtlasRegion region = regions[i];
-        if (regions[i].id == id)
+        if (region.id == id)
         {
-            edited = true;
-            std::strncpy(regions[i].name, name.c_str(), 32);
-            regions[i].name[31] = '\0';
+            found = true;
+            std::strncpy(region.name, name.c_str(), sizeof(region.name));
+            region.name[31] = '\0';
+            file.seekp(offset, std::ios::beg);
+            file.write(reinterpret_cast<const char *>(&region), sizeof(AtlasRegion));
             break;
         }
+        offset += sizeof(AtlasRegion);
     }
 
-    if (edited)
-    {
-        std::ofstream out(dbPath, std::ios::trunc);
-        out.write(reinterpret_cast<char *>(regions), byteBuffer.size());
-        std::cout << "Update was successful\n";
-    }
+    if (!found)
+        std::cerr << "No record found with id " << id << "\n";
     else
-    {
-        std::cerr << "Failed to update: failed to find element with provided id\n";
-        return;
-    }
+        std::cout << "Record updated successfully.\n";
 }
 
 void commandDelete(std::filesystem::path dbPath, const std::string idStr)
