@@ -57,7 +57,7 @@ struct Game
     std::unordered_map<Entity, Ground> grounds;
 
     // Game settings
-    const uint32_t rows = 10;
+    const uint32_t rows = 100;
     const uint32_t columns = 20;
     const uint32_t groundSize = 64;
 

@@ -625,6 +625,21 @@ void Engine::draw(Camera &camera, float fps)
             currentVertexCount = mesh.vertexCount;
             currentVertexOffset = mesh.vertexOffset;
         }
+
+        // Last batch
+        if (!instances.empty())
+        {
+            uint32_t instanceCount = instances.size() - instanceOffset;
+            drawCmds.emplace_back(currentLayer,
+                                  currentShader,
+                                  currentZ,
+                                  currentTiebreak,
+                                  currentVertexCount,
+                                  currentVertexOffset,
+                                  instanceCount,
+                                  instanceOffset,
+                                  AtlasIndex::Sprite);
+        }
     }
 
     // Fetch all text instances
@@ -645,23 +660,6 @@ void Engine::draw(Camera &camera, float fps)
             textOffset,
             AtlasIndex::Font);
         drawCmds.emplace_back(dc);
-    }
-
-    // Last batch
-    if (!instances.empty())
-    {
-        ZoneScopedN("Adding last batch of drawCmds");
-
-        uint32_t instanceCount = instances.size() - instanceOffset;
-        drawCmds.emplace_back(currentLayer,
-                              currentShader,
-                              currentZ,
-                              currentTiebreak,
-                              currentVertexCount,
-                              currentVertexOffset,
-                              instanceCount,
-                              instanceOffset,
-                              AtlasIndex::Sprite);
     }
 
     // Step 3: Upload once, then draw all
