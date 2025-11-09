@@ -19,10 +19,20 @@ constexpr glm::vec2 ATLAS_SIZE = glm::vec2(4096.0f, 4096.0f);    // Update this 
 
 inline glm::vec4 getUvTransform(AtlasRegion &region)
 {
-    return glm::vec4{
+    glm::vec4 model = glm::vec4{
         region.x * ATLAS_CELL_SIZE.x / ATLAS_SIZE.x,
         region.y * ATLAS_CELL_SIZE.y / ATLAS_SIZE.y,
         ATLAS_CELL_SIZE.x / ATLAS_SIZE.x,
         ATLAS_CELL_SIZE.y / ATLAS_SIZE.y,
     };
+
+    float epsilonU = 1.0f / ATLAS_SIZE.x;
+    float epsilonV = 1.0f / ATLAS_SIZE.y;
+
+    model.x += epsilonU;
+    model.y += epsilonV;
+    model.z -= 2.0f * epsilonU;
+    model.w -= 2.0f * epsilonV;
+
+    return model;
 }

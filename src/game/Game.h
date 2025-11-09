@@ -166,7 +166,7 @@ struct Game
                             throw std::runtime_error("you cocked up the ground tiles somehow");
                         region = engine.atlasRegions[key];
 
-                        Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
+                        Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize + 1.0f, groundSize + 1.0f}, "ground"}; // Added 1 pixel in both height and width to remove line artifacts
                         glm::vec4 uvTransform = getUvTransform(region);
 
                         Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform);
@@ -281,7 +281,7 @@ struct Game
         Mesh &mesh = engine.ecs.meshes[engine.ecs.entityToMesh[entityIndex(background.entity)]];
 
         // Camera center follows the player
-        camera.position = playerTransform.position;
+        camera.position = glm::round(playerTransform.position);
 
         // Compute visible area size, factoring in zoom
         glm::vec2 viewSize = glm::vec2(camera.screenW, camera.screenH) * (1.0f / camera.zoom);
