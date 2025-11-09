@@ -37,6 +37,15 @@ inline bool rectIntersects(AABB &A, AABB &B)
             A.max.y > B.min.y);
 }
 
+inline bool rectFullyInside(AABB &A, AABB &B)
+{
+    ZoneScoped; // PROFILER
+    return (A.min.x >= B.min.x &&
+            A.max.x <= B.max.x &&
+            A.min.y >= B.min.y &&
+            A.max.y <= B.max.y);
+}
+
 inline bool circleIntersectsAABB(glm::vec2 center, float radius, AABB box)
 {
     float cx = glm::clamp(center.x, box.min.x, box.max.x);

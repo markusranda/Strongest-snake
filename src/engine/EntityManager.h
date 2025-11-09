@@ -6,38 +6,10 @@
 #include "Draworder.h"
 #include "Mesh.h"
 #include "TextureComponent.h"
+#include "Entity.h"
+
 #include <cstdint>
 #include <functional>
-#include <utility>
-
-struct Entity
-{
-    uint32_t id;
-
-    bool operator==(const Entity &other) const noexcept
-    {
-        return id == other.id;
-    }
-};
-
-inline uint32_t entityIndex(Entity e)
-{
-    return e.id & 0x00FFFFFF;
-}
-inline uint8_t entityGen(Entity e) { return (e.id >> 24) & 0xFF; }
-
-// Specialize std::hash for Entity
-namespace std
-{
-    template <>
-    struct hash<Entity>
-    {
-        std::size_t operator()(const Entity &e) const noexcept
-        {
-            return std::hash<uint32_t>{}(e.id);
-        }
-    };
-}
 
 struct Renderable
 {
@@ -114,6 +86,9 @@ struct EntityManager
     std::vector<size_t> uvTransformsToEntity;
     std::vector<size_t> entityTypesToEntity;
 
+    AABBNodePoolBoy poolBoy = AABBNodePoolBoy(1, 1000);
+    AABBNode *aabbRoot;
+
     const uint32_t RESIZE_INCREMENT = 2048;
 
     EntityManager()
@@ -122,9 +97,13 @@ struct EntityManager
         transforms.reserve(RESIZE_INCREMENT);
         meshes.reserve(RESIZE_INCREMENT);
         renderables.reserve(RESIZE_INCREMENT);
+
+        // AABB tree
+        aabbRoot = poolBoy.allocate();
+        aabbRoot->aabb = computeWorldAABB(MeshRegistry::quad, Transform{glm::vec2{0, 0}, glm::vec2{2048, 2048}});
     }
 
-    Entity createEntity(Transform transform, Mesh mesh, Material material, RenderLayer renderLayer, EntityType entityType, glm::vec4 uvTransform = glm::vec4{}, bool collidable = false)
+    Entity createEntity(Transform transform, Mesh mesh, Material material, RenderLayer renderLayer, EntityType entityType, glm::vec4 uvTransform = glm::vec4{}, bool collidable = false, float z = 0.0f)
     {
         uint32_t index;
         if (!freeIndices.empty())
@@ -144,22 +123,24 @@ struct EntityManager
         Entity entity = Entity{(gen << 24) | index};
 
         // ---- Add to stores ----
-        Renderable renderable = {entity, 0.0f, 0, renderLayer};
+        // -- Renderable --
+        Renderable renderable = {entity, z, 0, renderLayer};
         renderable.makeDrawKey(material.shaderType);
+        sortedRenderables.push_back(renderable);
+
+        // -- Collisions --
         if (collidable)
         {
-            AABB aabb = computeWorldAABB(mesh, transform);
-            addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, aabb);
+            updateAABBPools(mesh, transform, entity);
         }
 
+        // -- The rest --
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
         addToStore<Mesh>(meshes, entityToMesh, meshToEntity, entity, mesh);
         addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
         addToStore<Material>(materials, entityToMaterial, materialToEntity, entity, material);
         addToStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, entity, uvTransform);
         addToStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, entity, entityType);
-
-        sortedRenderables.push_back(renderable);
 
         return entity;
     }
@@ -193,13 +174,14 @@ struct EntityManager
         removeFromStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, e);
         removeFromStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, e);
 
-        // --- Sort renderables ---
-        {
-            ZoneScopedN("Sort renderables");
-            sortedRenderables = renderables;
-            std::sort(sortedRenderables.begin(), sortedRenderables.end(), [](Renderable &a, Renderable &b)
-                      { return a.drawkey < b.drawkey; });
-        }
+        sortRenderables();
+    }
+
+    inline void sortRenderables()
+    {
+        sortedRenderables = renderables;
+        std::sort(sortedRenderables.begin(), sortedRenderables.end(), [](Renderable &a, Renderable &b)
+                  { return a.drawkey < b.drawkey; });
     }
 
     inline Entity getEntityFromDense(size_t denseIndex, const std::vector<size_t> &denseToSparse)
@@ -258,5 +240,188 @@ struct EntityManager
         uint32_t index = entityIndex(e);
         uint8_t gen = entityGen(e);
         return generations[index] == gen;
+    }
+
+    // Finds all the neighbors of this aabb
+    // It also cleans up the dead fools
+    std::vector<Entity> getNeighboringEntities(AABB &aabb)
+    {
+        ZoneScoped;
+
+        std::vector<Entity> entities;
+        AABBNode *node = aabbRoot;
+        size_t nodeIndex = -1;
+
+        while (true)
+        {
+            assert(rectFullyInside(aabb, node->aabb) && "This means we have entered a node that can't contain us, which should never happen");
+
+            // Check if any of the child nodes can contain
+            // If child node can contain, we should enter it and repeat this check
+            bool found = false;
+            for (size_t i = 0; i < node->nodeCount; i++)
+            {
+                AABBNode *child = node->nodes[i];
+                if (rectFullyInside(aabb, child->aabb))
+                {
+                    node = child;
+                    found = true;
+                    break;
+                }
+            }
+
+            // If non of the child nodes can contain, we have reached our destination.
+            // In this part we find the alive ones, and we update the node's objects so that we prune the dead entities.
+            if (!found)
+            {
+                /*
+                    In-place compaction
+
+                    Initial array:
+                        node->objects = [A (alive), B (dead), C (alive), D (dead), E (alive)]
+
+                    Iteration:
+                    | read | write | action              | new array contents | note            |
+                    |------|-------|---------------------|--------------------|-----------------|
+                    | 0    | 0     | A alive → write 0   | [A, B, C, D, E]    | no change       |
+                    | 1    | 1     | B dead → skip       | [A, B, C, D, E]    | no write        |
+                    | 2    | 1     | C alive → write 1   | [A, C, C, D, E]    | steals B's slot |
+                    | 3    | 2     | D dead → skip       | [A, C, C, D, E]    | no write        |
+                    | 4    | 2     | E alive → write 2   | [A, C, E, D, E]    | steals D's slot |
+
+                    After resize:
+                        node->objects = [A, C, E]
+
+                    This algorithm compactly removes dead entities without extra allocations,
+                    preserving order of surviving elements in a single O(n) pass.
+                */
+                entities.reserve(node->objects.size());
+                size_t writeIndex = 0;
+                for (size_t readIndex = 0; readIndex < node->objects.size(); ++readIndex)
+                {
+                    Entity e = node->objects[readIndex];
+                    if (isAlive(e))
+                    {
+                        // keep it alive both in return vector and in the node
+                        node->objects[writeIndex++] = e;
+                        entities.push_back(e);
+                    }
+                }
+
+                // shrink node’s object list in place — drop the dead guys
+                node->objects.resize(writeIndex);
+                break;
+            }
+        }
+
+        return entities;
+    }
+
+    void updateAABBPools(Mesh &mesh, Transform &transform, Entity &entity)
+    {
+        ZoneScoped;
+        AABB newAABB = computeWorldAABB(mesh, transform);
+        addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, newAABB);
+
+        AABBNode *cursorNode = aabbRoot;
+
+        // Ensure root can contain it (grow if needed)
+        while (!rectFullyInside(newAABB, cursorNode->aabb))
+        {
+            growRootSymmetric(cursorNode, newAABB);
+            cursorNode = aabbRoot;
+        }
+
+        // Search for a suitable node to store this aabb on.
+        while (true)
+        {
+            glm::vec2 size = cursorNode->aabb.max - cursorNode->aabb.min;
+            bool tooSmallToContinue = size.x <= 512.0f && size.y <= 512.0f;
+            if (tooSmallToContinue)
+            {
+                cursorNode->objects.push_back(entity);
+                return;
+            }
+
+            if (cursorNode->nodeCount < MAX_AABB_NODES)
+                cursorNode->subdivide(poolBoy);
+
+            // Find a suitable child node
+            AABBNode *next = nullptr;
+            for (AABBNode *child : cursorNode->nodes)
+            {
+                if (rectFullyInside(newAABB, child->aabb))
+                {
+                    next = child;
+                    break;
+                }
+            }
+
+            // If we can't continue, we just add it here
+            if (!next)
+            {
+                cursorNode->objects.push_back(entity);
+                return;
+            }
+
+            // Update cursor with child or null_ptr
+            cursorNode = next;
+        }
+    }
+
+    // Grows in the direction of the new aabb.
+    void growRootSymmetric(AABBNode *root, const AABB &aabb)
+    {
+        glm::vec2 rootCenter = (root->aabb.min + root->aabb.max) * 0.5f;
+        glm::vec2 rootHalf = (root->aabb.max - root->aabb.min) * 0.5f;
+        glm::vec2 aabbCenter = (aabb.min + aabb.max) * 0.5f;
+        glm::vec2 dir = glm::sign(aabbCenter - rootCenter);
+        glm::vec2 newHalf = rootHalf * 2.0f;
+        glm::vec2 newCenter = rootCenter + dir * rootHalf;
+
+        AABB newAABB;
+        newAABB.min = newCenter - newHalf;
+        newAABB.max = newCenter + newHalf;
+
+        // make new node the root
+        AABBNode *newRoot = poolBoy.allocate();
+        newRoot->aabb = newAABB;
+        newRoot->subdivide(poolBoy);
+        root->parent = newRoot;
+
+        // find which quadrant the old root belongs in
+        for (size_t i = 0; i < newRoot->nodeCount; i++)
+        {
+            if (rectFullyInside(root->aabb, newRoot->nodes[i]->aabb))
+            {
+                newRoot->nodes[i]->free();
+                newRoot->nodes[i] = root;
+                root->parent = newRoot;
+                break;
+            }
+        }
+
+        aabbRoot = newRoot;
+    }
+
+    // Walk tree recursively and create instanceData out of each node
+    void collectQuadTreeDebugInstances(AABBNode *node, std::vector<InstanceData> &instances)
+    {
+        if (!node)
+            return;
+
+        glm::vec2 min = node->aabb.min;
+        glm::vec2 max = node->aabb.max;
+        glm::vec2 size = max - min;
+        glm::vec2 position = min; // since quad’s vertex (0,0) is bottom-left
+
+        Transform t(position, size);
+        t.commit();
+
+        glm::vec4 color = glm::vec4(1.0f, 0.0f, 0.0f, 0.25f); // translucent red
+        instances.push_back({t.model, color, glm::vec4(0, 0, 1, 1)});
+
+        for (size_t i = 0; i < node->nodeCount; i++)
+            collectQuadTreeDebugInstances(node->nodes[i], instances);
     }
 };

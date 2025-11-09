@@ -49,7 +49,7 @@ struct Transform
     }
 
 private:
-    glm::mat4 Transform::transformToModelMatrix()
+    glm::mat4 transformToModelMatrix()
     {
         ZoneScopedN("Transform to model");
 

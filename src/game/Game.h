@@ -40,10 +40,13 @@ struct Player
 {
     std::array<Entity, 4> entities;
 };
+
 struct Background
 {
     Entity entity;
 };
+
+inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset);
 
 struct Game
 {
@@ -65,17 +68,17 @@ struct Game
 
     // Game settings
     const uint32_t rows = 1000;
-    const uint32_t columns = 20;
+    const uint32_t columns = 32;
     const uint32_t groundSize = 32;
 
     // -- Player ---
-    const float thrustPower = 800.0f; // pixels per second squared
-    const float friction = 4.0f;      // friction coefficient
+    const float thrustPower = 1800.0f; // pixels per second squared
+    const float friction = 4.0f;       // friction coefficient
     const uint32_t snakeSize = 32;
 
     glm::vec2 playerVelocity = {0.0f, 0.0f};
-    float rotationSpeed = 5.0f;       // tweak this
-    float playerMaxVelocity = 200.0f; // tweak this
+    float rotationSpeed = 5.0f;        // tweak this
+    float playerMaxVelocity = 1200.0f; // tweak this
 
     // Rotation
     float rotationRadius = 75.0f;       // Increase to stop earlier
@@ -118,14 +121,14 @@ struct Game
             // ---- Player ----
             {
                 // Start off center map above the grass
-                glm::vec2 posCursor = glm::vec2{(columns / 2) * 32.0f, -32.0f};
+                glm::vec2 posCursor = glm::vec2{512, 64.0f};
                 {
                     Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite};
                     Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
                     AtlasRegion region = engine.atlasRegions["drill_head"];
                     glm::vec4 uvTransform = getUvTransform(region);
 
-                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, EntityType::Player, uvTransform, true);
+                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, EntityType::Player, uvTransform, true, 2.0f);
                 }
 
                 AtlasRegion region = engine.atlasRegions["snake_skin"];
@@ -135,7 +138,7 @@ struct Game
                     posCursor -= glm::vec2{snakeSize, 0.0f};
                     Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
                     Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
-                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, uvTransform);
+                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, uvTransform, false, 2.0f);
                     player.entities[i] = entity;
                 }
             }
@@ -146,7 +149,7 @@ struct Game
             {
                 Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
                 uint32_t lastMapIndex = 19;
-                for (uint32_t y = 0; y < rows; y++)
+                for (uint32_t y = 3; y < rows; y++)
                 {
                     for (uint32_t x = 0; x < columns; x++)
                     {
@@ -156,7 +159,7 @@ struct Game
                         std::string key = "ground_mid_" + std::to_string(spriteIndex);
 
                         // Special case first is always the grassy grass
-                        if (y == 0)
+                        if (y == 3)
                             key = "ground_mid_0";
 
                         if (engine.atlasRegions.find(key) == engine.atlasRegions.end())
@@ -172,11 +175,17 @@ struct Game
                 }
             }
 
+            engine.ecs.sortRenderables();
+
             // --- AUDIO ---
             ma_engine_set_volume(&audioEngine, 0.025);
             ma_sound_init_from_file(&audioEngine, "assets/engine_idle.wav", 0, NULL, NULL, &engineIdleAudio);
             ma_sound_set_looping(&engineIdleAudio, MA_TRUE);
             ma_sound_start(&engineIdleAudio);
+
+            // --- Scrolling ---
+            glfwSetWindowUserPointer(window.getHandle(), this); // Connects this instance of struct to the windows somehow
+            glfwSetScrollCallback(window.getHandle(), scrollCallback);
         }
         catch (const std::exception &e)
         {
@@ -217,7 +226,8 @@ struct Game
 
             engine.globalTime += delta;
 
-            engine.draw(camera, fps);
+            Transform &head = engine.ecs.transforms[engine.ecs.entityToTransform[entityIndex(player.entities.front())]];
+            engine.draw(camera, fps, head.position);
 
             updateFPSCounter(delta);
         }
@@ -261,14 +271,22 @@ struct Game
     void updateCamera()
     {
         ZoneScoped; // PROFILER
+
         size_t playerIndexT = engine.ecs.entityToTransform[entityIndex(player.entities.front())];
         size_t backgroundIndexT = engine.ecs.entityToTransform[entityIndex(background.entity)];
 
         Transform &playerTransform = engine.ecs.transforms[playerIndexT];
         Transform &backgroundTransform = engine.ecs.transforms[backgroundIndexT];
 
-        camera.position = playerTransform.position - glm::vec2(window.width / 2.0f, window.height / 2.0f);
-        backgroundTransform.position = camera.position;
+        // Camera center follows the player
+        camera.position = playerTransform.position;
+
+        // Compute visible area size, factoring in zoom
+        glm::vec2 viewSize = glm::vec2(camera.screenW, camera.screenH) * (1.0f / camera.zoom);
+
+        // Background should cover the whole visible region and be centered on the camera
+        backgroundTransform.position = camera.position - viewSize * 0.5f;
+        backgroundTransform.size = viewSize;
         backgroundTransform.commit();
     }
 
@@ -306,33 +324,34 @@ struct Game
         ma_sound_set_pitch(&engineIdleAudio, revs);
     }
 
-    std::vector<Entity> getAllCollisions(Transform &t)
+    std::vector<Entity> getAllCollisions(AABB &aabb, Transform &t)
     {
-        std::vector<Entity> entities{};
-        for (size_t i = 0; i < engine.ecs.collisionBoxes.size(); i++)
+        std::vector<Entity> collisions;
+        std::vector<Entity> entities = engine.ecs.getNeighboringEntities(aabb);
+        for (Entity &entity : entities)
         {
-            AABB &collisionBox = engine.ecs.collisionBoxes[i];
-            Entity collisionEntity = engine.ecs.getEntityFromDense(i, engine.ecs.collisionBoxToEntity);
-            EntityType entityType = engine.ecs.entityTypes[engine.ecs.entityToEntityTypes[entityIndex(collisionEntity)]];
+            AABB &collisionBox = engine.ecs.collisionBoxes[engine.ecs.entityToCollisionBox[entityIndex(entity)]];
+            EntityType &entityType = engine.ecs.entityTypes[engine.ecs.entityToEntityTypes[entityIndex(entity)]];
             if (entityType == EntityType::Player)
                 continue;
 
             float radius = t.getRadius() * 0.5f;
             if (circleIntersectsAABB(t.getCenter(), radius, collisionBox) && entityType == EntityType::Ground)
             {
-                entities.push_back(collisionEntity);
+                collisions.push_back(entity);
             }
         }
 
-        return entities;
+        return collisions;
     }
 
     void tryMove(Transform &head, Mesh &mesh, const glm::vec2 &targetPos, float dt)
     {
         Transform newTransform = head;
         newTransform.position = targetPos;
+        AABB newAABB = computeWorldAABB(mesh, newTransform);
 
-        std::vector<Entity> collisions = getAllCollisions(newTransform);
+        std::vector<Entity> collisions = getAllCollisions(newAABB, newTransform);
         if (collisions.size() < 1)
             return;
 
@@ -504,3 +523,14 @@ struct Game
         }
     }
 };
+
+inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
+{
+    Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
+    if (!game)
+        return;
+
+    // Apply zoom scaling
+    game->camera.zoom *= (1.0f + (float)yoffset * 0.1f);
+    game->camera.zoom = glm::clamp(game->camera.zoom, 0.05f, 4.0f);
+}

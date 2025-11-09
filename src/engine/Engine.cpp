@@ -565,7 +565,7 @@ bool Engine::checkValidationLayerSupport()
     return true;
 }
 
-void Engine::draw(Camera &camera, float fps)
+void Engine::draw(Camera &camera, float fps, glm::vec2 playerCoords)
 {
     ZoneScoped; // PROFILER
     int32_t imageIndex = prepareDraw();
@@ -575,7 +575,7 @@ void Engine::draw(Camera &camera, float fps)
         return;
     }
 
-    // Step 2: Collect all instance data
+    // Collect all instance data
     std::vector<DrawCmd> drawCmds;
     {
         ZoneScopedN("Build world InstanceData");
@@ -663,7 +663,25 @@ void Engine::draw(Camera &camera, float fps)
             glm::vec2(-1.0f, -1.0f));
         uint32_t textOffset = instances.size();
         instances.insert(instances.end(), textInstances.begin(), textInstances.end());
-        DrawCmd dc(
+        DrawCmd dc = DrawCmd(
+            RenderLayer::World, // Add new layer for UI
+            ShaderType::Font,
+            0.0f, 0,
+            6, 0,
+            static_cast<uint32_t>(textInstances.size()),
+            textOffset,
+            AtlasIndex::Font,
+            glm::vec2{},
+            glm::vec2{});
+        drawCmds.emplace_back(dc);
+
+        std::string coordText = "POS: " + std::to_string((float)playerCoords.x) + ", " + std::to_string((float)playerCoords.y);
+        textOffset = instances.size();
+        textInstances = BuildTextInstances(
+            coordText,
+            glm::vec2(-1.0f, 0.9f));
+        instances.insert(instances.end(), textInstances.begin(), textInstances.end());
+        dc = DrawCmd(
             RenderLayer::World, // Add new layer for UI
             ShaderType::Font,
             0.0f, 0,
@@ -676,7 +694,32 @@ void Engine::draw(Camera &camera, float fps)
         drawCmds.emplace_back(dc);
     }
 
-    // Step 3: Upload once, then draw all
+    {
+        ZoneScopedN("Debug QuadTree");
+
+        std::vector<InstanceData> debugInstances;
+        ecs.collectQuadTreeDebugInstances(ecs.aabbRoot, debugInstances);
+
+        if (!debugInstances.empty())
+        {
+            uint32_t offset = instances.size();
+            instances.insert(instances.end(), debugInstances.begin(), debugInstances.end());
+
+            DrawCmd dc(
+                RenderLayer::World,
+                ShaderType::Border, // or a basic flat color shader
+                0.0f, 0,
+                6, 0,
+                static_cast<uint32_t>(debugInstances.size()),
+                offset,
+                AtlasIndex::Sprite, // or whatever fits your pipeline
+                glm::vec2{},
+                glm::vec2{});
+            drawCmds.emplace_back(dc);
+        }
+    }
+
+    //  Upload once, then draw all
     uploadToInstanceBuffer();
     drawCmdList(drawCmds, camera);
     endDraw(imageIndex);

@@ -151,7 +151,7 @@ public:
     void waitForFence(VkDevice device, uint32_t fenceCount, const VkFence *pFences, VkBool32 waitAll, uint64_t timeout);
     void awaitDeviceIdle();
     int32_t prepareDraw();
-    void draw(Camera &camera, float fps);
+    void draw(Camera &camera, float fps, glm::vec2 playerCoords);
     void endDraw(uint32_t imageIndex);
     void drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera);
     void uploadToInstanceBuffer();
