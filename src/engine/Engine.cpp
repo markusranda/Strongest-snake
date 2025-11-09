@@ -597,8 +597,8 @@ void Engine::draw(Camera &camera, float fps, glm::vec2 playerCoords)
         float halfW = (camera.screenW * 0.5f) / camera.zoom;
         float halfH = (camera.screenH * 0.5f) / camera.zoom;
         AABB cameraBox{
-            {camera.position.x - halfW, camera.position.y - halfW},
-            {camera.position.x + halfH, camera.position.y + halfH},
+            {camera.position.x - halfW, camera.position.y - halfH},
+            {camera.position.x + halfW, camera.position.y + halfW},
         };
         ecs.getIntersectingEntities(cameraBox, ecs.activeEntities);
         {
@@ -721,30 +721,30 @@ void Engine::draw(Camera &camera, float fps, glm::vec2 playerCoords)
         drawCmds.emplace_back(dc);
     }
 
-    // {
-    //     ZoneScopedN("Debug QuadTree");
+    {
+        ZoneScopedN("Debug QuadTree");
 
-    //     std::vector<InstanceData> debugInstances;
-    //     ecs.collectQuadTreeDebugInstances(ecs.aabbRoot, debugInstances);
+        std::vector<InstanceData> debugInstances;
+        ecs.collectQuadTreeDebugInstances(ecs.aabbRoot, debugInstances);
 
-    //     if (!debugInstances.empty())
-    //     {
-    //         uint32_t offset = instances.size();
-    //         instances.insert(instances.end(), debugInstances.begin(), debugInstances.end());
+        if (!debugInstances.empty())
+        {
+            uint32_t offset = instances.size();
+            instances.insert(instances.end(), debugInstances.begin(), debugInstances.end());
 
-    //         DrawCmd dc(
-    //             RenderLayer::World,
-    //             ShaderType::Border, // or a basic flat color shader
-    //             0.0f, 0,
-    //             6, 0,
-    //             static_cast<uint32_t>(debugInstances.size()),
-    //             offset,
-    //             AtlasIndex::Sprite, // or whatever fits your pipeline
-    //             glm::vec2{},
-    //             glm::vec2{});
-    //         drawCmds.emplace_back(dc);
-    //     }
-    // }
+            DrawCmd dc(
+                RenderLayer::World,
+                ShaderType::Border, // or a basic flat color shader
+                0.0f, 0,
+                6, 0,
+                static_cast<uint32_t>(debugInstances.size()),
+                offset,
+                AtlasIndex::Sprite, // or whatever fits your pipeline
+                glm::vec2{},
+                glm::vec2{});
+            drawCmds.emplace_back(dc);
+        }
+    }
 
     for (auto &cmd : drawCmds)
         assert(cmd.firstInstance + cmd.instanceCount <= instances.size());
