@@ -14,10 +14,12 @@ void Engine::init(std::string atlasPath, std::string fontPath, std::string atlas
         createDebugMessenger();
         createSurface();
         pickPhysicalDevice();
+        pickMsaaSampleCount();
         createLogicalDevice();
         createCommandPool();
         createTextures(atlasPath, fontPath);
         createSwapChain();
+        createColorResources();
         createRenderPass();
         createGraphicsPipeline();
         createAtlasData(atlasDataPath);
@@ -154,6 +156,26 @@ void Engine::createSwapChain()
         &window,
         queueFamilies.graphicsFamily.value(),
         queueFamilies.presentFamily.value());
+}
+
+void Engine::createColorResources()
+{
+    VkFormat colorFormat = swapchain.getImageFormat();
+
+    CreateImage(
+        device,
+        physicalDevice,
+        swapchain.getExtent().width,
+        swapchain.getExtent().height,
+        msaaSamples,
+        colorFormat,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        colorImage,
+        colorImageMemory);
+
+    colorImageView = CreateImageView(device, colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
 void Engine::createLogicalDevice()
@@ -296,39 +318,45 @@ void Engine::createRenderPass()
 {
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = swapchain.getImageFormat();
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.samples = msaaSamples;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentDescription colorAttachmentResolve{};
+    colorAttachmentResolve.format = swapchain.getImageFormat();
+    colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachmentResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachmentResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     VkAttachmentReference colorAttachmentRef{};
     colorAttachmentRef.attachment = 0;
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+    VkAttachmentReference colorAttachmentResolveRef{};
+    colorAttachmentResolveRef.attachment = 1;
+    colorAttachmentResolveRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
+    subpass.pResolveAttachments = &colorAttachmentResolveRef;
 
-    VkSubpassDependency dependency{};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
+    std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, colorAttachmentResolve};
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.pAttachments = attachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 1;
-    renderPassInfo.pDependencies = &dependency;
 
     if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
     {
@@ -352,12 +380,12 @@ void Engine::createGraphicsPipeline()
 
     vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &textureSetLayout);
 
-    pipelines = CreateGraphicsPipelines(device, renderPass, textureSetLayout);
+    pipelines = CreateGraphicsPipelines(device, renderPass, textureSetLayout, msaaSamples);
 }
 
 void Engine::createFramebuffers()
 {
-    swapchain.createFramebuffers(device, renderPass);
+    swapchain.createFramebuffers(device, renderPass, colorImageView, msaaSamples);
 }
 
 void Engine::createImagesInFlight()
@@ -422,6 +450,26 @@ void Engine::createSyncObjects()
             throw std::runtime_error("failed to create per-frame sync objects!");
         }
     }
+}
+
+void Engine::pickMsaaSampleCount()
+{
+    VkPhysicalDeviceProperties physicalDeviceProperties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+
+    VkSampleCountFlags counts =
+        physicalDeviceProperties.limits.framebufferColorSampleCounts &
+        physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+
+    VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+    if (counts & VK_SAMPLE_COUNT_8_BIT)
+        samples = VK_SAMPLE_COUNT_8_BIT;
+    else if (counts & VK_SAMPLE_COUNT_4_BIT)
+        samples = VK_SAMPLE_COUNT_4_BIT;
+    else if (counts & VK_SAMPLE_COUNT_2_BIT)
+        samples = VK_SAMPLE_COUNT_2_BIT;
+
+    msaaSamples = samples;
 }
 
 void Engine::destroySyncObjects()
@@ -1016,7 +1064,7 @@ void Engine::recreateSwapchain()
     swapchain.create(physicalDevice, device, surface, &window,
                      queueFamilies.graphicsFamily.value(),
                      queueFamilies.presentFamily.value());
-    swapchain.createFramebuffers(device, renderPass);
+    swapchain.createFramebuffers(device, renderPass, colorImageView, msaaSamples);
 
     createSyncObjects();
     createImagesInFlight();

@@ -27,7 +27,7 @@ public:
 
     void cleanup(VkDevice device);
 
-    void createFramebuffers(VkDevice device, VkRenderPass renderPass);
+    void createFramebuffers(VkDevice device, VkRenderPass renderPass, VkImageView colorImageView, VkSampleCountFlagBits msaaSamples);
 
     // Getters
     VkFormat getImageFormat() const { return swapChainImageFormat; }

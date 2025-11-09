@@ -2,19 +2,19 @@
 #include "InstanceData.h"
 #include "FragPushConstant.h"
 
-std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice device, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout)
+std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice device, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout, VkSampleCountFlagBits msaaSamples)
 {
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
-    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_flat.spv", renderPass, textureSetLayout);
-    pipelines[static_cast<size_t>(ShaderType::Texture)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_texture.spv", renderPass, textureSetLayout);
-    pipelines[static_cast<size_t>(ShaderType::TextureScrolling)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_texture_scrolling.spv", renderPass, textureSetLayout);
-    pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_font.spv", "shaders/frag_font.spv", renderPass, textureSetLayout);
-    pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_border.spv", renderPass, textureSetLayout);
+    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_flat.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::Texture)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_texture.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::TextureScrolling)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_texture_scrolling.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_font.spv", "shaders/frag_font.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_border.spv", renderPass, textureSetLayout, msaaSamples);
 
     return pipelines;
 }
 
-Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, std::string fragPath, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout)
+Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, std::string fragPath, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout, VkSampleCountFlagBits msaaSamples)
 {
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
@@ -88,8 +88,7 @@ Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, std::stri
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisampling.rasterizationSamples = msaaSamples;
 
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;

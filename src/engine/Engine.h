@@ -93,6 +93,12 @@ public:
     VkRenderPass renderPass;
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
 
+    // MSAA
+    VkImage colorImage;
+    VkDeviceMemory colorImageMemory;
+    VkImageView colorImageView;
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
     // Command
     VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
@@ -132,6 +138,7 @@ public:
     void init(std::string atlasPath, std::string fontPath, std::string atlasDataPath);
     void createLogicalDevice();
     void createSwapChain();
+    void createColorResources();
     void createTextures(std::string atlasPath, std::string fontPath);
     void createAtlasData(std::string atlasDataPath);
     void createDescriptorPool();
@@ -157,6 +164,7 @@ public:
     void uploadToInstanceBuffer();
     void createSurface();
     void pickPhysicalDevice();
+    void pickMsaaSampleCount();
     void destroySyncObjects();
     void recreateSwapchain();
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
