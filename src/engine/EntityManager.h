@@ -667,8 +667,7 @@ struct EntityManager
         glm::vec2 size = max - min;
         glm::vec2 position = min; // since quad’s vertex (0,0) is bottom-left
 
-        Transform t(position, size);
-        t.commit();
+        Transform t = Transform(position, size);
 
         glm::vec4 color = glm::vec4(1.0f, 0.0f, 0.0f, 0.25f); // translucent red
         instances.push_back({t.model, color, glm::vec4(0, 0, 1, 1)});
