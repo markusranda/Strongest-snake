@@ -593,9 +593,12 @@ void Engine::draw(Camera &camera, float fps, glm::vec2 playerCoords)
 
         instances.clear();
         ecs.activeEntities.clear();
+
+        float halfW = (camera.screenW * 0.5f) / camera.zoom;
+        float halfH = (camera.screenH * 0.5f) / camera.zoom;
         AABB cameraBox{
-            {camera.position.x - camera.screenW / 2, camera.position.y - camera.screenH / 2},
-            {camera.position.x + camera.screenW / 2, camera.position.y + camera.screenH / 2},
+            {camera.position.x - halfW, camera.position.y - halfW},
+            {camera.position.x + halfH, camera.position.y + halfH},
         };
         ecs.getIntersectingEntities(cameraBox, ecs.activeEntities);
         {

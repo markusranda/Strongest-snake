@@ -14,6 +14,8 @@
 #include <queue>
 #include <utility>
 
+constexpr uint32_t MAX_SEARCH_ITERATIONS_ATTEMPTS = UINT32_MAX / 2;
+
 struct Renderable
 {
     Entity entity;
@@ -294,7 +296,6 @@ struct EntityManager
         ZoneScoped;
 
         uint32_t attempts = 0;
-        const uint32_t MAX_ATTEMPTS = 100;
         std::stack<std::pair<AABBNode *, uint32_t>> visitedNodes;
         visitedNodes.push({aabbRoot, 0}); // We start on root node at child index 0
 
@@ -303,7 +304,7 @@ struct EntityManager
             // We start of with
             auto &[node, childIndex] = visitedNodes.top();
 
-            if (++attempts > MAX_ATTEMPTS)
+            if (++attempts > MAX_SEARCH_ITERATIONS_ATTEMPTS)
             {
                 std::cout << "You should probably not iterate this much\n";
                 return;
@@ -360,7 +361,6 @@ struct EntityManager
         ZoneScoped;
 
         uint32_t attempts = 0;
-        const uint32_t MAX_ATTEMPTS = 100;
         std::stack<std::pair<AABBNode *, uint32_t>> visitedNodes;
         visitedNodes.push({node, 0}); // We start on root node at child index 0
         std::vector<AABBNode *> nodesToDelete;
@@ -370,7 +370,7 @@ struct EntityManager
             // We start of with
             auto &[node, childIndex] = visitedNodes.top();
 
-            if (++attempts > MAX_ATTEMPTS)
+            if (++attempts > MAX_SEARCH_ITERATIONS_ATTEMPTS)
             {
                 std::cout << "You should probably not iterate this much\n";
                 return;
