@@ -59,7 +59,7 @@ set(SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/shaders/vert.vert
     ${CMAKE_SOURCE_DIR}/shaders/vert_font.vert
     ${CMAKE_SOURCE_DIR}/shaders/frag_flat.frag
-    ${CMAKE_SOURCE_DIR}/shaders/border.frag
+    ${CMAKE_SOURCE_DIR}/shaders/frag_border.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_font.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture_scrolling.frag
