@@ -1,5 +1,5 @@
 #include <vulkan/vulkan.h>
-#include "Logger.h"
+#include "Logrador.h"
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkDebugUtilsMessengerEXT *pDebugMessenger)
 {
@@ -29,22 +29,22 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBits
     switch (messageSeverity)
     {
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
-        Logger::debug(msg + pCallbackData->pMessage);
+        Logrador::debug(msg + pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
-        Logger::info(msg + pCallbackData->pMessage);
+        Logrador::info(msg + pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
-        Logger::warn(msg + pCallbackData->pMessage);
+        Logrador::warn(msg + pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
-        Logger::err(msg + pCallbackData->pMessage);
+        Logrador::err(msg + pCallbackData->pMessage);
         break;
     case VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT:
-        Logger::debug(msg + pCallbackData->pMessage);
+        Logrador::debug(msg + pCallbackData->pMessage);
         break;
     default:
-        Logger::err("Failed to find log handler for severity" + std::to_string(messageSeverity));
+        Logrador::err("Failed to find log handler for severity" + std::to_string(messageSeverity));
     };
 
     return VK_FALSE;

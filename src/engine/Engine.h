@@ -9,7 +9,7 @@
 #include "Window.h"
 #include "SwapChain.h"
 #include "InstanceData.h"
-#include "Logger.h"
+#include "Logrador.h"
 #include "Vertex.h"
 #include "MeshRegistry.h"
 #include "Pipelines.h"

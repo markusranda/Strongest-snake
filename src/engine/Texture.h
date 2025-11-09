@@ -3,7 +3,7 @@
 #include <../libs/stb_image.h>
 #include <stdexcept>
 #include "Buffer.h"
-#include <Logger.h>
+#include <Logrador.h>
 
 struct Texture
 {
@@ -141,7 +141,7 @@ inline Texture LoadTexture(const std::string &filename,
     texture.height = texHeight;
 
     if (!texture.image)
-        Logger::err("Texture not loaded!");
+        Logrador::err("Texture not loaded!");
 
     return texture;
 }

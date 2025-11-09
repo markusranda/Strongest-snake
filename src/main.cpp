@@ -4,7 +4,7 @@
 #include "engine/Engine.h"
 #include "engine/Window.h"
 #include "game/Game.h"
-#include "Logger.h"
+#include "Logrador.h"
 
 // ______________________________
 //         TRACY TIME
@@ -35,7 +35,7 @@ const uint32_t HEIGHT = 1080;
 
 int main()
 {
-    Logger::info("Launching Strongest Snake");
+    Logrador::info("Launching Strongest Snake");
 
     Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
     Game game{window};

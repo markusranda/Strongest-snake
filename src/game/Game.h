@@ -100,7 +100,7 @@ struct Game
     {
         try
         {
-            Logger::info(std::filesystem::current_path().string());
+            Logrador::info(std::filesystem::current_path().string());
             engine.init("assets/atlas.png", "assets/fonts.png", "assets/atlas.rigdb");
             ma_result result = ma_engine_init(NULL, &audioEngine);
             if (result != MA_SUCCESS)
@@ -190,7 +190,7 @@ struct Game
 
     void run()
     {
-        Logger::info("Starting game loop");
+        Logrador::info("Starting game loop");
 
         tracy::SetThreadName("MainThread"); // Optional, nice for visualization
 

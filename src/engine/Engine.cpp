@@ -9,7 +9,7 @@ void Engine::init(std::string atlasPath, std::string fontPath, std::string atlas
 {
     try
     {
-        Logger::info("Engine is being created");
+        Logrador::info("Engine is being created");
         createInstance();
         createDebugMessenger();
         createSurface();
@@ -28,7 +28,7 @@ void Engine::init(std::string atlasPath, std::string fontPath, std::string atlas
         createImagesInFlight();
         createCommandBuffers();
         createSyncObjects();
-        Logger::info("Engine is complete");
+        Logrador::info("Engine is complete");
     }
     catch (const std::exception &e)
     {
@@ -571,7 +571,7 @@ void Engine::draw(Camera &camera, float fps)
     int32_t imageIndex = prepareDraw();
     if (imageIndex < 0)
     {
-        Logger::debug("Skipping draw : Recreating swapchain");
+        Logrador::debug("Skipping draw : Recreating swapchain");
         return;
     }
 
@@ -928,7 +928,7 @@ void Engine::uploadToInstanceBuffer()
 void Engine::recreateSwapchain()
 {
     ZoneScopedN("Sort Entities");
-    Logger::info("Recreating swapchain");
+    Logrador::info("Recreating swapchain");
 
     int width = 0, height = 0;
     window.getFramebufferSize(width, height);
