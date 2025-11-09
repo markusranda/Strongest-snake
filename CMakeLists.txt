@@ -81,3 +81,18 @@ endforeach()
 # Add a custom target so shaders build along with your project
 add_custom_target(Shaders ALL DEPENDS ${SHADER_OUTPUTS})
 
+if (MSVC)
+    add_compile_options(
+        /O2         # Optimize for speed
+        /Ob2        # Inline aggressively
+        /Oi         # Intrinsics
+        /Ot         # Favor fast code
+        /GL         # Whole program optimization
+        /fp:fast    # Fast math
+        /arch:AVX2  # Use AVX2 SIMD
+        /DNDEBUG    # Disable asserts
+    )
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE
+        "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG /OPT:REF /OPT:ICF /INCREMENTAL:NO"
+    )
+endif()

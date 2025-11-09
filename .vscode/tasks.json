@@ -6,6 +6,11 @@
             "command": "Clear-Host; cmake --build build --config Debug"
         },
         {
+            "label": "build-strongest-snake-maxmode",
+            "type": "shell",
+            "command": "Clear-Host; cmake --build build --config Release --parallel"
+        },
+        {
             "label": "build-rigmor",
             "type": "shell",
             "command": ".\\rigmor\\build.ps1",
@@ -13,7 +18,8 @@
                 "kind": "build",
                 "isDefault": false
             } 
-        }
+        },
+
     ],
     "version": "2.0.0"
 }

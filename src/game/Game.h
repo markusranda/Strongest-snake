@@ -64,7 +64,9 @@ struct Game
     Background background;
     Player player;
     Camera camera{1, 1};
-    std::unordered_map<Entity, Ground> grounds;
+    std::vector<Ground> grounds;
+    std::unordered_map<size_t, Entity> groundToEntity;
+    std::unordered_map<Entity, size_t> entityToGrounds;
 
     // Game settings
     const uint32_t rows = 1000;
@@ -170,7 +172,10 @@ struct Game
                         glm::vec4 uvTransform = getUvTransform(region);
 
                         Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform);
-                        grounds.insert_or_assign(entity, Ground{entity, 100});
+                        grounds.push_back(Ground{entity, 100});
+                        size_t index = grounds.size() - 1;
+                        groundToEntity[index] = entity;
+                        entityToGrounds[entity] = index;
                     }
                 }
             }
@@ -239,33 +244,43 @@ struct Game
     // --- Game logic ---
     void updateLifecycle()
     {
-        ZoneScoped; // PROFILER
-        std::vector<Entity> deadGrounds;
-        for (auto &[entity, ground] : grounds)
+        ZoneScoped;
+
+        size_t writeIndex = 0;
+        for (size_t i = 0; i < grounds.size(); i++)
         {
+            Ground &ground = grounds[i];
+
             if (ground.dirty)
             {
                 Material &m = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(ground.entity)]];
                 m.color.a = ground.health / ground.maxHealth;
                 if (ground.health <= 0)
-                {
                     ground.dead = true;
-                }
-
-                if (ground.dead)
-                {
-                    deadGrounds.push_back(entity);
-                }
-
-                ground.dirty = false;
             }
+
+            if (ground.dead)
+            {
+                Entity entity = groundToEntity[i];
+                entityToGrounds.erase(entity);
+                groundToEntity.erase(i);
+                engine.ecs.destroyEntity(entity);
+                continue;
+            }
+
+            // Keep ground (dirty or not)
+            if (writeIndex != i)
+            {
+                grounds[writeIndex] = ground;
+                groundToEntity[writeIndex] = ground.entity;
+                entityToGrounds[ground.entity] = writeIndex;
+            }
+
+            ground.dirty = false;
+            writeIndex++;
         }
 
-        for (auto &entity : deadGrounds)
-        {
-            grounds.erase(entity);
-            engine.ecs.destroyEntity(entity);
-        }
+        grounds.resize(writeIndex);
     }
 
     void updateCamera()
@@ -364,7 +379,7 @@ struct Game
         // simulate "digging" resistance
         for (Entity collisionEntity : collisions)
         {
-            Ground &g = grounds[collisionEntity];
+            Ground &g = grounds[entityToGrounds[collisionEntity]];
             size_t collisionBoxIndex = engine.ecs.entityToCollisionBox[entityIndex(collisionEntity)];
             float penetration = 0.5f;
             float resistance = glm::clamp(penetration / 10.0f, 0.0f, 1.0f);
