@@ -584,27 +584,47 @@ void Engine::draw(Camera &camera, float fps, glm::vec2 playerCoords)
         RenderLayer currentLayer = RenderLayer::World;
         uint32_t currentVertexCount = UINT32_MAX;
         uint32_t currentVertexOffset = UINT32_MAX;
-        float currentZ;
-        uint8_t currentTiebreak;
+        float currentZ = 0.0f;
+        uint8_t currentTiebreak = 0;
         uint32_t instanceOffset = 0;
         AtlasIndex currentAtlasIndex = AtlasIndex::Sprite;
         glm::vec2 currentAtlasOffset;
         glm::vec2 currentAtlasScale;
 
         instances.clear();
-        for (auto &renderable : ecs.sortedRenderables)
+        ecs.activeEntities.clear();
+        AABB cameraBox{
+            {camera.position.x - camera.screenW / 2, camera.position.y - camera.screenH / 2},
+            {camera.position.x + camera.screenW / 2, camera.position.y + camera.screenH / 2},
+        };
+        ecs.getIntersectingEntities(cameraBox, ecs.activeEntities);
         {
-            uint32_t rEntity = entityIndex(renderable.entity);
-            Mesh &mesh = ecs.meshes[ecs.entityToMesh[rEntity]];
-            Transform &transform = ecs.transforms[ecs.entityToTransform[rEntity]];
-            Material &material = ecs.materials[ecs.entityToMaterial[rEntity]];
-            glm::vec4 &uvTransform = ecs.uvTransforms[ecs.entityToUvTransforms[rEntity]];
+            ZoneScopedN("Sorting renderables");
+            std::sort(ecs.activeEntities.begin(), ecs.activeEntities.end(), [this](Entity &a, Entity &b)
+                      { 
+                    Renderable &rA = ecs.renderables[ecs.entityToRenderable[entityIndex(a)]];
+                    Renderable &rB = ecs.renderables[ecs.entityToRenderable[entityIndex(b)]];
+                    return rA.drawkey < rB.drawkey; });
+        }
+
+        if (ecs.activeEntities.empty())
+            return;
+
+        Renderable &firstRenderable =
+            ecs.renderables[ecs.entityToRenderable[entityIndex(ecs.activeEntities[0])]];
+        uint64_t prevDrawKey = firstRenderable.drawkey;
+        for (Entity &entity : ecs.activeEntities)
+        {
+            uint32_t entityId = entityIndex(entity);
+            Renderable renderable = ecs.renderables[ecs.entityToRenderable[entityId]];
+            Mesh &mesh = ecs.meshes[ecs.entityToMesh[entityId]];
+            Transform &transform = ecs.transforms[ecs.entityToTransform[entityId]];
+            Material &material = ecs.materials[ecs.entityToMaterial[entityId]];
+            glm::vec4 &uvTransform = ecs.uvTransforms[ecs.entityToUvTransforms[entityId]];
             glm::vec2 atlasOffset = glm::vec2{uvTransform.x, uvTransform.y};
             glm::vec2 atlasScale = glm::vec2{uvTransform.z, uvTransform.w};
 
-            bool newBatch = (material.shaderType != currentShader) || (renderable.renderLayer != currentLayer) || (mesh.vertexOffset != currentVertexOffset) || (mesh.vertexCount != currentVertexCount);
-
-            if (newBatch && !instances.empty())
+            if (renderable.drawkey != prevDrawKey && !instances.empty())
             {
                 uint32_t instanceCount = instances.size() - instanceOffset;
                 DrawCmd drawCmd = DrawCmd(
@@ -625,6 +645,7 @@ void Engine::draw(Camera &camera, float fps, glm::vec2 playerCoords)
 
             InstanceData instance = {transform.model, material.color, uvTransform};
             instances.push_back(instance);
+
             currentShader = material.shaderType;
             currentLayer = renderable.renderLayer;
             currentZ = renderable.z;
@@ -634,6 +655,9 @@ void Engine::draw(Camera &camera, float fps, glm::vec2 playerCoords)
             currentAtlasIndex = material.atlasIndex;
             currentAtlasOffset = atlasOffset;
             currentAtlasScale = atlasScale;
+
+            // Save current drawKey for next comparison
+            prevDrawKey = renderable.drawkey;
         }
 
         // Last batch
@@ -718,6 +742,9 @@ void Engine::draw(Camera &camera, float fps, glm::vec2 playerCoords)
             drawCmds.emplace_back(dc);
         }
     }
+
+    for (auto &cmd : drawCmds)
+        assert(cmd.firstInstance + cmd.instanceCount <= instances.size());
 
     //  Upload once, then draw all
     uploadToInstanceBuffer();
@@ -961,11 +988,7 @@ void Engine::uploadToInstanceBuffer()
     VkDeviceSize stride = maxIntancesPerFrame * sizeof(InstanceData);
     assert(copySize <= stride && "instance data exceeds slice capacity");
     size_t frameOffset = currentFrame * stride;
-
-    memcpy(
-        static_cast<char *>(instanceBufferMapped) + frameOffset,
-        instances.data(),
-        static_cast<size_t>(copySize));
+    memcpy(static_cast<char *>(instanceBufferMapped) + frameOffset, instances.data(), static_cast<size_t>(copySize));
 }
 
 void Engine::recreateSwapchain()

@@ -41,10 +41,7 @@ struct AABBNode
     void subdivide(AABBNodePoolBoy poolBoy);
     bool isLeaf()
     {
-        for (size_t i = 0; i < MAX_AABB_NODES; i++)
-            if (nodes[i] != nullptr)
-                return true;
-        return false;
+        return nodeCount < MAX_AABB_NODES;
     }
 };
 

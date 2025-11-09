@@ -128,7 +128,7 @@ struct Game
                     AtlasRegion region = engine.atlasRegions["drill_head"];
                     glm::vec4 uvTransform = getUvTransform(region);
 
-                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, EntityType::Player, uvTransform, true, 2.0f);
+                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, EntityType::Player, uvTransform, 2.0f);
                 }
 
                 AtlasRegion region = engine.atlasRegions["snake_skin"];
@@ -138,7 +138,7 @@ struct Game
                     posCursor -= glm::vec2{snakeSize, 0.0f};
                     Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
                     Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
-                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, uvTransform, false, 2.0f);
+                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, uvTransform, 2.0f);
                     player.entities[i] = entity;
                 }
             }
@@ -169,7 +169,7 @@ struct Game
                         Transform t = Transform{{x * groundSize, y * groundSize}, {groundSize, groundSize}, "ground"};
                         glm::vec4 uvTransform = getUvTransform(region);
 
-                        Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform, true);
+                        Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform);
                         grounds.insert_or_assign(entity, Ground{entity, 100});
                     }
                 }
@@ -277,6 +277,8 @@ struct Game
 
         Transform &playerTransform = engine.ecs.transforms[playerIndexT];
         Transform &backgroundTransform = engine.ecs.transforms[backgroundIndexT];
+        Transform &backgroundTransformOld = backgroundTransform;
+        Mesh &mesh = engine.ecs.meshes[engine.ecs.entityToMesh[entityIndex(background.entity)]];
 
         // Camera center follows the player
         camera.position = playerTransform.position;
@@ -288,6 +290,10 @@ struct Game
         backgroundTransform.position = camera.position - viewSize * 0.5f;
         backgroundTransform.size = viewSize;
         backgroundTransform.commit();
+        AABB oldAABB = computeWorldAABB(mesh, backgroundTransformOld);
+        AABB newAABB = computeWorldAABB(mesh, backgroundTransform);
+
+        engine.ecs.quadTreeMoveEntity(oldAABB, newAABB, background.entity);
     }
 
     void updateGame(double delta)
@@ -378,7 +384,9 @@ struct Game
         uint32_t headEntityId = entityIndex(player.entities.front());
         auto headIndexT = engine.ecs.entityToTransform[headEntityId];
         Transform &headT = engine.ecs.transforms[headIndexT];
+        Transform oldHeadT = headT;
         Mesh &headM = engine.ecs.meshes[engine.ecs.entityToMesh[headEntityId]];
+        const Mesh &bodyM = MeshRegistry::quad; // NOTE This might not work in the future
 
         glm::vec2 acceleration = {0.0f, 0.0f};
         glm::vec2 forward = SnakeMath::getRotationVector2(headT.rotation);
@@ -402,10 +410,13 @@ struct Game
         // All non head segments gets to make a move
         for (size_t i = 1; i < player.entities.size(); i++)
         {
-            auto tIndex1 = engine.ecs.entityToTransform[player.entities[i - 1].id];
-            auto tIndex2 = engine.ecs.entityToTransform[player.entities[i].id];
+            auto entity1 = player.entities[i - 1];
+            auto entity2 = player.entities[i];
+            auto tIndex1 = engine.ecs.entityToTransform[entityIndex(entity1)];
+            auto tIndex2 = engine.ecs.entityToTransform[entityIndex(entity2)];
             Transform &t1 = engine.ecs.transforms[tIndex1];
             Transform &t2 = engine.ecs.transforms[tIndex2];
+            Transform &t2Old = t1;
             glm::vec2 prevPos = t1.position;
             glm::vec2 &pos = t2.position;
             glm::vec2 dir = prevPos - pos;
@@ -420,11 +431,23 @@ struct Game
             // Optionally adjust rotation
             t2.rotation = atan2(dir.y, dir.x);
             t2.commit();
+
+            // Update quad tree please
+            AABB oldAABB = computeWorldAABB(bodyM, t2Old);
+            AABB newAABB = computeWorldAABB(bodyM, t2);
+            engine.ecs.quadTreeMoveEntity(oldAABB, newAABB, entity2);
         }
 
         // Move head
         headT.position += playerVelocity * dt;
         headT.commit();
+
+        AABB oldAABB = computeWorldAABB(headM, oldHeadT);
+        AABB newAABB = computeWorldAABB(headM, headT);
+        if (oldAABB.min != newAABB.min || oldAABB.max != newAABB.max)
+        {
+            engine.ecs.quadTreeMoveEntity(oldAABB, newAABB, player.entities.front());
+        }
     }
 
     void rotateHeadLeft(float dt)

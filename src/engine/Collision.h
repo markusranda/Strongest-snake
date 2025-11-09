@@ -37,6 +37,15 @@ inline bool rectIntersects(AABB &A, AABB &B)
             A.max.y > B.min.y);
 }
 
+inline bool rectIntersectsInclusive(AABB &A, AABB &B)
+{
+    ZoneScoped; // PROFILER
+    return (A.min.x < B.max.x &&
+            A.max.x > B.min.x &&
+            A.min.y < B.max.y &&
+            A.max.y > B.min.y);
+}
+
 inline bool rectFullyInside(AABB &A, AABB &B)
 {
     ZoneScoped; // PROFILER

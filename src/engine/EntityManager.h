@@ -10,6 +10,9 @@
 
 #include <cstdint>
 #include <functional>
+#include <stack>
+#include <queue>
+#include <utility>
 
 struct Renderable
 {
@@ -20,10 +23,10 @@ struct Renderable
     uint64_t drawkey;
 
     // 64-bit draw key
-    // [ 8 bits layer ] [ 16 bits shaderType ] [ 32 bits z-sort value ] [ 8 bits tie-break ]
-    // | 63 .... 56 | 55 .... 40 | 39 ............ 8 | 7 .... 0 |
-    // |   Layer    |  Shader    |     Z-Sort       |   Tie    |
-    inline void makeDrawKey(ShaderType shader)
+    // [ 8 bits layer ] [ 16 bits shaderType ] [ 8 bits meshGroup ] [ 8 bits atlasIndex ] [ 16 bits vertexOffset ] [ 8 bits tie ]
+    // | 63....56 | 55....40 | 39....32 | 31....24 | 23....8 | 7....0 |
+
+    inline void makeDrawKey(ShaderType shader, AtlasIndex atlasIndex, uint32_t vertexOffset, uint32_t vertexCount)
     {
         static_assert(sizeof(RenderLayer) == 1, "RenderLayer must be 8 bits");
         static_assert(sizeof(ShaderType) == 2, "ShaderType must be 16 bits");
@@ -31,9 +34,10 @@ struct Renderable
         uint64_t key = 0;
         key |= (uint64_t(renderLayer) & 0xFF) << 56;
         key |= (uint64_t(shader) & 0xFFFF) << 40;
-        uint32_t zBits = static_cast<uint32_t>((1.0f - z) * 0xFFFFFFFFu);
-        key |= (uint64_t)zBits << 8;
-        key |= tiebreak;
+        key |= (uint64_t(atlasIndex) & 0xFF) << 32;
+        key |= (uint64_t(vertexOffset & 0xFFFF)) << 16;
+        uint16_t zBits = static_cast<uint16_t>((1.0f - z) * 65535.0f);
+        key |= (uint64_t)zBits;
 
         // Commit
         drawkey = key;
@@ -68,6 +72,7 @@ struct EntityManager
     std::vector<AABB> collisionBoxes;
     std::vector<glm::vec4> uvTransforms;
     std::vector<EntityType> entityTypes;
+    std::vector<Entity> activeEntities;
 
     // --- Sparse ---
     std::vector<uint32_t> entityToTransform;
@@ -103,7 +108,14 @@ struct EntityManager
         aabbRoot->aabb = computeWorldAABB(MeshRegistry::quad, Transform{glm::vec2{0, 0}, glm::vec2{2048, 2048}});
     }
 
-    Entity createEntity(Transform transform, Mesh mesh, Material material, RenderLayer renderLayer, EntityType entityType, glm::vec4 uvTransform = glm::vec4{}, bool collidable = false, float z = 0.0f)
+    Entity createEntity(
+        Transform transform,
+        Mesh mesh,
+        Material material,
+        RenderLayer renderLayer,
+        EntityType entityType,
+        glm::vec4 uvTransform = glm::vec4{},
+        float z = 0.0f)
     {
         uint32_t index;
         if (!freeIndices.empty())
@@ -125,14 +137,11 @@ struct EntityManager
         // ---- Add to stores ----
         // -- Renderable --
         Renderable renderable = {entity, z, 0, renderLayer};
-        renderable.makeDrawKey(material.shaderType);
+        renderable.makeDrawKey(material.shaderType, material.atlasIndex, mesh.vertexOffset, mesh.vertexCount);
         sortedRenderables.push_back(renderable);
 
-        // -- Collisions --
-        if (collidable)
-        {
-            updateAABBPools(mesh, transform, entity);
-        }
+        // -- Quad tree --
+        updateQuadTree(mesh, transform, entity);
 
         // -- The rest --
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
@@ -242,8 +251,8 @@ struct EntityManager
         return generations[index] == gen;
     }
 
-    // Finds all the neighbors of this aabb
-    // It also cleans up the dead fools
+    // Finds all the neighbors of this aabb and cleans up the dead fools
+    // TODO This doesn't really find all the nodes, it gives up after first child.
     std::vector<Entity> getNeighboringEntities(AABB &aabb)
     {
         ZoneScoped;
@@ -254,8 +263,6 @@ struct EntityManager
 
         while (true)
         {
-            assert(rectFullyInside(aabb, node->aabb) && "This means we have entered a node that can't contain us, which should never happen");
-
             // Check if any of the child nodes can contain
             // If child node can contain, we should enter it and repeat this check
             bool found = false;
@@ -271,45 +278,9 @@ struct EntityManager
             }
 
             // If non of the child nodes can contain, we have reached our destination.
-            // In this part we find the alive ones, and we update the node's objects so that we prune the dead entities.
             if (!found)
             {
-                /*
-                    In-place compaction
-
-                    Initial array:
-                        node->objects = [A (alive), B (dead), C (alive), D (dead), E (alive)]
-
-                    Iteration:
-                    | read | write | action              | new array contents | note            |
-                    |------|-------|---------------------|--------------------|-----------------|
-                    | 0    | 0     | A alive → write 0   | [A, B, C, D, E]    | no change       |
-                    | 1    | 1     | B dead → skip       | [A, B, C, D, E]    | no write        |
-                    | 2    | 1     | C alive → write 1   | [A, C, C, D, E]    | steals B's slot |
-                    | 3    | 2     | D dead → skip       | [A, C, C, D, E]    | no write        |
-                    | 4    | 2     | E alive → write 2   | [A, C, E, D, E]    | steals D's slot |
-
-                    After resize:
-                        node->objects = [A, C, E]
-
-                    This algorithm compactly removes dead entities without extra allocations,
-                    preserving order of surviving elements in a single O(n) pass.
-                */
-                entities.reserve(node->objects.size());
-                size_t writeIndex = 0;
-                for (size_t readIndex = 0; readIndex < node->objects.size(); ++readIndex)
-                {
-                    Entity e = node->objects[readIndex];
-                    if (isAlive(e))
-                    {
-                        // keep it alive both in return vector and in the node
-                        node->objects[writeIndex++] = e;
-                        entities.push_back(e);
-                    }
-                }
-
-                // shrink node’s object list in place — drop the dead guys
-                node->objects.resize(writeIndex);
+                appendAndDeleteDeadEntities(entities, node);
                 break;
             }
         }
@@ -317,11 +288,238 @@ struct EntityManager
         return entities;
     }
 
-    void updateAABBPools(Mesh &mesh, Transform &transform, Entity &entity)
+    // Finds all the intersecting nodes of this aabb and cleans up the dead fools
+    void getIntersectingEntities(AABB &aabb, std::vector<Entity> &entities)
+    {
+        ZoneScoped;
+
+        uint32_t attempts = 0;
+        const uint32_t MAX_ATTEMPTS = 100;
+        std::stack<std::pair<AABBNode *, uint32_t>> visitedNodes;
+        visitedNodes.push({aabbRoot, 0}); // We start on root node at child index 0
+
+        while (visitedNodes.size() > 0)
+        {
+            // We start of with
+            auto &[node, childIndex] = visitedNodes.top();
+
+            if (++attempts > MAX_ATTEMPTS)
+            {
+                std::cout << "You should probably not iterate this much\n";
+                return;
+            }
+
+            // Append everything we can from this node
+            appendAndDeleteDeadEntities(entities, node);
+
+            // If this is a leaf, we can just go back to parent
+            if (node->isLeaf())
+            {
+                visitedNodes.pop();
+                continue;
+            }
+
+            // We know that we've visited all child nodes and can continue back to parent
+            if (childIndex >= node->nodeCount)
+            {
+                visitedNodes.pop();
+                continue;
+            }
+
+            // Search for the first intersecting child node
+            bool pushed = false;
+            for (; childIndex < node->nodeCount;)
+            {
+                AABBNode *child = node->nodes[childIndex++];
+                if (rectIntersectsInclusive(aabb, child->aabb))
+                {
+                    // Add next attempt onto stack
+                    visitedNodes.push({child, 0});
+                    pushed = true;
+                    break;
+                }
+            }
+
+            // Safeguards that removes if we didn't intersect with anything
+            if (!pushed)
+            {
+                visitedNodes.pop();
+            }
+        }
+    }
+
+    void quadTreeMoveEntity(AABB &aabbDelete, AABB &aabbInsert, Entity entity)
+    {
+        ZoneScoped;
+        deleteEntityQuadTree(aabbRoot, entity, aabbDelete);
+        insertEntityQuadTree(aabbRoot, entity, aabbInsert);
+    }
+
+    void deleteEntityQuadTree(AABBNode *node, Entity entity, AABB &aabb)
+    {
+        ZoneScoped;
+
+        uint32_t attempts = 0;
+        const uint32_t MAX_ATTEMPTS = 100;
+        std::stack<std::pair<AABBNode *, uint32_t>> visitedNodes;
+        visitedNodes.push({node, 0}); // We start on root node at child index 0
+
+        while (visitedNodes.size() > 0)
+        {
+            // We start of with
+            auto &[node, childIndex] = visitedNodes.top();
+
+            if (++attempts > MAX_ATTEMPTS)
+            {
+                std::cout << "You should probably not iterate this much\n";
+                return;
+            }
+
+            if (deleteEntity(node, entity))
+            {
+                // Destroyed, let's return
+                break;
+            }
+
+            // If this is a leaf, we can just go back to parent
+            if (node->isLeaf())
+            {
+                visitedNodes.pop();
+                continue;
+            }
+
+            // We know that we've visited all child nodes and can continue back to parent
+            if (childIndex >= node->nodeCount)
+            {
+                visitedNodes.pop();
+                continue;
+            }
+
+            // Search for the first intersecting child node
+            bool pushed = false;
+            for (; childIndex < node->nodeCount;)
+            {
+                AABBNode *child = node->nodes[childIndex++];
+                if (rectIntersectsInclusive(aabb, child->aabb))
+                {
+                    // Add next attempt onto stack
+                    visitedNodes.push({child, 0});
+                    pushed = true;
+                    break;
+                }
+            }
+
+            // Safeguards that removes if we didn't intersect with anything
+            if (!pushed)
+            {
+                visitedNodes.pop();
+            }
+        }
+    }
+
+    void insertEntityQuadTree(AABBNode *node, Entity entity, AABB &aabb)
+    {
+        ZoneScoped;
+
+        // Search for a suitable node to store this aabb on.
+        while (node)
+        {
+            glm::vec2 size = node->aabb.max - node->aabb.min;
+            bool tooSmallToContinue = size.x <= 512.0f && size.y <= 512.0f;
+            if (tooSmallToContinue)
+            {
+                node->objects.push_back(entity);
+                return;
+            }
+
+            if (node->nodeCount < MAX_AABB_NODES)
+                node->subdivide(poolBoy);
+
+            // Find a suitable child node
+            AABBNode *next = nullptr;
+            for (AABBNode *child : node->nodes)
+            {
+                if (rectFullyInside(aabb, child->aabb))
+                {
+                    next = child;
+                    break;
+                }
+            }
+
+            // If we can't continue, we just add it here
+            if (!next)
+            {
+                node->objects.push_back(entity);
+                return;
+            }
+
+            // Update cursor with child or null_ptr
+            node = next;
+        }
+    }
+
+    /*
+    In-place compaction
+
+    Initial array:
+    node->objects = [A (alive), B (dead), C (alive), D (dead), E (alive)]
+
+    Iteration:
+    | read | write | action              | new array contents | note            |
+    |------|-------|---------------------|--------------------|-----------------|
+    | 0    | 0     | A alive → write 0   | [A, B, C, D, E]    | no change       |
+    | 1    | 1     | B dead → skip       | [A, B, C, D, E]    | no write        |
+    | 2    | 1     | C alive → write 1   | [A, C, C, D, E]    | steals B's slot |
+    | 3    | 2     | D dead → skip       | [A, C, C, D, E]    | no write        |
+    | 4    | 2     | E alive → write 2   | [A, C, E, D, E]    | steals D's slot |
+
+    After resize:
+    node->objects = [A, C, E]
+
+    This algorithm compactly removes dead entities without extra allocations,
+    preserving order of surviving elements in a single O(n) pass.
+    */
+    void appendAndDeleteDeadEntities(std::vector<Entity> &entities, AABBNode *node)
+    {
+        entities.reserve(node->objects.size());
+        size_t writeIndex = 0;
+        for (size_t readIndex = 0; readIndex < node->objects.size(); ++readIndex)
+        {
+            Entity e = node->objects[readIndex];
+            if (isAlive(e))
+            {
+                // keep it alive both in return vector and in the node
+                node->objects[writeIndex++] = e;
+                entities.push_back(e);
+            }
+        }
+
+        // shrink node’s object list in place — drop the dead guys
+        node->objects.resize(writeIndex);
+    }
+
+    // In-place compaction
+    bool deleteEntity(AABBNode *node, Entity entity)
+    {
+        size_t writeIndex = 0;
+        for (size_t readIndex = 0; readIndex < node->objects.size(); ++readIndex)
+        {
+            Entity e = node->objects[readIndex];
+            if (entityIndex(e) != entityIndex(entity)) // <-- compare against the input entity
+            {
+                node->objects[writeIndex++] = e;
+            }
+        }
+        bool removed = writeIndex != node->objects.size();
+        node->objects.resize(writeIndex);
+        return removed;
+    }
+
+    void updateQuadTree(Mesh &mesh, Transform &transform, Entity &entity)
     {
         ZoneScoped;
         AABB newAABB = computeWorldAABB(mesh, transform);
-        addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, newAABB);
+        addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, newAABB); // Should probably not be in here?
 
         AABBNode *cursorNode = aabbRoot;
 
