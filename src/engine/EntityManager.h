@@ -363,6 +363,7 @@ struct EntityManager
         const uint32_t MAX_ATTEMPTS = 100;
         std::stack<std::pair<AABBNode *, uint32_t>> visitedNodes;
         visitedNodes.push({node, 0}); // We start on root node at child index 0
+        std::vector<AABBNode *> nodesToDelete;
 
         while (visitedNodes.size() > 0)
         {
@@ -375,9 +376,10 @@ struct EntityManager
                 return;
             }
 
+            // Delete entity and check if this branch needs trimming
             if (deleteEntity(node, entity))
             {
-                // Destroyed, let's return
+                pruneBranch(node);
                 break;
             }
 
@@ -417,9 +419,61 @@ struct EntityManager
         }
     }
 
+    void pruneBranch(AABBNode *node)
+    {
+        if (!node)
+            return;
+
+        AABBNode *current = node;
+
+        while (current && current->parent)
+        {
+            AABBNode *parent = current->parent;
+
+            bool allEmpty = true;
+            for (size_t i = 0; i < MAX_AABB_NODES; ++i)
+            {
+                AABBNode *child = parent->nodes[i];
+                if (!child)
+                    continue;
+
+                // If child still has anything alive, we stop pruning upward
+                if (!child->objects.empty() || child->nodeCount > 0)
+                {
+                    allEmpty = false;
+                    break;
+                }
+            }
+
+            if (!allEmpty)
+                break;
+
+            // Burn all four children of this parent
+            for (size_t i = 0; i < MAX_AABB_NODES; ++i)
+            {
+                if (parent->nodes[i])
+                {
+                    parent->nodes[i]->free();
+                    parent->nodes[i] = nullptr;
+                }
+            }
+
+            parent->nodeCount = 0;
+
+            // Move up — maybe this parent just became empty too
+            current = parent;
+        }
+    }
+
     void insertEntityQuadTree(AABBNode *node, Entity entity, AABB &aabb)
     {
         ZoneScoped;
+
+        while (!rectFullyInside(aabb, node->aabb))
+        {
+            growRootSymmetric(node, aabb);
+            node = aabbRoot;
+        }
 
         // Search for a suitable node to store this aabb on.
         while (node)
