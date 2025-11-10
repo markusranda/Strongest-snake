@@ -348,7 +348,8 @@ struct Game
     std::vector<Entity> getAllCollisions(AABB &aabb, Transform &t)
     {
         std::vector<Entity> collisions;
-        std::vector<Entity> entities = engine.ecs.getNeighboringEntities(aabb);
+        std::vector<Entity> entities;
+        engine.ecs.getIntersectingEntities(aabb, entities);
         for (Entity &entity : entities)
         {
             AABB &collisionBox = engine.ecs.collisionBoxes[engine.ecs.entityToCollisionBox[entityIndex(entity)]];

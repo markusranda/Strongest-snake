@@ -253,43 +253,6 @@ struct EntityManager
         return generations[index] == gen;
     }
 
-    // Finds all the neighbors of this aabb and cleans up the dead fools
-    // TODO This doesn't really find all the nodes, it gives up after first child.
-    std::vector<Entity> getNeighboringEntities(AABB &aabb)
-    {
-        ZoneScoped;
-
-        std::vector<Entity> entities;
-        AABBNode *node = aabbRoot;
-        size_t nodeIndex = -1;
-
-        while (true)
-        {
-            // Check if any of the child nodes can contain
-            // If child node can contain, we should enter it and repeat this check
-            bool found = false;
-            for (size_t i = 0; i < node->nodeCount; i++)
-            {
-                AABBNode *child = node->nodes[i];
-                if (rectFullyInside(aabb, child->aabb))
-                {
-                    node = child;
-                    found = true;
-                    break;
-                }
-            }
-
-            // If non of the child nodes can contain, we have reached our destination.
-            if (!found)
-            {
-                appendAndDeleteDeadEntities(entities, node);
-                break;
-            }
-        }
-
-        return entities;
-    }
-
     // Finds all the intersecting nodes of this aabb and cleans up the dead fools
     void getIntersectingEntities(AABB &aabb, std::vector<Entity> &entities)
     {
