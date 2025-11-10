@@ -291,13 +291,13 @@ struct Engine
 
     void createColorResources()
     {
-        VkFormat colorFormat = swapchain.getImageFormat();
+        VkFormat colorFormat = swapchain.swapChainImageFormat;
 
         CreateImage(
             device,
             physicalDevice,
-            swapchain.getExtent().width,
-            swapchain.getExtent().height,
+            swapchain.swapChainExtent.width,
+            swapchain.swapChainExtent.height,
             msaaSamples,
             colorFormat,
             VK_IMAGE_TILING_OPTIMAL,
@@ -448,7 +448,7 @@ struct Engine
     void createRenderPass()
     {
         VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = swapchain.getImageFormat();
+        colorAttachment.format = swapchain.swapChainImageFormat;
         colorAttachment.samples = msaaSamples;
         colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -458,7 +458,7 @@ struct Engine
         colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentDescription colorAttachmentResolve{};
-        colorAttachmentResolve.format = swapchain.getImageFormat();
+        colorAttachmentResolve.format = swapchain.swapChainImageFormat;
         colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
         colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -522,7 +522,7 @@ struct Engine
     void createImagesInFlight()
     {
         imagesInFlight.clear();
-        imagesInFlight.resize(swapchain.getFramebuffers().size(), VK_NULL_HANDLE);
+        imagesInFlight.resize(swapchain.swapChainFramebuffers.size(), VK_NULL_HANDLE);
     }
 
     void createCommandPool()
@@ -558,7 +558,7 @@ struct Engine
 
     void createSyncObjects()
     {
-        size_t imageCount = swapchain.getFramebuffers().size();
+        size_t imageCount = swapchain.swapChainFramebuffers.size();
 
         imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
         inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
@@ -636,7 +636,7 @@ struct Engine
         bool swapChainAdequate = false;
         if (extensionsSupported)
         {
-            auto swapChainSupport = SwapChain::querySwapChainSupport(device, surface);
+            auto swapChainSupport = swapchain.querySwapChainSupport(device, surface);
             swapChainAdequate = !swapChainSupport.formats.empty() &&
                                 !swapChainSupport.presentModes.empty();
         }
@@ -943,7 +943,7 @@ struct Engine
         uint32_t imageIndex;
         VkResult result = acquireNextImageKHR(
             device,
-            swapchain.getHandle(),
+            swapchain.handle,
             UINT64_MAX,
             imageAvailableSemaphores[currentFrame],
             VK_NULL_HANDLE,
@@ -978,9 +978,9 @@ struct Engine
         VkRenderPassBeginInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassInfo.renderPass = renderPass;
-        renderPassInfo.framebuffer = swapchain.getFramebuffers()[imageIndex];
+        renderPassInfo.framebuffer = swapchain.swapChainFramebuffers[imageIndex];
         renderPassInfo.renderArea.offset = {0, 0};
-        renderPassInfo.renderArea.extent = swapchain.getExtent();
+        renderPassInfo.renderArea.extent = swapchain.swapChainExtent;
 
         VkClearValue clearColor = {{{0.5f, 0.5f, 0.5f, 1.0f}}};
         renderPassInfo.clearValueCount = 1;
@@ -990,15 +990,15 @@ struct Engine
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-        viewport.width = (float)swapchain.getExtent().width;
-        viewport.height = (float)swapchain.getExtent().height;
+        viewport.width = (float)swapchain.swapChainExtent.width;
+        viewport.height = (float)swapchain.swapChainExtent.height;
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
         vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
         VkRect2D scissor{};
         scissor.offset = {0, 0};
-        scissor.extent = swapchain.getExtent();
+        scissor.extent = swapchain.swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
         return imageIndex;
@@ -1095,7 +1095,7 @@ struct Engine
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = signalSemaphores;
-        VkSwapchainKHR swapChains[] = {swapchain.getHandle()};
+        VkSwapchainKHR swapChains[] = {swapchain.handle};
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = swapChains;
         presentInfo.pImageIndices = &imageIndex;
