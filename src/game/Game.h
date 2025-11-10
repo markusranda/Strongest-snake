@@ -189,8 +189,8 @@ struct Game
             ma_sound_start(&engineIdleAudio);
 
             // --- Scrolling ---
-            glfwSetWindowUserPointer(window.getHandle(), this); // Connects this instance of struct to the windows somehow
-            glfwSetScrollCallback(window.getHandle(), scrollCallback);
+            glfwSetWindowUserPointer(window.handle, this); // Connects this instance of struct to the windows somehow
+            glfwSetScrollCallback(window.handle, scrollCallback);
         }
         catch (const std::exception &e)
         {
@@ -317,7 +317,7 @@ struct Game
 
         // Constants / parameters
         const float dt = static_cast<float>(delta) / 1000.0f;
-        GLFWwindow *handle = window.getHandle();
+        GLFWwindow *handle = window.handle;
 
         // --- Rotation ---
         auto change = rotationSpeed * dt;

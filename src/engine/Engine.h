@@ -240,7 +240,7 @@ struct Engine
 
     void createSurface()
     {
-        auto status = glfwCreateWindowSurface(instance, window.getHandle(), nullptr, &surface);
+        auto status = glfwCreateWindowSurface(instance, window.handle, nullptr, &surface);
         if (status != VK_SUCCESS)
         {
             char buf[128]; // plenty of space for your message
