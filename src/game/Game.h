@@ -575,6 +575,7 @@ struct Game
 
 inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 {
+    // TODO Add scrollMax before release or maybe max when DEBUG isn't present
     Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
     if (!game)
         return;

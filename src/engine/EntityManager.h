@@ -165,6 +165,8 @@ struct EntityManager
     {
         ZoneScoped;
 
+        // TODO This is too slow, we should increase the speed of deletion since it's quite costly to delete stuff now.
+
         uint32_t index = entityIndex(e);
         uint8_t gen = entityGen(e);
 
