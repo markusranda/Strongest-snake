@@ -405,7 +405,6 @@ struct ParticleSystem
                      freeListHeadMemory);
         vkMapMemory(device, freeListHeadMemory, 0, sizeof(uint32_t), 0, &freeListHeadMapped);
         *(uint32_t *)freeListHeadMapped = maxParticles;
-        printf("HEAD INIT: %u\n", *(uint32_t *)freeListHeadMapped);
 
         // Debug buffer
         CreateBuffer(device,
