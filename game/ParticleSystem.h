@@ -19,10 +19,9 @@ struct Particle
 struct SpawnData
 {
     glm::vec2 pos;
+    glm::vec2 forward;
     uint32_t amount;
-    uint32_t _pad = 0; // alignment padding
 };
-static_assert(sizeof(SpawnData) == 16); // Vulkan likes 16 byte strucs for some reason
 
 struct ParticleSystem
 {
@@ -339,13 +338,11 @@ struct ParticleSystem
         dynamic.dynamicStateCount = dynamicStates.size();
         dynamic.pDynamicStates = dynamicStates.data();
 
-        // Push constant: just a viewProj matrix
         VkPushConstantRange pushRange{};
         pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         pushRange.offset = 0;
-        pushRange.size = sizeof(glm::mat4);
+        pushRange.size = sizeof(glm::mat4) + sizeof(float); // 68
 
-        // Note: no descriptor sets for graphics
         VkPipelineLayoutCreateInfo layout{};
         layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         layout.setLayoutCount = 1;
@@ -447,6 +444,7 @@ struct ParticleSystem
         {
             SpawnData *sd = reinterpret_cast<SpawnData *>(spawnMapped);
             sd->pos = glm::vec2(0.0f);
+            sd->forward = glm::vec2(0.0f);
             sd->amount = 0;
         }
 
@@ -463,13 +461,14 @@ struct ParticleSystem
     }
 
     // Updates spawndata in gpu buffer
-    void updateSpawnFlag(glm::vec2 pos, uint32_t amount)
+    void updateSpawnFlag(glm::vec2 pos, glm::vec2 forward, uint32_t amount)
     {
         if (!spawnMapped)
             return;
 
         SpawnData *sd = reinterpret_cast<SpawnData *>(spawnMapped);
         sd->pos = pos;
+        sd->forward = forward;
         sd->amount = amount;
     }
 

@@ -354,6 +354,12 @@ struct Game
 
     void updateEngineRevs()
     {
+        if (drilling)
+        {
+            ma_sound_set_pitch(&engineIdleAudio, highRev);
+            return;
+        }
+
         Transform &playerTransform = engine.ecs.transforms[entityIndex(player.entities.front())];
         glm::vec2 forward = SnakeMath::getRotationVector2(playerTransform.rotation);
         float velocity = glm::dot(playerVelocity, forward);
@@ -415,7 +421,7 @@ struct Game
             glm::vec4 world = head.model * local;
 
             glm::vec2 drillTipWorld = glm::vec2(world.x, world.y);
-            engine.particleSystem.updateSpawnFlag(drillTipWorld, 1);
+            engine.particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(head.rotation), 1);
         }
     }
 

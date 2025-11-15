@@ -10,6 +10,7 @@ struct Particle {
 
 struct SpawnData {
     vec2 pos;
+    vec2 forward;
     uint amount;
     uint _pad;
 };
@@ -59,7 +60,7 @@ void main()
     if (wasAlive == 1)
     {
         p.vel.y += 9.8 * 0.016;
-        p.vel.x *= 0.99999;
+        // p.vel.x *= 0.99999;
         p.pos += p.vel * 0.016;
         p.life -= 0.016;
 
@@ -96,8 +97,6 @@ void main()
 
         if (oldAmount > 0)
         {
-            // Good — this thread is authorized to spawn
-
             // Pop from the free list safely
             uint oldTop = atomicAdd(freeListHead, uint(-1));
 
@@ -106,25 +105,22 @@ void main()
                 uint freeIndex = freeList[oldTop - 1];
 
                 // Emit particle
-                float r1 = hash(id * 17u);
-                float r2 = hash(id * 97u);
-                vec2 offset = (vec2(r1, r2) * 2.0 - 1.0) * 0.2;
+                float a = hash(id * 17u) * 6.2831853;      // angle 0..2π
+                float r = sqrt(hash(id * 97u));            // correct uniform circle distribution
+                float spawnRadius = 5;                   // tweak to match your world scale
+
+                vec2 dir = vec2(cos(a), sin(a));
+                vec2 offset = dir * (r * spawnRadius);
 
                 Particle np;
                 np.pos = spawn.pos + offset;
-                np.vel = vec2(r2 - 0.5, r1 - 0.5) * (20.0 * hash(id * 133u));
+                float thrust = 100.0 * hash(id * 133u);
+                vec2 backward = -spawn.forward;
+                np.vel = backward * thrust + dir * (50.0 * hash(id * 211u)); 
                 np.life = 5.0;
                 np.alive = 1;
 
                 particles[freeIndex] = np;
-            }
-            else
-            {
-                // Roll back head underflow
-                atomicAdd(freeListHead, 1);
-
-                // Roll back spawn count
-                atomicAdd(spawn.amount, 1);
             }
         }
     }

@@ -1047,6 +1047,7 @@ struct Engine
 
         VkCommandBuffer cmd = commandBuffers[currentFrame];
         glm::mat4 viewProj = camera.getViewProj();
+        float zoom = camera.zoom;
 
         // Draw all instances
         for (const auto &dc : drawCmds)
@@ -1102,8 +1103,15 @@ struct Engine
                                 0, nullptr);
         vkCmdPushConstants(cmd, particleSystem.graphicsPipeline.layout,
                            VK_SHADER_STAGE_VERTEX_BIT,
-                           0, sizeof(glm::mat4),
+                           0,
+                           sizeof(glm::mat4),
                            &viewProj);
+        vkCmdPushConstants(cmd, particleSystem.graphicsPipeline.layout,
+                           VK_SHADER_STAGE_VERTEX_BIT,
+                           sizeof(glm::mat4),
+                           sizeof(float),
+                           &zoom);
+
         vkCmdDraw(cmd, particleSystem.maxParticles, 1, 0, 0);
     }
 
