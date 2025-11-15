@@ -1,10 +1,10 @@
 // Needs to be included for stb_image to work, this should only be defined here
 #define STB_IMAGE_IMPLEMENTATION
 
-#include "engine/Engine.h"
-#include "engine/Window.h"
-#include "game/Game.h"
 #include "Logrador.h"
+#include "Engine.h"
+#include "Window.h"
+#include "Game.h"
 
 // ______________________________
 //         TRACY TIME

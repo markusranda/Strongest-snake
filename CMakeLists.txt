@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_definitions(-DUNICODE -D_UNICODE)
 
 # Grab all source files in src/
-file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp src/*.h)
+file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS game/*.cpp game/*.h)
 
 add_executable(strongest_snake ${SRC_FILES})
 
@@ -45,7 +45,7 @@ find_package(glfw3 CONFIG REQUIRED)
 target_link_libraries(strongest_snake PRIVATE glfw)
 
 # Project includes
-target_include_directories(strongest_snake PRIVATE src)
+target_include_directories(strongest_snake PRIVATE game)
 
 # Find glslc (should come with Vulkan SDK)
 find_program(GLSLC_EXECUTABLE NAMES glslc HINTS "$ENV{VULKAN_SDK}/Bin")
