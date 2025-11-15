@@ -25,6 +25,11 @@ struct AABB
         min = pos - halfSize;
         max = pos + halfSize;
     }
+
+    glm::vec2 center()
+    {
+        return max - min;
+    }
 };
 
 struct AABBNode

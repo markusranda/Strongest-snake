@@ -449,9 +449,9 @@ struct Game
             playerVelocity = glm::normalize(playerVelocity) * playerMaxVelocity;
 
         // Check collision
-        glm::vec2 targetPos = glm::vec2{headT.position};
-        headT.position += playerVelocity * dt;
+        glm::vec2 targetPos = headT.position + playerVelocity * dt;
         tryMove(headT, headM, targetPos, dt);
+        headT.position += playerVelocity * dt;
 
         // All non head segments gets to make a move
         for (size_t i = 1; i < player.entities.size(); i++)
@@ -462,7 +462,7 @@ struct Game
             auto tIndex2 = engine.ecs.entityToTransform[entityIndex(entity2)];
             Transform &t1 = engine.ecs.transforms[tIndex1];
             Transform &t2 = engine.ecs.transforms[tIndex2];
-            Transform &t2Old = t1;
+            Transform &t2Old = t2;
             glm::vec2 prevPos = t1.position;
             glm::vec2 &pos = t2.position;
             glm::vec2 dir = prevPos - pos;
@@ -485,7 +485,6 @@ struct Game
         }
 
         // Move head
-        headT.position += playerVelocity * dt;
         headT.commit();
 
         AABB oldAABB = computeWorldAABB(headM, oldHeadT);
