@@ -4,6 +4,7 @@ namespace SnakeMath
 {
     constexpr float PI = 3.14159265358979323846f;
     constexpr float TWO_PI = 2.0f * PI;
+    static std::mt19937 rng(std::random_device{}());
 
     // TODO Fix before use
     inline float fSin(float x)
@@ -34,5 +35,17 @@ namespace SnakeMath
     {
         int val = (int)(a * 100000) % (int)(b * 100000);
         return val / 1000.0f;
+    }
+
+    inline bool chance(double probability)
+    {
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        return dist(rng) < probability;
+    }
+
+    inline float randomBetween(float min, float max)
+    {
+        std::uniform_real_distribution<double> dist(min, max);
+        return dist(rng);
     }
 }

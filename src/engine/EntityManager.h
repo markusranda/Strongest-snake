@@ -7,6 +7,7 @@
 #include "Mesh.h"
 #include "TextureComponent.h"
 #include "Entity.h"
+#include "Ground.h"
 
 #include <cstdint>
 #include <functional>
@@ -57,7 +58,8 @@ enum class EntityType : uint8_t
 {
     Player,
     Ground,
-    Background
+    Background,
+    Treasure
 };
 
 struct EntityManager
@@ -75,6 +77,7 @@ struct EntityManager
     std::vector<glm::vec4> uvTransforms;
     std::vector<EntityType> entityTypes;
     std::vector<Entity> activeEntities;
+    std::vector<Ground> grounds;
 
     // --- Sparse ---
     std::vector<uint32_t> entityToTransform;
@@ -84,6 +87,7 @@ struct EntityManager
     std::vector<uint32_t> entityToCollisionBox;
     std::vector<uint32_t> entityToUvTransforms;
     std::vector<uint32_t> entityToEntityTypes;
+    std::vector<uint32_t> entityToGrounds;
 
     std::vector<size_t> transformToEntity;
     std::vector<size_t> meshToEntity;
@@ -92,6 +96,7 @@ struct EntityManager
     std::vector<size_t> collisionBoxToEntity;
     std::vector<size_t> uvTransformsToEntity;
     std::vector<size_t> entityTypesToEntity;
+    std::vector<size_t> groundToEntity;
 
     AABBNodePoolBoy poolBoy = AABBNodePoolBoy(1, 1000);
     AABBNode *aabbRoot;
@@ -158,6 +163,7 @@ struct EntityManager
 
     void destroyEntity(Entity e)
     {
+        ZoneScoped;
 
         uint32_t index = entityIndex(e);
         uint8_t gen = entityGen(e);
@@ -180,10 +186,12 @@ struct EntityManager
         removeFromStore<Mesh>(meshes, entityToMesh, meshToEntity, e);
         removeFromStore<Renderable>(renderables, entityToRenderable, renderableToEntity, e);
         removeFromStore<Material>(materials, entityToMaterial, materialToEntity, e);
-        if (entityToCollisionBox[entityIndex(e)])
+        if (entityToCollisionBox[entityIndex(e)] != UINT32_MAX)
             removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
         removeFromStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, e);
         removeFromStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, e);
+        if (entityToGrounds[entityIndex(e)] != UINT32_MAX)
+            removeFromStore<Ground>(grounds, entityToGrounds, groundToEntity, e);
 
         sortRenderables();
     }
