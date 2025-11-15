@@ -1,0 +1,141 @@
+#version 450
+layout(local_size_x = 256) in;
+
+struct Particle {
+    vec2 pos;
+    vec2 vel;
+    float life;
+    uint alive;
+};
+
+struct SpawnData {
+    vec2 pos;
+    uint amount;
+    uint _pad;
+};
+
+layout(std430, binding = 0) buffer Particles     { Particle particles[]; };
+layout(std430, binding = 1) buffer SpawnBuffer   { SpawnData spawn; };
+layout(std430, binding = 2) buffer FreeList      { uint freeList[]; };
+layout(std430, binding = 3) buffer FreeListHead  { uint freeListHead; };
+layout(std430, binding = 4) buffer DebugBlock    { vec4 debugData; };
+
+float hash(uint x) {
+    x ^= x * 0x3d20adea;
+    x ^= x * 0x05526c56;
+    x ^= x * 0x53a22864;
+    return float(x) * (1.0 / float(0xffffffffu));
+}
+
+#define DEC_IF_POSITIVE(addr, oldVal)                             \
+    {                                                             \
+        uint _old = addr;                                         \
+        while (true) {                                            \
+            if (_old == 0) {                                      \
+                oldVal = 0;                                       \
+                break;                                            \
+            }                                                     \
+            uint _new = _old - 1;                                 \
+            uint _prev = atomicCompSwap(addr, _old, _new);        \
+            if (_prev == _old) {                                  \
+                oldVal = _old;                                    \
+                break;                                            \
+            }                                                     \
+            _old = _prev;                                         \
+        }                                                         \
+    }
+
+
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+
+    // ================================
+    // PHASE 1: READ AND UPDATE PARTICLE
+    // ================================
+    Particle p = particles[id];
+    uint wasAlive = p.alive;
+
+    if (wasAlive == 1)
+    {
+        p.vel.y += 9.8 * 0.016;
+        p.vel.x *= 0.99999;
+        p.pos += p.vel * 0.016;
+        p.life -= 0.016;
+
+        if (p.life <= 0.0)
+        {
+            p.alive = 0;
+        }
+    }
+
+    // Write the updated state immediately
+    particles[id] = p;
+
+    uint nowAlive = p.alive;
+
+    // -------------------------
+    // Free dead particles
+    // -------------------------
+    if (wasAlive == 1 && nowAlive == 0)
+    {
+        // Push this ID onto the free list
+        uint idx = atomicAdd(freeListHead, 1);
+        freeList[idx] = id;
+    }
+
+    // ================================
+    // PHASE 2: SPAWNING
+    // ================================
+    // Only threads that are dead after update may spawn
+    if (nowAlive == 0)
+    {
+        // Try to claim a spawn count
+        uint oldAmount;
+        DEC_IF_POSITIVE(spawn.amount, oldAmount);
+
+        if (oldAmount > 0)
+        {
+            // Good — this thread is authorized to spawn
+
+            // Pop from the free list safely
+            uint oldTop = atomicAdd(freeListHead, uint(-1));
+
+            if (oldTop > 0)
+            {
+                uint freeIndex = freeList[oldTop - 1];
+
+                // Emit particle
+                float r1 = hash(id * 17u);
+                float r2 = hash(id * 97u);
+                vec2 offset = (vec2(r1, r2) * 2.0 - 1.0) * 0.2;
+
+                Particle np;
+                np.pos = spawn.pos + offset;
+                np.vel = vec2(r2 - 0.5, r1 - 0.5) * (20.0 * hash(id * 133u));
+                np.life = 5.0;
+                np.alive = 1;
+
+                particles[freeIndex] = np;
+            }
+            else
+            {
+                // Roll back head underflow
+                atomicAdd(freeListHead, 1);
+
+                // Roll back spawn count
+                atomicAdd(spawn.amount, 1);
+            }
+        }
+    }
+
+    // ================================
+    // DEBUG OUTPUT
+    // ================================
+    if (id == 0) {
+        debugData.x = float(freeListHead);
+        debugData.y = float(spawn.amount);
+        debugData.z = 0.0;
+        debugData.w = 0.0;
+    }
+}

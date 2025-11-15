@@ -79,6 +79,9 @@ struct Game
     float lowRev = 0.75;
     float highRev = 1.25;
 
+    // Drilling
+    bool drilling = false;
+
     // Audio
     ma_engine audioEngine;
     ma_sound engineIdleAudio;
@@ -366,6 +369,8 @@ struct Game
         newTransform.position = targetPos;
         AABB newAABB = computeWorldAABB(mesh, newTransform);
 
+        drilling = false; // We reset drill state because we don't know if there'll be any drilling yet
+
         std::vector<Entity> collisions;
         engine.ecs.getIntersectingEntities(newAABB, collisions);
         for (Entity &entity : collisions)
@@ -394,6 +399,7 @@ struct Game
                     float damage = 250.0f * dt;
                     g.health -= damage;
                     g.dirty = true;
+                    drilling = true;
                     break;
                 }
                 default:
@@ -402,7 +408,15 @@ struct Game
             }
         }
 
-        // simulate "digging" resistance
+        if (drilling)
+        {
+            glm::vec2 drillTipLocal = MeshRegistry::getDrillTipLocal().pos; // not UV
+            glm::vec4 local = glm::vec4(drillTipLocal, 0.0f, 1.0f);
+            glm::vec4 world = head.model * local;
+
+            glm::vec2 drillTipWorld = glm::vec2(world.x, world.y);
+            engine.particleSystem.updateSpawnFlag(drillTipWorld, 1);
+        }
     }
 
     void updateMovement(float dt, bool pressing)

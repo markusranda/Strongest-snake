@@ -23,6 +23,8 @@
 #include "Draworder.h"
 #include "Atlas.h"
 #include "FragPushConstant.h"
+#include "ParticleSystem.h"
+#include "SnakeMath.h"
 
 #include <iostream>
 #include <fstream>
@@ -62,6 +64,7 @@ struct QueueFamilyIndices
 {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;
+    std::optional<uint32_t> graphicsAndComputeFamily;
 
     bool isComplete()
     {
@@ -89,6 +92,7 @@ struct Engine
 
     VkQueue graphicsQueue;
     VkQueue presentQueue;
+    VkQueue computeQueue;
 
     QueueFamilyIndices queueFamilies;
 
@@ -96,6 +100,9 @@ struct Engine
 
     VkRenderPass renderPass;
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
+
+    // Particle system
+    ParticleSystem particleSystem;
 
     // MSAA
     VkImage colorImage;
@@ -161,6 +168,7 @@ struct Engine
             createImagesInFlight();
             createCommandBuffers();
             createSyncObjects();
+            createParticleSystem();
             Logrador::info("Engine is complete");
         }
         catch (const std::exception &e)
@@ -353,6 +361,7 @@ struct Engine
 
         vkGetDeviceQueue(device, queueFamilies.graphicsFamily.value(), 0, &graphicsQueue);
         vkGetDeviceQueue(device, queueFamilies.presentFamily.value(), 0, &presentQueue);
+        vkGetDeviceQueue(device, queueFamilies.graphicsAndComputeFamily.value(), 0, &computeQueue);
     }
 
     void createTextures(std::string atlasPath, std::string fontPath)
@@ -583,6 +592,11 @@ struct Engine
         }
     }
 
+    void createParticleSystem()
+    {
+        particleSystem.init(device, physicalDevice, commandPool, computeQueue, renderPass, msaaSamples);
+    }
+
     void pickMsaaSampleCount()
     {
         VkPhysicalDeviceProperties physicalDeviceProperties;
@@ -679,6 +693,12 @@ struct Engine
             {
                 indices.graphicsFamily = i;
             }
+
+            if ((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) && (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT))
+            {
+                indices.graphicsAndComputeFamily = i;
+            }
+
             VkBool32 presentSupport = false;
             vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
@@ -747,6 +767,7 @@ struct Engine
     void draw(Camera &camera, float fps, glm::vec2 playerCoords)
     {
         ZoneScoped; // PROFILER
+
         int32_t imageIndex = prepareDraw();
         if (imageIndex < 0)
         {
@@ -932,6 +953,7 @@ struct Engine
         uploadToInstanceBuffer();
         drawCmdList(drawCmds, camera);
         endDraw(imageIndex);
+        particleSystem.resetSpawn();
 
         FrameMark;
     }
@@ -986,6 +1008,9 @@ struct Engine
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearColor;
 
+        // Update particle system
+        particleSystem.recordCompute(commandBuffer);
+
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         VkViewport viewport{};
         viewport.x = 0.0f;
@@ -1019,9 +1044,11 @@ struct Engine
     void drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
     {
         ZoneScoped; // PROFILER
+
         VkCommandBuffer cmd = commandBuffers[currentFrame];
         glm::mat4 viewProj = camera.getViewProj();
 
+        // Draw all instances
         for (const auto &dc : drawCmds)
         {
             assert(dc.vertexCount > 0 && "DrawCmd has zero vertexCount");
@@ -1064,6 +1091,20 @@ struct Engine
             // Issue draw
             vkCmdDraw(cmd, dc.vertexCount, dc.instanceCount, dc.firstVertex, dc.firstInstance);
         }
+
+        // Draw particles
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, particleSystem.graphicsPipeline.pipeline);
+        vkCmdBindDescriptorSets(cmd,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                particleSystem.graphicsPipeline.layout,
+                                0,
+                                1, &particleSystem.graphicsDescriptorSet,
+                                0, nullptr);
+        vkCmdPushConstants(cmd, particleSystem.graphicsPipeline.layout,
+                           VK_SHADER_STAGE_VERTEX_BIT,
+                           0, sizeof(glm::mat4),
+                           &viewProj);
+        vkCmdDraw(cmd, particleSystem.maxParticles, 1, 0, 0);
     }
 
     void endDraw(uint32_t imageIndex)

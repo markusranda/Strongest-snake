@@ -33,4 +33,9 @@ namespace MeshRegistry
 
         return std::vector<Vertex>(start, end);
     }
+
+    static Vertex getDrillTipLocal()
+    {
+        return vertices[7]; // Update this if vertices gets a change on i <= 7
+    }
 }
