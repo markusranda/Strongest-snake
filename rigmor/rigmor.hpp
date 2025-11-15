@@ -14,10 +14,6 @@
 // Author: Randa
 // ============================================================================
 
-// TODO list
-/**
- */
-
 // Rigdb schema
 // All binary writes use little-endian byte order.
 // | Offset | Field     | Type       | Bytes | Description                           |
