@@ -59,7 +59,8 @@ enum class EntityType : uint8_t
     Player,
     Ground,
     Background,
-    Treasure
+    Treasure,
+    COUNT
 };
 
 struct EntityManager
