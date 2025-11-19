@@ -49,9 +49,12 @@ struct Renderable
 
 struct Material
 {
-    glm::vec4 color;
+    glm::vec4 color = glm::vec4{1.0f, 1.0f, 1.0f, 1.0f};
     ShaderType shaderType;
     AtlasIndex atlasIndex;
+
+    Material(ShaderType shaderType, AtlasIndex atlasIndex) : shaderType(shaderType), atlasIndex(atlasIndex) {}
+    Material(glm::vec4 color, ShaderType shaderType, AtlasIndex atlasIndex) : color(color), shaderType(shaderType), atlasIndex(atlasIndex) {}
 };
 
 enum class EntityType : uint8_t

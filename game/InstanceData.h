@@ -1,6 +1,7 @@
 #pragma once
 #include "Atlas.h"
 #include "VertexBinding.h"
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <array>
@@ -14,8 +15,9 @@ struct InstanceData
     alignas(16) glm::mat4 model;
     alignas(16) glm::vec4 color;
     alignas(16) glm::vec4 uvTransform; // (uOffset, vOffset, uScale, vScale)
+    alignas(8) glm::vec2 worldSize;
 
-    static constexpr size_t ATTRIBUTE_COUNT = 6; // This always needs to match number of attributes
+    static constexpr size_t ATTRIBUTE_COUNT = 7; // This always needs to match number of attributes
 
     static VkVertexInputBindingDescription getBindingDescription()
     {
@@ -28,7 +30,6 @@ struct InstanceData
 
     static std::array<VkVertexInputAttributeDescription, ATTRIBUTE_COUNT> getAttributeDescriptions()
     {
-
         std::array<VkVertexInputAttributeDescription, ATTRIBUTE_COUNT> attrs{};
 
         // model
@@ -51,6 +52,12 @@ struct InstanceData
         attrs[5].location = 7;
         attrs[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
         attrs[5].offset = offsetof(InstanceData, uvTransform);
+
+        // worldSize (vec2)
+        attrs[6].binding = VertexBinding::BINDING_INSTANCE;
+        attrs[6].location = 8;
+        attrs[6].format = VK_FORMAT_R32G32_SFLOAT;
+        attrs[6].offset = offsetof(InstanceData, worldSize);
 
         return attrs;
     }

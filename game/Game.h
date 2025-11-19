@@ -127,7 +127,7 @@ struct Game
         try
         {
             Logrador::info(std::filesystem::current_path().string());
-            engine.init("assets/atlas.png", "assets/fonts.png", "assets/atlas.rigdb");
+            engine.init();
             ma_result result = ma_engine_init(NULL, &audioEngine);
             if (result != MA_SUCCESS)
             {
@@ -136,9 +136,13 @@ struct Game
 
             // --- Background ---
             {
-                Transform transform = Transform{glm::vec2{0, 0}, glm::vec2{window.width, window.height}};
-                Material material = Material{Colors::fromHex(Colors::SKY_BLUE, 1.0f), ShaderType::FlatColor, AtlasIndex::Sprite};
-                background = {engine.ecs.createEntity(transform, MeshRegistry::quad, material, RenderLayer::Background, EntityType::Background)};
+                AtlasRegion region = engine.atlasRegions["cave_background"];
+                Transform t = Transform{glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f}};
+                Material material = Material(ShaderType::TextureParallax, AtlasIndex::Sprite);
+                glm::vec4 uvTransform = getUvTransform(region);
+                t.commit();
+
+                background = {engine.ecs.createEntity(t, MeshRegistry::quad, material, RenderLayer::Background, EntityType::Background, uvTransform)};
             }
 
             // ---- Player ----
@@ -305,13 +309,14 @@ struct Game
     {
         ZoneScoped; // PROFILER
 
+        Entity entity = background.entity;
         size_t playerIndexT = engine.ecs.entityToTransform[entityIndex(player.entities.front())];
-        size_t backgroundIndexT = engine.ecs.entityToTransform[entityIndex(background.entity)];
+        size_t backgroundIndexT = engine.ecs.entityToTransform[entityIndex(entity)];
 
         Transform &playerTransform = engine.ecs.transforms[playerIndexT];
         Transform &backgroundTransform = engine.ecs.transforms[backgroundIndexT];
         Transform &backgroundTransformOld = backgroundTransform;
-        Mesh &mesh = engine.ecs.meshes[engine.ecs.entityToMesh[entityIndex(background.entity)]];
+        Mesh &mesh = engine.ecs.meshes[engine.ecs.entityToMesh[entityIndex(entity)]];
 
         // Camera center follows the player
         camera.position = glm::round(playerTransform.position);
@@ -326,7 +331,7 @@ struct Game
         AABB oldAABB = computeWorldAABB(mesh, backgroundTransformOld);
         AABB newAABB = computeWorldAABB(mesh, backgroundTransform);
 
-        engine.ecs.quadTreeMoveEntity(oldAABB, newAABB, background.entity);
+        engine.ecs.quadTreeMoveEntity(oldAABB, newAABB, entity);
     }
 
     void updateGame(double delta)

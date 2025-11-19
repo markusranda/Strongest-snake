@@ -36,3 +36,23 @@ inline glm::vec4 getUvTransform(AtlasRegion &region)
 
     return model;
 }
+
+inline glm::vec4 getUvTransform(glm::vec2 &region, glm::vec2 cellSize, glm::vec2 atlasSize)
+{
+    glm::vec4 model = glm::vec4{
+        region.x * cellSize.x / atlasSize.x,
+        region.y * cellSize.y / atlasSize.y,
+        cellSize.x / atlasSize.x,
+        cellSize.y / atlasSize.y,
+    };
+
+    float epsilonU = 1.0f / atlasSize.x;
+    float epsilonV = 1.0f / atlasSize.y;
+
+    model.x += epsilonU;
+    model.y += epsilonV;
+    model.z -= 2.0f * epsilonU;
+    model.w -= 2.0f * epsilonV;
+
+    return model;
+}

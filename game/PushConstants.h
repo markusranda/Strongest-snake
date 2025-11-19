@@ -1,0 +1,23 @@
+#pragma once
+#include "glm/glm.hpp"
+
+struct CameraPushConstant
+{
+    alignas(16) glm::mat4 viewProj;
+};
+
+static_assert(sizeof(CameraPushConstant) == 64); // If this changes, then you also need to update all offsets in frag shaders
+
+struct FragPushConstant
+{
+    alignas(8) glm::vec2 atlasOffset;
+    alignas(8) glm::vec2 atlasScale;
+    alignas(8) glm::vec2 cameraWorldPos;
+    alignas(4) float globalTime;
+    alignas(4) float _pad;
+
+    FragPushConstant(glm::vec2 atlasOffset, glm::vec2 atlasScale, glm::vec2 cameraWorldPos, float globalTime)
+        : atlasOffset(atlasOffset), atlasScale(atlasScale), cameraWorldPos(cameraWorldPos), globalTime(globalTime) {}
+};
+
+static_assert(sizeof(FragPushConstant) == 32);

@@ -4,7 +4,7 @@
 #include "Vertex.h"
 #include "Pipelines.h"
 #include "InstanceData.h"
-#include "FragPushConstant.h"
+#include "PushConstants.h"
 
 #include <fstream>
 #include <unordered_map>
@@ -159,11 +159,11 @@ inline Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, st
     VkPushConstantRange vertexPCRange{};
     vertexPCRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     vertexPCRange.offset = 0;
-    vertexPCRange.size = sizeof(glm::mat4);
+    vertexPCRange.size = sizeof(CameraPushConstant);
 
     VkPushConstantRange fragPCRange{};
     fragPCRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragPCRange.offset = sizeof(glm::mat4);
+    fragPCRange.offset = sizeof(CameraPushConstant);
     fragPCRange.size = sizeof(FragPushConstant);
 
     std::array<VkPushConstantRange, 2> pushConstantRanges = {vertexPCRange, fragPCRange};
@@ -210,11 +210,12 @@ inline Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, st
 inline std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice device, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout, VkSampleCountFlagBits msaaSamples)
 {
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
-    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_flat.spv", renderPass, textureSetLayout, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::Texture)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_texture.spv", renderPass, textureSetLayout, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::TextureScrolling)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_texture_scrolling.spv", renderPass, textureSetLayout, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_font.spv", "shaders/frag_font.spv", renderPass, textureSetLayout, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert.spv", "shaders/frag_border.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_flat.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::Texture)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::TextureScrolling)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture_scrolling.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::TextureParallax)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture_parallax.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_texture_font.spv", "shaders/frag_texture_font.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_border.spv", renderPass, textureSetLayout, msaaSamples);
 
     return pipelines;
 }

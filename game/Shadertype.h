@@ -8,5 +8,6 @@ enum class ShaderType : uint16_t
     Font,
     Texture,
     TextureScrolling,
+    TextureParallax,
     COUNT
 };

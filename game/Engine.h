@@ -21,7 +21,7 @@
 #include "Debug.h"
 #include "Pipelines.h"
 #include "Atlas.h"
-#include "FragPushConstant.h"
+#include "PushConstants.h"
 #include "ParticleSystem.h"
 #include "SnakeMath.h"
 
@@ -142,7 +142,7 @@ struct Engine
 
     float globalTime = 0.0f;
 
-    void init(std::string atlasPath, std::string fontPath, std::string atlasDataPath)
+    void init()
     {
         try
         {
@@ -154,12 +154,12 @@ struct Engine
             pickMsaaSampleCount();
             createLogicalDevice();
             createCommandPool();
-            createTextures(atlasPath, fontPath);
+            createTextures();
             createSwapChain();
             createColorResources();
             createRenderPass();
             createGraphicsPipeline();
-            createAtlasData(atlasDataPath);
+            createAtlasData();
             createDescriptorPool();
             createDescriptorSets();
             createStaticVertexBuffer();
@@ -363,24 +363,24 @@ struct Engine
         vkGetDeviceQueue(device, queueFamilies.graphicsAndComputeFamily.value(), 0, &computeQueue);
     }
 
-    void createTextures(std::string atlasPath, std::string fontPath)
+    void createTextures()
     {
-        atlasTexture = LoadTexture(atlasPath,
+        atlasTexture = LoadTexture("assets/atlas.png",
                                    device,
                                    physicalDevice,
                                    commandPool,
                                    graphicsQueue);
 
-        fontTexture = LoadTexture(fontPath,
+        fontTexture = LoadTexture("assets/fonts.png",
                                   device,
                                   physicalDevice,
                                   commandPool,
                                   graphicsQueue);
     }
 
-    void createAtlasData(std::string atlasDataPath)
+    void createAtlasData()
     {
-        std::ifstream in(atlasDataPath, std::ios::binary);
+        std::ifstream in("assets/atlas.rigdb", std::ios::binary);
         if (!in)
         {
             throw std::runtime_error("Failed to open file");
@@ -845,7 +845,7 @@ struct Engine
                     instanceOffset = instances.size();
                 }
 
-                InstanceData instance = {transform.model, material.color, uvTransform};
+                InstanceData instance = {transform.model, material.color, uvTransform, transform.size};
                 instances.push_back(instance);
 
                 currentShader = material.shaderType;
@@ -1045,7 +1045,7 @@ struct Engine
         ZoneScoped; // PROFILER
 
         VkCommandBuffer cmd = commandBuffers[currentFrame];
-        glm::mat4 viewProj = camera.getViewProj();
+        CameraPushConstant cameraData = {camera.getViewProj()};
         float zoom = camera.zoom;
 
         // Draw all instances
@@ -1058,7 +1058,7 @@ struct Engine
             assert(descriptorSets[(size_t)dc.atlasIndex] != VK_NULL_HANDLE && "Descriptor set missing!");
 
             const Pipeline &pipeline = pipelines[(size_t)dc.shaderType];
-            FragPushConstant fragmentPushConstant = FragPushConstant{dc.atlasOffset, dc.atlasScale, globalTime};
+            FragPushConstant fragmentPushConstant = FragPushConstant{dc.atlasOffset, dc.atlasScale, camera.position, globalTime};
             const size_t constantSize = sizeof(FragPushConstant);
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
             vkCmdBindDescriptorSets(cmd,
@@ -1073,12 +1073,12 @@ struct Engine
                                pipeline.layout,
                                VK_SHADER_STAGE_VERTEX_BIT,
                                0,
-                               sizeof(glm::mat4),
-                               &viewProj);
+                               sizeof(cameraData),
+                               &cameraData);
             vkCmdPushConstants(cmd,
                                pipeline.layout,
                                VK_SHADER_STAGE_FRAGMENT_BIT,
-                               sizeof(glm::mat4),
+                               sizeof(cameraData),
                                sizeof(fragmentPushConstant),
                                &fragmentPushConstant);
 
@@ -1104,7 +1104,7 @@ struct Engine
                            VK_SHADER_STAGE_VERTEX_BIT,
                            0,
                            sizeof(glm::mat4),
-                           &viewProj);
+                           &cameraData.viewProj);
         vkCmdPushConstants(cmd, particleSystem.graphicsPipeline.layout,
                            VK_SHADER_STAGE_VERTEX_BIT,
                            sizeof(glm::mat4),
