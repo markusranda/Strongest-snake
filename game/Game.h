@@ -7,10 +7,10 @@
 #include "Camera.h"
 #include "Collision.h"
 #include "TextureComponent.h"
-#include "Ground.h"
 #include "Colors.h"
 #include "Transform.h"
 #include "SnakeMath.h"
+#include "Health.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../libs/miniaudio.h"
@@ -58,9 +58,7 @@ struct Game
     Camera camera{1, 1};
 
     // Game settings
-    const uint32_t rows = 1000;
-    const uint32_t columns = 128;
-    const uint32_t groundSize = 32;
+    const uint32_t tileSize = 32;
 
     // -- Player ---
     const float thrustPower = 1800.0f; // pixels per second squared
@@ -106,19 +104,51 @@ struct Game
     {
     }
 
-    void createRandomTreasure(Ground &g, Transform &t)
+    float worldToTileCoord(float coord)
+    {
+        return coord * tileSize;
+    }
+
+    void createRandomTreasure(Entity &groundEntity, Transform &t)
     {
         int idx = std::lround(SnakeMath::randomBetween(0, TREASURE_COUNT - 1));
         std::string treasureKey = ground_treasures[idx];
-        createTreasure(g, t, treasureKey);
+        createTreasure(groundEntity, t, treasureKey);
     }
 
-    void createTreasure(Ground &g, Transform &t, std::string key)
+    void createTreasure(Entity &groundEntity, Transform &t, std::string key)
     {
         Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
         AtlasRegion region = engine.atlasRegions[key];
         glm::vec4 uvTransform = getUvTransform(region);
-        g.treasure = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Treasure, uvTransform, 0.0f);
+        Entity treasureEntity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Treasure, uvTransform, 0.0f);
+        Treasure treasure = {groundEntity};
+        engine.ecs.addToStore(engine.ecs.treasures, engine.ecs.entityToTreasure, engine.ecs.treasureToEntity, treasureEntity, treasure);
+    }
+
+    uint32_t lastMapIndex = 19;
+    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
+    glm::vec2 size = {tileSize + 1.0f, tileSize + 1.0f}; // Added 1 pixel in both height and width to remove line artifacts
+    void createGround(float xWorld, float yWorld, float radius)
+    {
+        ZoneScoped;
+        // uint32_t spriteIndex = glm::clamp((uint32_t)floor(radius * lastMapIndex), (uint32_t)1, lastMapIndex);
+        uint32_t spriteIndex = 1; // TODO Be more clever about the sprites being used
+        std::string key = "ground_mid_" + std::to_string(spriteIndex);
+        if (engine.atlasRegions.find(key) == engine.atlasRegions.end())
+            throw std::runtime_error("you cocked up the ground tiles somehow");
+        AtlasRegion region = engine.atlasRegions[key];
+        Transform &t = Transform{{worldToTileCoord(xWorld), worldToTileCoord(yWorld)}, size, "ground"};
+        glm::vec4 uvTransform = getUvTransform(region);
+        Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform, 8.0f);
+        Health h = Health{100, 100};
+
+        if (SnakeMath::chance(0.005))
+        {
+            createRandomTreasure(entity, t);
+        }
+
+        engine.ecs.addToStore(engine.ecs.healths, engine.ecs.entityToHealth, engine.ecs.healthToEntity, entity, h);
     }
 
     // --- Lifecycle ---
@@ -142,13 +172,13 @@ struct Game
                 glm::vec4 uvTransform = getUvTransform(region);
                 t.commit();
 
-                background = {engine.ecs.createEntity(t, MeshRegistry::quad, material, RenderLayer::Background, EntityType::Background, uvTransform)};
+                background = {engine.ecs.createEntity(t, MeshRegistry::quad, material, RenderLayer::Background, EntityType::Background, uvTransform, 0.0f, false)};
             }
 
             // ---- Player ----
             {
                 // Start off center map above the grass
-                glm::vec2 posCursor = glm::vec2{512, 32.0f};
+                glm::vec2 posCursor = glm::vec2{0.0f, 0.0f};
                 {
                     Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite};
                     Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
@@ -174,36 +204,46 @@ struct Game
 
             // --- Ground ----
             {
-                Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
-                uint32_t lastMapIndex = 19;
-                for (uint32_t y = 3; y < rows; y++)
+                ZoneScopedN("Create all Grounds");
+
+                // Everything grows outwards circle like.
+                // Center has a grace area with no blocks.
+                // Different block based on radius.
+
+                int Cx = 0;
+                int Cy = 0;
+                int minRadius = 10;
+                int maxRadius = 60;
+                for (size_t r = minRadius; r < maxRadius; r++)
                 {
-                    for (uint32_t x = 0; x < columns; x++)
+                    int r2 = r + r;
+                    int x = r;
+                    int y = 0;
+                    int dY = -2;
+                    int dX = r2 + r2 - 4;
+                    int d = r2 - 1;
+
+                    while (y <= x)
                     {
-                        AtlasRegion region;
-                        float ratio = (float)y / (float)rows;
-                        uint32_t spriteIndex = glm::clamp((uint32_t)floor(ratio * lastMapIndex), (uint32_t)1, lastMapIndex);
-                        std::string key = "ground_mid_" + std::to_string(spriteIndex);
+                        createGround(Cx - y, Cy - x, r);
+                        createGround(Cx - y, Cy + x, r);
+                        createGround(Cx + y, Cy - x, r);
+                        createGround(Cx + y, Cy + x, r);
+                        createGround(Cx - x, Cy - y, r);
+                        createGround(Cx - x, Cy + y, r);
+                        createGround(Cx + x, Cy - y, r);
+                        createGround(Cx + x, Cy + y, r);
 
-                        // Special case first is always the grassy grass
-                        if (y == 3)
-                            key = "ground_mid_0";
+                        d += dY;
+                        dY -= 4;
+                        ++y;
 
-                        if (engine.atlasRegions.find(key) == engine.atlasRegions.end())
-                            throw std::runtime_error("you cocked up the ground tiles somehow");
-                        region = engine.atlasRegions[key];
-
-                        Transform &t = Transform{{x * groundSize, y * groundSize}, {groundSize + 1.0f, groundSize + 1.0f}, "ground"}; // Added 1 pixel in both height and width to remove line artifacts
-                        glm::vec4 uvTransform = getUvTransform(region);
-                        Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform, 8.0f);
-                        Ground &g = Ground{entity, 100};
-
-                        if (y > 3 && SnakeMath::chance(0.005))
+                        if (d < 0)
                         {
-                            createRandomTreasure(g, t);
+                            d += dX;
+                            dX -= 4;
+                            --x;
                         }
-
-                        engine.ecs.addToStore(engine.ecs.grounds, engine.ecs.entityToGrounds, engine.ecs.groundToEntity, entity, g);
                     }
                 }
             }
@@ -230,7 +270,8 @@ struct Game
         }
     }
 
-    void run()
+    void
+    run()
     {
         Logrador::info("Starting game loop");
 
@@ -274,35 +315,79 @@ struct Game
     {
         ZoneScoped;
 
+        // Clear first
+        engine.ecs.activeEntities.clear();
+
+        // Find all active
+        float halfW = (camera.screenW * 0.5f) / camera.zoom;
+        float halfH = (camera.screenH * 0.5f) / camera.zoom;
+        AABB cameraBox{
+            {camera.position.x - halfW, camera.position.y - halfH},
+            {camera.position.x + halfW, camera.position.y + halfW},
+        };
+        engine.ecs.getIntersectingEntities(cameraBox, engine.ecs.activeEntities);
+
         size_t writeIndex = 0;
-        for (size_t i = 0; i < engine.ecs.grounds.size(); i++)
+        size_t readIndex = 0;
+        for (; readIndex < engine.ecs.activeEntities.size(); ++readIndex)
         {
-            Ground &ground = engine.ecs.grounds[i];
-
-            if (ground.dirty)
+            Entity entity = engine.ecs.activeEntities[readIndex];
+            uint32_t &entityTypeIndex = engine.ecs.entityToEntityTypes[entityIndex(entity)];
+            if (entityTypeIndex == UINT32_MAX)
             {
-                if (ground.health <= 0)
-                    ground.dead = true;
-                else
-                {
-                    Material &m = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(ground.entity)]];
-                    m.color.a = ground.health / ground.maxHealth;
-                }
-            }
-
-            if (ground.dead)
-            {
-                if (ground.treasure.id != UINT32_MAX)
-                {
-                    engine.ecs.destroyEntity(ground.treasure);
-                }
-
-                engine.ecs.destroyEntity(ground.entity);
+                printf("Skipping %d\n", entityIndex(entity));
+                engine.ecs.activeEntities[writeIndex++] = entity;
                 continue;
             }
 
-            ground.dirty = false;
+            EntityType &entityType = engine.ecs.entityTypes[entityTypeIndex];
+
+            if (entityType == EntityType::Ground)
+            {
+                Health &health = engine.ecs.healths[engine.ecs.entityToHealth[entityIndex(entity)]];
+                Material &m = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(entity)]];
+                m.color.a = health.current / health.max;
+
+                // Check if ground block has died
+                if (health.current > 0)
+                {
+                    engine.ecs.activeEntities[writeIndex++] = entity;
+                    continue;
+                }
+
+                engine.ecs.destroyEntity(entity);
+                continue;
+            }
+            else if (entityType == EntityType::Treasure)
+            {
+                uint32_t &treasureIndex = engine.ecs.entityToTreasure[entityIndex(entity)];
+                if (treasureIndex == UINT32_MAX)
+                {
+                    engine.ecs.activeEntities[writeIndex++] = entity;
+                    continue;
+                }
+
+                Treasure &treasure = engine.ecs.treasures[treasureIndex];
+
+                // Dies if it has lost it's ground
+                if (treasure.groundRef.has_value() && engine.ecs.isAlive(treasure.groundRef.value()))
+                {
+                    engine.ecs.activeEntities[writeIndex++] = entity;
+                    continue;
+                }
+
+                engine.ecs.destroyEntity(entity);
+                continue;
+            }
+
+            engine.ecs.activeEntities[writeIndex++] = entity;
         }
+
+        if (writeIndex < readIndex)
+            engine.ecs.activeEntities.resize(writeIndex);
+
+        // Add static
+        engine.ecs.activeEntities.push_back(background.entity);
     }
 
     void updateCamera()
@@ -330,8 +415,6 @@ struct Game
         backgroundTransform.commit();
         AABB oldAABB = computeWorldAABB(mesh, backgroundTransformOld);
         AABB newAABB = computeWorldAABB(mesh, backgroundTransform);
-
-        engine.ecs.quadTreeMoveEntity(oldAABB, newAABB, entity);
     }
 
     void updateGame(double delta)
@@ -398,7 +481,7 @@ struct Game
                 {
                 case EntityType::Ground:
                 {
-                    Ground &g = engine.ecs.grounds[engine.ecs.entityToGrounds[entityIndex(entity)]];
+                    Health &h = engine.ecs.healths[engine.ecs.entityToHealth[entityIndex(entity)]];
                     size_t collisionBoxIndex = engine.ecs.entityToCollisionBox[entityIndex(entity)];
                     float penetration = 0.5f;
                     float resistance = glm::clamp(penetration / 10.0f, 0.0f, 1.0f);
@@ -408,8 +491,7 @@ struct Game
 
                     // Damage block
                     float damage = 250.0f * dt;
-                    g.health -= damage;
-                    g.dirty = true;
+                    h.current -= damage;
                     drilling = true;
                     break;
                 }

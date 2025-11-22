@@ -7,7 +7,8 @@
 #include "Mesh.h"
 #include "TextureComponent.h"
 #include "Entity.h"
-#include "Ground.h"
+#include "Health.h"
+#include "Treasure.h"
 
 #include <cstdint>
 #include <functional>
@@ -81,7 +82,8 @@ struct EntityManager
     std::vector<glm::vec4> uvTransforms;
     std::vector<EntityType> entityTypes;
     std::vector<Entity> activeEntities;
-    std::vector<Ground> grounds;
+    std::vector<Health> healths;
+    std::vector<Treasure> treasures;
 
     // --- Sparse ---
     std::vector<uint32_t> entityToTransform;
@@ -91,7 +93,8 @@ struct EntityManager
     std::vector<uint32_t> entityToCollisionBox;
     std::vector<uint32_t> entityToUvTransforms;
     std::vector<uint32_t> entityToEntityTypes;
-    std::vector<uint32_t> entityToGrounds;
+    std::vector<uint32_t> entityToHealth;
+    std::vector<uint32_t> entityToTreasure;
 
     std::vector<size_t> transformToEntity;
     std::vector<size_t> meshToEntity;
@@ -100,7 +103,8 @@ struct EntityManager
     std::vector<size_t> collisionBoxToEntity;
     std::vector<size_t> uvTransformsToEntity;
     std::vector<size_t> entityTypesToEntity;
-    std::vector<size_t> groundToEntity;
+    std::vector<size_t> healthToEntity;
+    std::vector<size_t> treasureToEntity;
 
     AABBNodePoolBoy poolBoy = AABBNodePoolBoy(1, 1000);
     AABBNode *aabbRoot;
@@ -126,7 +130,8 @@ struct EntityManager
         RenderLayer renderLayer,
         EntityType entityType,
         glm::vec4 uvTransform = glm::vec4{},
-        float z = 0.0f)
+        float z = 0.0f,
+        bool collidable = true)
     {
         uint32_t index;
         if (!freeIndices.empty())
@@ -146,15 +151,10 @@ struct EntityManager
         Entity entity = Entity{(gen << 24) | index};
 
         // ---- Add to stores ----
-        // -- Renderable --
         Renderable renderable = {entity, z, 0, renderLayer};
         renderable.makeDrawKey(material.shaderType, material.atlasIndex, mesh.vertexOffset, mesh.vertexCount);
         sortedRenderables.push_back(renderable);
 
-        // -- Quad tree --
-        updateQuadTree(mesh, transform, entity);
-
-        // -- The rest --
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
         addToStore<Mesh>(meshes, entityToMesh, meshToEntity, entity, mesh);
         addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
@@ -162,14 +162,20 @@ struct EntityManager
         addToStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, entity, uvTransform);
         addToStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, entity, entityType);
 
+        // Collision
+        if (collidable)
+        {
+            AABB aabb = computeWorldAABB(mesh, transform);
+            addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, aabb);
+            insertEntityQuadTree(aabbRoot, entity, aabb);
+        }
+
         return entity;
     }
 
-    void destroyEntity(Entity e)
+    void destroyEntity(Entity e, bool collidable = true)
     {
         ZoneScoped;
-
-        // TODO This is too slow, we should increase the speed of deletion since it's quite costly to delete stuff now.
 
         uint32_t index = entityIndex(e);
         uint8_t gen = entityGen(e);
@@ -180,24 +186,39 @@ struct EntityManager
         // Safety: only recycle if it’s actually the right generation
         if (generations[index] == gen)
         {
-            if (++generations[index] == 0)
+            if (++generations[index] == 0) // Handle wrapping
                 generations[index] = 1;
             else
                 generations[index]++;     // bump generation
             freeIndices.push_back(index); // recycle slot
         }
 
+        // Remove from quad tree
+        if (collidable)
+        {
+            AABB &aabb = collisionBoxes[entityToCollisionBox[entityIndex(e)]];
+            if (!deleteEntityQuadTree(aabbRoot, e, aabb))
+            {
+                char buf[256];
+                std::snprintf(buf, sizeof(buf), "failed to delete entity: %d from quad tree", e.id);
+                throw std::runtime_error(buf);
+            }
+        }
+        uint32_t entityIdx = entityIndex(e);
+
         // --- Remove from stores ---
+        // TODO One day you need to figure out a more performant way to clean shit up
         removeFromStore<Transform>(transforms, entityToTransform, transformToEntity, e);
         removeFromStore<Mesh>(meshes, entityToMesh, meshToEntity, e);
         removeFromStore<Renderable>(renderables, entityToRenderable, renderableToEntity, e);
         removeFromStore<Material>(materials, entityToMaterial, materialToEntity, e);
-        if (entityToCollisionBox[entityIndex(e)] != UINT32_MAX)
-            removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
+        removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
         removeFromStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, e);
         removeFromStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, e);
-        if (entityToGrounds[entityIndex(e)] != UINT32_MAX)
-            removeFromStore<Ground>(grounds, entityToGrounds, groundToEntity, e);
+        if (entityIdx < entityToHealth.size() && entityToHealth[entityIdx] != UINT32_MAX)
+            removeFromStore<Health>(healths, entityToHealth, healthToEntity, e);
+        if (entityIdx < entityToTreasure.size() && entityToTreasure[entityIdx] != UINT32_MAX)
+            removeFromStore<Treasure>(treasures, entityToTreasure, treasureToEntity, e);
 
         sortRenderables();
     }
@@ -225,7 +246,8 @@ struct EntityManager
         // Do resize
         if (sparseToDense.size() <= sparseIndex)
         {
-            sparseToDense.resize(sparseToDense.size() + RESIZE_INCREMENT, UINT32_MAX);
+            size_t newSize = ((sparseIndex / RESIZE_INCREMENT) + 1) * RESIZE_INCREMENT;
+            sparseToDense.resize(newSize, UINT32_MAX);
         }
         if (denseToSparse.size() <= denseIndex)
         {
@@ -260,7 +282,7 @@ struct EntityManager
         sparseToDense[entityIndex(e)] = UINT32_MAX;
     }
 
-    bool isAlive(Entity e) const
+    bool isAlive(Entity &e) const
     {
         uint32_t index = entityIndex(e);
         uint8_t gen = entityGen(e);
@@ -273,13 +295,13 @@ struct EntityManager
         ZoneScoped;
 
         uint32_t attempts = 0;
-        std::stack<std::pair<AABBNode *, uint32_t>> visitedNodes;
-        visitedNodes.push({aabbRoot, 0}); // We start on root node at child index 0
+        std::stack<std::tuple<AABBNode *, uint32_t, bool>> visitedNodes;
+        visitedNodes.push({aabbRoot, 0, false}); // We start on root node at child index 0
 
         while (visitedNodes.size() > 0)
         {
             // We start of with
-            auto &[node, childIndex] = visitedNodes.top();
+            auto &[node, childIndex, appended] = visitedNodes.top();
 
             if (++attempts > MAX_SEARCH_ITERATIONS_ATTEMPTS)
             {
@@ -288,7 +310,11 @@ struct EntityManager
             }
 
             // Append everything we can from this node
-            appendAndDeleteDeadEntities(entities, node);
+            if (!appended)
+            {
+                appendEntitiesFromNode(entities, node);
+                appended = true;
+            }
 
             // If this is a leaf, we can just go back to parent
             if (node->isLeaf())
@@ -312,7 +338,7 @@ struct EntityManager
                 if (rectIntersectsInclusive(aabb, child->aabb))
                 {
                     // Add next attempt onto stack
-                    visitedNodes.push({child, 0});
+                    visitedNodes.push({child, 0, false});
                     pushed = true;
                     break;
                 }
@@ -326,14 +352,19 @@ struct EntityManager
         }
     }
 
-    void quadTreeMoveEntity(AABB &aabbDelete, AABB &aabbInsert, Entity entity)
+    void quadTreeMoveEntity(AABB &aabbDelete, AABB &aabbInsert, Entity &entity)
     {
         ZoneScoped;
-        deleteEntityQuadTree(aabbRoot, entity, aabbDelete);
+        if (!deleteEntityQuadTree(aabbRoot, entity, aabbDelete))
+        {
+            char buf[256];
+            std::snprintf(buf, sizeof(buf), "failed to delete entity: %d from quad tree", entity.id);
+            throw std::runtime_error(buf);
+        }
         insertEntityQuadTree(aabbRoot, entity, aabbInsert);
     }
 
-    void deleteEntityQuadTree(AABBNode *node, Entity entity, AABB &aabb)
+    bool deleteEntityQuadTree(AABBNode *node, Entity entity, AABB &aabb)
     {
         ZoneScoped;
 
@@ -350,14 +381,14 @@ struct EntityManager
             if (++attempts > MAX_SEARCH_ITERATIONS_ATTEMPTS)
             {
                 std::cout << "You should probably not iterate this much\n";
-                return;
+                return false;
             }
 
             // Delete entity and check if this branch needs trimming
             if (deleteEntity(node, entity))
             {
                 pruneBranch(node);
-                break;
+                return true;
             }
 
             // If this is a leaf, we can just go back to parent
@@ -394,6 +425,8 @@ struct EntityManager
                 visitedNodes.pop();
             }
         }
+
+        return false;
     }
 
     void pruneBranch(AABBNode *node)
@@ -442,7 +475,7 @@ struct EntityManager
         }
     }
 
-    void insertEntityQuadTree(AABBNode *node, Entity entity, AABB &aabb)
+    void insertEntityQuadTree(AABBNode *node, Entity &entity, AABB &aabb)
     {
         ZoneScoped;
 
@@ -489,53 +522,25 @@ struct EntityManager
         }
     }
 
-    /*
-    In-place compaction
-
-    Initial array:
-    node->objects = [A (alive), B (dead), C (alive), D (dead), E (alive)]
-
-    Iteration:
-    | read | write | action              | new array contents | note            |
-    |------|-------|---------------------|--------------------|-----------------|
-    | 0    | 0     | A alive → write 0   | [A, B, C, D, E]    | no change       |
-    | 1    | 1     | B dead → skip       | [A, B, C, D, E]    | no write        |
-    | 2    | 1     | C alive → write 1   | [A, C, C, D, E]    | steals B's slot |
-    | 3    | 2     | D dead → skip       | [A, C, C, D, E]    | no write        |
-    | 4    | 2     | E alive → write 2   | [A, C, E, D, E]    | steals D's slot |
-
-    After resize:
-    node->objects = [A, C, E]
-
-    This algorithm compactly removes dead entities without extra allocations,
-    preserving order of surviving elements in a single O(n) pass.
-    */
-    void appendAndDeleteDeadEntities(std::vector<Entity> &entities, AABBNode *node)
+    void appendEntitiesFromNode(std::vector<Entity> &entities, AABBNode *node)
     {
         entities.reserve(node->objects.size());
         size_t writeIndex = 0;
         for (size_t readIndex = 0; readIndex < node->objects.size(); ++readIndex)
         {
-            Entity e = node->objects[readIndex];
+            Entity &e = node->objects[readIndex];
             if (isAlive(e))
-            {
-                // keep it alive both in return vector and in the node
-                node->objects[writeIndex++] = e;
                 entities.push_back(e);
-            }
         }
-
-        // shrink node’s object list in place — drop the dead guys
-        node->objects.resize(writeIndex);
     }
 
     // In-place compaction
-    bool deleteEntity(AABBNode *node, Entity entity)
+    bool deleteEntity(AABBNode *node, Entity &entity)
     {
         size_t writeIndex = 0;
         for (size_t readIndex = 0; readIndex < node->objects.size(); ++readIndex)
         {
-            Entity e = node->objects[readIndex];
+            Entity &e = node->objects[readIndex];
             if (entityIndex(e) != entityIndex(entity)) // <-- compare against the input entity
             {
                 node->objects[writeIndex++] = e;
@@ -544,58 +549,6 @@ struct EntityManager
         bool removed = writeIndex != node->objects.size();
         node->objects.resize(writeIndex);
         return removed;
-    }
-
-    void updateQuadTree(Mesh &mesh, Transform &transform, Entity &entity)
-    {
-        ZoneScoped;
-        AABB newAABB = computeWorldAABB(mesh, transform);
-        addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, newAABB); // Should probably not be in here?
-
-        AABBNode *cursorNode = aabbRoot;
-
-        // Ensure root can contain it (grow if needed)
-        while (!rectFullyInside(newAABB, cursorNode->aabb))
-        {
-            growRootSymmetric(cursorNode, newAABB);
-            cursorNode = aabbRoot;
-        }
-
-        // Search for a suitable node to store this aabb on.
-        while (true)
-        {
-            glm::vec2 size = cursorNode->aabb.max - cursorNode->aabb.min;
-            bool tooSmallToContinue = size.x <= 512.0f && size.y <= 512.0f;
-            if (tooSmallToContinue)
-            {
-                cursorNode->objects.push_back(entity);
-                return;
-            }
-
-            if (cursorNode->nodeCount < MAX_AABB_NODES)
-                cursorNode->subdivide(poolBoy);
-
-            // Find a suitable child node
-            AABBNode *next = nullptr;
-            for (AABBNode *child : cursorNode->nodes)
-            {
-                if (rectFullyInside(newAABB, child->aabb))
-                {
-                    next = child;
-                    break;
-                }
-            }
-
-            // If we can't continue, we just add it here
-            if (!next)
-            {
-                cursorNode->objects.push_back(entity);
-                return;
-            }
-
-            // Update cursor with child or null_ptr
-            cursorNode = next;
-        }
     }
 
     // Grows in the direction of the new aabb.

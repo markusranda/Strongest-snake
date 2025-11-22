@@ -791,15 +791,6 @@ struct Engine
             glm::vec2 currentAtlasScale;
 
             instances.clear();
-            ecs.activeEntities.clear();
-
-            float halfW = (camera.screenW * 0.5f) / camera.zoom;
-            float halfH = (camera.screenH * 0.5f) / camera.zoom;
-            AABB cameraBox{
-                {camera.position.x - halfW, camera.position.y - halfH},
-                {camera.position.x + halfW, camera.position.y + halfW},
-            };
-            ecs.getIntersectingEntities(cameraBox, ecs.activeEntities);
             {
                 ZoneScopedN("Sorting renderables");
                 std::sort(ecs.activeEntities.begin(), ecs.activeEntities.end(), [this](Entity &a, Entity &b)
@@ -815,7 +806,7 @@ struct Engine
             Renderable &firstRenderable =
                 ecs.renderables[ecs.entityToRenderable[entityIndex(ecs.activeEntities[0])]];
             uint64_t prevDrawKey = firstRenderable.drawkey;
-            for (Entity &entity : ecs.activeEntities)
+            for (Entity entity : ecs.activeEntities)
             {
                 uint32_t entityId = entityIndex(entity);
                 Renderable renderable = ecs.renderables[ecs.entityToRenderable[entityId]];

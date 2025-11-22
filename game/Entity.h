@@ -12,11 +12,11 @@ struct Entity
     }
 };
 
-inline uint32_t entityIndex(Entity e)
+inline uint32_t entityIndex(Entity &e)
 {
     return e.id & 0x00FFFFFF;
 }
-inline uint8_t entityGen(Entity e) { return (e.id >> 24) & 0xFF; }
+inline uint8_t entityGen(Entity &e) { return (e.id >> 24) & 0xFF; }
 
 // Specialize std::hash for Entity
 namespace std
