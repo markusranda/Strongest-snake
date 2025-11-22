@@ -836,7 +836,7 @@ struct Engine
                     instanceOffset = instances.size();
                 }
 
-                InstanceData instance = {transform.model, material.color, uvTransform, transform.size};
+                InstanceData instance = {transform.model, material.color, uvTransform, transform.size, material.size};
                 instances.push_back(instance);
 
                 currentShader = material.shaderType;

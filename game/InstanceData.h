@@ -16,8 +16,13 @@ struct InstanceData
     alignas(16) glm::vec4 color;
     alignas(16) glm::vec4 uvTransform; // (uOffset, vOffset, uScale, vScale)
     alignas(8) glm::vec2 worldSize;
+    alignas(8) glm::vec2 textureSize;
 
-    static constexpr size_t ATTRIBUTE_COUNT = 7; // This always needs to match number of attributes
+    InstanceData() {}
+    InstanceData(glm::mat4 model, glm::vec4 color, glm::vec4 uvTransform, glm::vec2 worldSize, glm::vec2 textureSize)
+        : model(model), color(color), uvTransform(uvTransform), worldSize(worldSize), textureSize(textureSize) {}
+
+    static constexpr size_t ATTRIBUTE_COUNT = 8; // This always needs to match number of attributes
 
     static VkVertexInputBindingDescription getBindingDescription()
     {
@@ -58,6 +63,12 @@ struct InstanceData
         attrs[6].location = 8;
         attrs[6].format = VK_FORMAT_R32G32_SFLOAT;
         attrs[6].offset = offsetof(InstanceData, worldSize);
+
+        // textureLength (float)
+        attrs[7].binding = VertexBinding::BINDING_INSTANCE;
+        attrs[7].location = 9;
+        attrs[7].format = VK_FORMAT_R32G32_SFLOAT;
+        attrs[7].offset = offsetof(InstanceData, textureSize);
 
         return attrs;
     }

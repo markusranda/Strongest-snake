@@ -53,9 +53,10 @@ struct Material
     glm::vec4 color = glm::vec4{1.0f, 1.0f, 1.0f, 1.0f};
     ShaderType shaderType;
     AtlasIndex atlasIndex;
+    glm::vec2 size;
 
-    Material(ShaderType shaderType, AtlasIndex atlasIndex) : shaderType(shaderType), atlasIndex(atlasIndex) {}
-    Material(glm::vec4 color, ShaderType shaderType, AtlasIndex atlasIndex) : color(color), shaderType(shaderType), atlasIndex(atlasIndex) {}
+    Material(ShaderType shaderType, AtlasIndex atlasIndex, glm::vec2 size) : shaderType(shaderType), atlasIndex(atlasIndex), size(size) {}
+    Material(glm::vec4 color, ShaderType shaderType, AtlasIndex atlasIndex, glm::vec2 size) : color(color), shaderType(shaderType), atlasIndex(atlasIndex), size(size) {}
 };
 
 enum class EntityType : uint8_t
@@ -600,7 +601,8 @@ struct EntityManager
         Transform t = Transform(position, size);
 
         glm::vec4 color = glm::vec4(1.0f, 0.0f, 0.0f, 0.25f); // translucent red
-        instances.push_back({t.model, color, glm::vec4(0, 0, 1, 1)});
+        InstanceData instanceData(t.model, color, glm::vec4(0, 0, 1, 1), glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f});
+        instances.push_back(instanceData);
 
         for (size_t i = 0; i < node->nodeCount; i++)
             collectQuadTreeDebugInstances(node->nodes[i], instances);

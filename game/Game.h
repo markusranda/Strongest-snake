@@ -102,7 +102,7 @@ struct Game
             {
                 AtlasRegion region = engine.atlasRegions["cave_background"];
                 Transform t = Transform{glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f}};
-                Material material = Material(ShaderType::TextureParallax, AtlasIndex::Sprite);
+                Material material = Material(ShaderType::TextureParallax, AtlasIndex::Sprite, {64.0f, 64.0f});
                 glm::vec4 uvTransform = getUvTransform(region);
                 t.commit();
 
@@ -114,7 +114,7 @@ struct Game
                 // Start off center map above the grass
                 glm::vec2 posCursor = glm::vec2{0.0f, 0.0f};
                 {
-                    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite};
+                    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite, {32.0f, 32.0f}};
                     Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
                     AtlasRegion region = engine.atlasRegions["drill_head"];
                     glm::vec4 uvTransform = getUvTransform(region);
@@ -127,7 +127,7 @@ struct Game
                 for (size_t i = 1; i < 4; i++)
                 {
                     posCursor -= glm::vec2{snakeSize, 0.0f};
-                    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
+                    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
                     Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
                     Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, uvTransform, 2.0f);
                     player.entities[i] = entity;

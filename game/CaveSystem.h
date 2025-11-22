@@ -13,7 +13,7 @@ struct CaveSystem
     const float tileSize = 32.0f;
     uint32_t lastMapIndex = 19;
     glm::vec2 size = {tileSize + 1.0f, tileSize + 1.0f}; // Added 1 pixel in both height and width to remove line artifacts
-    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
+    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
     static constexpr int TREASURE_COUNT = 10;
     std::array<const char *, TREASURE_COUNT> ground_treasures = {
         "gem_blue",
@@ -45,7 +45,7 @@ struct CaveSystem
 
     void createTreasure(Entity &groundEntity, Transform &t, std::string key)
     {
-        Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
+        Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
         AtlasRegion region = engine.atlasRegions[key];
         glm::vec4 uvTransform = getUvTransform(region);
         Entity treasureEntity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Treasure, uvTransform, 0.0f);
