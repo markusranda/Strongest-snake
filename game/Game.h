@@ -11,6 +11,7 @@
 #include "Transform.h"
 #include "SnakeMath.h"
 #include "Health.h"
+#include "CaveSystem.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../libs/miniaudio.h"
@@ -56,9 +57,7 @@ struct Game
     Background background;
     Player player;
     Camera camera{1, 1};
-
-    // Game settings
-    const uint32_t tileSize = 32;
+    CaveSystem caveSystem;
 
     // -- Player ---
     const float thrustPower = 1800.0f; // pixels per second squared
@@ -84,72 +83,7 @@ struct Game
     ma_engine audioEngine;
     ma_sound engineIdleAudio;
 
-    static constexpr int TREASURE_COUNT = 10;
-    std::array<const char *, TREASURE_COUNT> ground_treasures = {
-        "gem_blue",
-        "gem_red",
-        "gem_green",
-        "gem_orange",
-        "gem_purple",
-        "gems_blue",
-        "gems_green",
-        "gems_purple",
-        "gems_orange",
-        "skull",
-    };
-
-    Game(Window &w)
-        : window(w),
-          engine(w.width, w.height, w)
-    {
-    }
-
-    float worldToTileCoord(float coord)
-    {
-        return coord * tileSize;
-    }
-
-    void createRandomTreasure(Entity &groundEntity, Transform &t)
-    {
-        int idx = std::lround(SnakeMath::randomBetween(0, TREASURE_COUNT - 1));
-        std::string treasureKey = ground_treasures[idx];
-        createTreasure(groundEntity, t, treasureKey);
-    }
-
-    void createTreasure(Entity &groundEntity, Transform &t, std::string key)
-    {
-        Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
-        AtlasRegion region = engine.atlasRegions[key];
-        glm::vec4 uvTransform = getUvTransform(region);
-        Entity treasureEntity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Treasure, uvTransform, 0.0f);
-        Treasure treasure = {groundEntity};
-        engine.ecs.addToStore(engine.ecs.treasures, engine.ecs.entityToTreasure, engine.ecs.treasureToEntity, treasureEntity, treasure);
-    }
-
-    uint32_t lastMapIndex = 19;
-    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite};
-    glm::vec2 size = {tileSize + 1.0f, tileSize + 1.0f}; // Added 1 pixel in both height and width to remove line artifacts
-    void createGround(float xWorld, float yWorld, float radius)
-    {
-        ZoneScoped;
-        // uint32_t spriteIndex = glm::clamp((uint32_t)floor(radius * lastMapIndex), (uint32_t)1, lastMapIndex);
-        uint32_t spriteIndex = 1; // TODO Be more clever about the sprites being used
-        std::string key = "ground_mid_" + std::to_string(spriteIndex);
-        if (engine.atlasRegions.find(key) == engine.atlasRegions.end())
-            throw std::runtime_error("you cocked up the ground tiles somehow");
-        AtlasRegion region = engine.atlasRegions[key];
-        Transform &t = Transform{{worldToTileCoord(xWorld), worldToTileCoord(yWorld)}, size, "ground"};
-        glm::vec4 uvTransform = getUvTransform(region);
-        Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform, 8.0f);
-        Health h = Health{100, 100};
-
-        if (SnakeMath::chance(0.005))
-        {
-            createRandomTreasure(entity, t);
-        }
-
-        engine.ecs.addToStore(engine.ecs.healths, engine.ecs.entityToHealth, engine.ecs.healthToEntity, entity, h);
-    }
+    Game(Window &w) : window(w), engine(w.width, w.height, w), caveSystem(engine) {}
 
     // --- Lifecycle ---
     void init()
@@ -209,43 +143,7 @@ struct Game
                 // Everything grows outwards circle like.
                 // Center has a grace area with no blocks.
                 // Different block based on radius.
-
-                int Cx = 0;
-                int Cy = 0;
-                int minRadius = 10;
-                int maxRadius = 60;
-                for (size_t r = minRadius; r < maxRadius; r++)
-                {
-                    int r2 = r + r;
-                    int x = r;
-                    int y = 0;
-                    int dY = -2;
-                    int dX = r2 + r2 - 4;
-                    int d = r2 - 1;
-
-                    while (y <= x)
-                    {
-                        createGround(Cx - y, Cy - x, r);
-                        createGround(Cx - y, Cy + x, r);
-                        createGround(Cx + y, Cy - x, r);
-                        createGround(Cx + y, Cy + x, r);
-                        createGround(Cx - x, Cy - y, r);
-                        createGround(Cx - x, Cy + y, r);
-                        createGround(Cx + x, Cy - y, r);
-                        createGround(Cx + x, Cy + y, r);
-
-                        d += dY;
-                        dY -= 4;
-                        ++y;
-
-                        if (d < 0)
-                        {
-                            d += dX;
-                            dX -= 4;
-                            --x;
-                        }
-                    }
-                }
+                caveSystem.createGraceArea();
             }
 
             engine.ecs.sortRenderables();
