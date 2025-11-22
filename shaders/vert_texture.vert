@@ -25,5 +25,5 @@ void main() {
 
     tileOrigin = instanceUV.xy;
     tileSize = instanceUV.zw;
-    repeatCount = worldSize / textureLength; // TODO This should probably be more dynamic, but 32.0 is the size of one tile in pixels 
+    repeatCount = worldSize / textureLength; 
 }

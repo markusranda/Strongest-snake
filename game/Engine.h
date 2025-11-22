@@ -763,11 +763,11 @@ struct Engine
         return true;
     }
 
-    void draw(Camera &camera, float fps, glm::vec2 playerCoords)
+    void draw(Camera &camera, float fps, glm::vec2 playerCoords, float delta)
     {
         ZoneScoped; // PROFILER
 
-        int32_t imageIndex = prepareDraw();
+        int32_t imageIndex = prepareDraw(delta);
         if (imageIndex < 0)
         {
             Logrador::debug("Skipping draw : Recreating swapchain");
@@ -943,12 +943,12 @@ struct Engine
         uploadToInstanceBuffer();
         drawCmdList(drawCmds, camera);
         endDraw(imageIndex);
-        particleSystem.resetSpawn();
+        // particleSystem.resetSpawn();
 
         FrameMark;
     }
 
-    int32_t prepareDraw()
+    int32_t prepareDraw(float delta)
     {
         ZoneScoped; // PROFILER
         waitForFence(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
@@ -999,7 +999,7 @@ struct Engine
         renderPassInfo.pClearValues = &clearColor;
 
         // Update particle system
-        particleSystem.recordCompute(commandBuffer);
+        particleSystem.recordCompute(commandBuffer, delta);
 
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         VkViewport viewport{};

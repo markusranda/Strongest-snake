@@ -83,6 +83,10 @@ struct Game
     ma_engine audioEngine;
     ma_sound engineIdleAudio;
 
+    // Timing
+    double particleTimer = 0.0f;
+    const double PARTICLE_SPAWN_INTERVAL = 0.2f;
+
     Game(Window &w) : window(w), engine(w.width, w.height, w), caveSystem(engine) {}
 
     // --- Lifecycle ---
@@ -181,12 +185,14 @@ struct Game
 
             window.pollEvents();
 
-            double currentTime = glfwGetTime() * 1000.0;
+            double currentTime = glfwGetTime();
             double delta = currentTime - lastTime;
             lastTime = currentTime;
 
             if (gameOver)
                 throw std::runtime_error("You fucked up");
+
+            updateTimers(delta);
 
             updateGame(delta);
 
@@ -199,7 +205,7 @@ struct Game
             engine.globalTime += delta;
 
             Transform &head = engine.ecs.transforms[engine.ecs.entityToTransform[entityIndex(player.entities.front())]];
-            engine.draw(camera, fps, head.position);
+            engine.draw(camera, fps, head.position, delta);
 
             updateFPSCounter(delta);
         }
@@ -315,27 +321,31 @@ struct Game
         AABB newAABB = computeWorldAABB(mesh, backgroundTransform);
     }
 
+    void updateTimers(double delta)
+    {
+        particleTimer = max(particleTimer - delta, 0.0f);
+    }
+
     void updateGame(double delta)
     {
         ZoneScoped; // PROFILER
 
         // Constants / parameters
-        const float dt = static_cast<float>(delta) / 1000.0f;
         GLFWwindow *handle = window.handle;
 
         // --- Rotation ---
-        auto change = rotationSpeed * dt;
+        auto change = rotationSpeed * delta;
         bool forwardPressed = false;
         bool leftPressed = false;
         bool rightPressed = false;
 
         if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS)
-            rotateHeadLeft(dt);
+            rotateHeadLeft(delta);
         else if (glfwGetKey(handle, GLFW_KEY_D) == GLFW_PRESS)
-            rotateHeadRight(dt);
+            rotateHeadRight(delta);
 
         bool forward = glfwGetKey(handle, GLFW_KEY_W) == GLFW_PRESS;
-        updateMovement(dt, forward);
+        updateMovement(delta, forward);
     }
 
     void updateEngineRevs()
@@ -406,7 +416,12 @@ struct Game
             glm::vec4 world = head.model * local;
 
             glm::vec2 drillTipWorld = glm::vec2(world.x, world.y);
-            engine.particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(head.rotation), 1);
+
+            if (particleTimer <= 0)
+            {
+                engine.particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(head.rotation), 8);
+                particleTimer = PARTICLE_SPAWN_INTERVAL;
+            }
         }
     }
 
@@ -559,20 +574,20 @@ struct Game
         }
     }
 
-    void updateFPSCounter(float dt)
+    void updateFPSCounter(float delta)
     {
         ZoneScoped; // PROFILER
         frameCount++;
 
         if (frameCount >= 400)
         {
-            fps = round(frameCount / (fpsTimeSum / 1000.0f));
+            fps = round(frameCount / (fpsTimeSum));
             frameCount = 0;
             fpsTimeSum = 0.0;
         }
         else
         {
-            fpsTimeSum += dt;
+            fpsTimeSum += delta;
         }
     }
 };

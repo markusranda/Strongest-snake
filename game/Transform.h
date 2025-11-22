@@ -15,8 +15,6 @@ struct Transform
     const char *name = "not defined";
     glm::mat4 model = glm::mat4(1.0f);
 
-    // TODO Implement dirty flag so we know if we need to update this guy or not
-
     Transform(glm::vec2 position, glm::vec2 size, char *name = "not defined")
         : position(position), size(size), name(name)
     {

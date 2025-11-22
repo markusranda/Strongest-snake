@@ -186,11 +186,19 @@ struct ParticleSystem
 
         vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
 
+        // Push constants
+        VkPushConstantRange pushRange{};
+        pushRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        pushRange.offset = 0;
+        pushRange.size = sizeof(float);
+
         // Pipeline layout
         VkPipelineLayoutCreateInfo layout{};
         layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         layout.setLayoutCount = 1;
         layout.pSetLayouts = &computeDescriptorSetLayout;
+        layout.pushConstantRangeCount = 1;
+        layout.pPushConstantRanges = &pushRange;
 
         vkCreatePipelineLayout(device, &layout, nullptr, &computePipelineLayout);
 
@@ -472,7 +480,7 @@ struct ParticleSystem
     }
 
     // Send a new command to do stuff in the compute shader
-    void recordCompute(VkCommandBuffer cmd)
+    void recordCompute(VkCommandBuffer cmd, float delta)
     {
         // CPU has written spawnMapped – now tell GPU it’s updated
         VkMemoryBarrier barrier{};
@@ -496,6 +504,11 @@ struct ParticleSystem
                                 0, 1,
                                 &computeDescriptorSet,
                                 0, nullptr);
+        vkCmdPushConstants(cmd, computePipelineLayout,
+                           VK_SHADER_STAGE_COMPUTE_BIT,
+                           0,
+                           sizeof(float),
+                           &delta);
 
         uint32_t localSize = 256;
         uint32_t groupCount = (maxParticles + localSize - 1) / localSize;

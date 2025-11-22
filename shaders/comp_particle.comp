@@ -21,6 +21,10 @@ layout(std430, binding = 2) buffer FreeList      { uint freeList[]; };
 layout(std430, binding = 3) buffer FreeListHead  { uint freeListHead; };
 layout(std430, binding = 4) buffer DebugBlock    { vec4 debugData; };
 
+layout(push_constant) uniform Params {
+    float delta;
+} pc;
+
 float hash(uint x) {
     x ^= x * 0x3d20adea;
     x ^= x * 0x05526c56;
@@ -59,10 +63,9 @@ void main()
 
     if (wasAlive == 1)
     {
-        p.vel.y += 9.8 * 0.016;
-        // p.vel.x *= 0.99999;
-        p.pos += p.vel * 0.016;
-        p.life -= 0.016;
+        p.vel.y += 512.0 * pc.delta;
+        p.pos += p.vel * pc.delta;
+        p.life -= 7.0 * pc.delta;
 
         if (p.life <= 0.0)
         {
@@ -107,14 +110,14 @@ void main()
                 // Emit particle
                 float a = hash(id * 17u) * 6.2831853;      // angle 0..2π
                 float r = sqrt(hash(id * 97u));            // correct uniform circle distribution
-                float spawnRadius = 5;                   // tweak to match your world scale
+                float spawnRadius = 5;                     // tweak to match your world scale
 
                 vec2 dir = vec2(cos(a), sin(a));
                 vec2 offset = dir * (r * spawnRadius);
 
                 Particle np;
                 np.pos = spawn.pos + offset;
-                float thrust = 100.0 * hash(id * 133u);
+                float thrust = 200.0 * hash(id * 133u);
                 vec2 backward = -spawn.forward;
                 np.vel = backward * thrust + dir * (50.0 * hash(id * 211u)); 
                 np.life = 5.0;
