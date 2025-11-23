@@ -293,7 +293,6 @@ struct EntityManager
         return generations[index] == gen;
     }
 
-    // Finds all the intersecting nodes of this aabb and cleans up the dead fools
     void getIntersectingEntities(const Transform &player, AABB &aabb, std::vector<Entity> &entities)
     {
         ZoneScoped;
@@ -366,6 +365,8 @@ struct EntityManager
     {
         ZoneScoped;
 
+        Entity localBuf[9 * TILES_PER_CHUNK];
+        size_t count = 0;
         int32_t cx = worldPosToClosestChunk(player.position.x);
         int32_t cy = worldPosToClosestChunk(player.position.y);
 
@@ -376,20 +377,40 @@ struct EntityManager
                 int32_t chunkWorldX = cx + dx * CHUNK_WORLD_SIZE;
                 int32_t chunkWorldY = cy + dy * CHUNK_WORLD_SIZE;
                 int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
-
                 assert(chunks.find(chunkIdx) != chunks.end());
                 Chunk &chunk = chunks[chunkIdx];
 
-                int before = entities.size();
-                for (size_t i = 0; i < TILES_PER_CHUNK; i++)
+                for (size_t i = 0; i < TILES_PER_CHUNK; i += 8)
                 {
-                    Entity entity = chunk.tiles[i];
-                    if (entity.id != UINT32_MAX)
-                        entities.push_back(entity);
+                    const Entity &e0 = chunk.tiles[i + 0];
+                    const Entity &e1 = chunk.tiles[i + 1];
+                    const Entity &e2 = chunk.tiles[i + 2];
+                    const Entity &e3 = chunk.tiles[i + 3];
+                    const Entity &e4 = chunk.tiles[i + 4];
+                    const Entity &e5 = chunk.tiles[i + 5];
+                    const Entity &e6 = chunk.tiles[i + 6];
+                    const Entity &e7 = chunk.tiles[i + 7];
+
+                    if (e0.id != UINT32_MAX)
+                        localBuf[count++] = e0;
+                    if (e1.id != UINT32_MAX)
+                        localBuf[count++] = e1;
+                    if (e2.id != UINT32_MAX)
+                        localBuf[count++] = e2;
+                    if (e3.id != UINT32_MAX)
+                        localBuf[count++] = e3;
+                    if (e4.id != UINT32_MAX)
+                        localBuf[count++] = e4;
+                    if (e5.id != UINT32_MAX)
+                        localBuf[count++] = e5;
+                    if (e6.id != UINT32_MAX)
+                        localBuf[count++] = e6;
+                    if (e7.id != UINT32_MAX)
+                        localBuf[count++] = e7;
                 }
-                int after = entities.size();
             }
         }
+        entities.insert(entities.end(), localBuf, localBuf + count);
     }
 
     void quadTreeMoveEntity(AABB &aabbDelete, AABB &aabbInsert, Entity &entity)
