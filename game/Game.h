@@ -13,6 +13,7 @@
 #include "Health.h"
 #include "CaveSystem.h"
 #include "EntityType.h"
+#include "Material.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../libs/miniaudio.h"

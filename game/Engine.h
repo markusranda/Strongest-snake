@@ -24,6 +24,8 @@
 #include "PushConstants.h"
 #include "ParticleSystem.h"
 #include "SnakeMath.h"
+#include "Material.h"
+#include "Renderable.h"
 
 #include <iostream>
 #include <fstream>

@@ -3,6 +3,7 @@
 #include "EntityManager.h"
 #include "SnakeMath.h"
 #include "Health.h"
+#include "Material.h"
 #include "glm/common.hpp"
 
 // PROFILING
