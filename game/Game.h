@@ -97,6 +97,8 @@ struct Game
     // --- Lifecycle ---
     void init()
     {
+        ZoneScoped; // PROFILER
+
         try
         {
             Logrador::info(std::filesystem::current_path().string());
@@ -215,6 +217,8 @@ struct Game
     // --- Game logic ---
     void updateWorldGen()
     {
+        ZoneScoped; // PROFILER
+
         // When player moves into a new chunk we should verify that there are in fact 3x3 loaded chunks around the player
         Transform &head = engine.ecs.transforms[engine.ecs.entityToTransform[entityIndex(player.entities.front())]];
         int32_t cx = worldPosToClosestChunk(head.position.x);
@@ -260,40 +264,43 @@ struct Game
         size_t readIndex = 0;
         for (; readIndex < engine.ecs.activeEntities.size(); ++readIndex)
         {
+            ZoneScopedN("updateLifeCycleEntity");
+
             Entity entity = engine.ecs.activeEntities[readIndex];
-            uint32_t &entityTypeIndex = engine.ecs.entityToEntityTypes[entityIndex(entity)];
+            uint32_t entityIdx = entityIndex(entity);
+            uint32_t &entityTypeIndex = engine.ecs.entityToEntityTypes[entityIdx];
             if (entityTypeIndex == UINT32_MAX)
             {
-                printf("Skipping %d\n", entityIndex(entity));
+                printf("Skipping %d\n", entityIdx);
                 engine.ecs.activeEntities[writeIndex++] = entity;
                 continue;
             }
 
-            EntityType &entityType = engine.ecs.entityTypes[entityTypeIndex];
-
-            if (entityType == EntityType::Ground)
+            switch (engine.ecs.entityTypes[entityTypeIndex])
             {
-                Health &health = engine.ecs.healths[engine.ecs.entityToHealth[entityIndex(entity)]];
-                Material &m = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(entity)]];
-                m.color.a = health.current / health.max;
+            case EntityType::Ground:
+            {
+                Health &health = engine.ecs.healths[engine.ecs.entityToHealth[entityIdx]];
+                Material &material = engine.ecs.materials[engine.ecs.entityToMaterial[entityIdx]];
+                material.color.a = health.current / health.max;
 
                 // Check if ground block has died
                 if (health.current > 0)
                 {
                     engine.ecs.activeEntities[writeIndex++] = entity;
-                    continue;
+                    break;
                 }
 
                 engine.ecs.destroyEntity(entity);
-                continue;
+                break;
             }
-            else if (entityType == EntityType::Treasure)
+            case EntityType::Treasure:
             {
-                uint32_t &treasureIndex = engine.ecs.entityToTreasure[entityIndex(entity)];
+                uint32_t &treasureIndex = engine.ecs.entityToTreasure[entityIdx];
                 if (treasureIndex == UINT32_MAX)
                 {
                     engine.ecs.activeEntities[writeIndex++] = entity;
-                    continue;
+                    break;
                 }
 
                 Treasure &treasure = engine.ecs.treasures[treasureIndex];
@@ -302,14 +309,16 @@ struct Game
                 if (treasure.groundRef.has_value() && engine.ecs.isAlive(treasure.groundRef.value()))
                 {
                     engine.ecs.activeEntities[writeIndex++] = entity;
-                    continue;
+                    break;
                 }
 
                 engine.ecs.destroyEntity(entity);
-                continue;
+                break;
             }
-
-            engine.ecs.activeEntities[writeIndex++] = entity;
+            default:
+                engine.ecs.activeEntities[writeIndex++] = entity;
+                break;
+            }
         }
 
         if (writeIndex < readIndex)
@@ -348,6 +357,8 @@ struct Game
 
     void updateTimers(double delta)
     {
+        ZoneScoped; // PROFILER
+
         particleTimer = max(particleTimer - delta, 0.0f);
     }
 
@@ -375,6 +386,7 @@ struct Game
 
     void updateEngineRevs()
     {
+        ZoneScoped; // PROFILER
         if (drilling)
         {
             ma_sound_set_pitch(&engineIdleAudio, highRev);
@@ -392,17 +404,20 @@ struct Game
 
     void tryMove(Transform &head, Mesh &mesh, const glm::vec2 &targetPos, float dt)
     {
+        ZoneScoped; // PROFILER
+
         Transform newTransform = head;
         newTransform.position = targetPos;
         AABB newAABB = computeWorldAABB(mesh, newTransform);
 
         drilling = false; // We reset drill state because we don't know if there'll be any drilling yet
 
-        std::vector<Entity> collisions;
-        engine.ecs.getIntersectingEntities(newTransform, newAABB, collisions);
-        for (Entity &entity : collisions)
+        for (Entity &entity : engine.ecs.activeEntities)
         {
-            AABB &collisionBox = engine.ecs.collisionBoxes[engine.ecs.entityToCollisionBox[entityIndex(entity)]];
+            size_t collisionBoxIdx = engine.ecs.entityToCollisionBox[entityIndex(entity)];
+            if (collisionBoxIdx == UINT32_MAX)
+                continue;
+            AABB &collisionBox = engine.ecs.collisionBoxes[collisionBoxIdx];
             EntityType &entityType = engine.ecs.entityTypes[engine.ecs.entityToEntityTypes[entityIndex(entity)]];
             if (entityType == EntityType::Player)
                 continue;
@@ -453,6 +468,8 @@ struct Game
 
     void updateMovement(float dt, bool pressing)
     {
+        ZoneScoped; // PROFILER
+
         uint32_t headEntityId = entityIndex(player.entities.front());
         auto headIndexT = engine.ecs.entityToTransform[headEntityId];
         Transform &headT = engine.ecs.transforms[headIndexT];
@@ -523,6 +540,8 @@ struct Game
 
     void rotateHeadLeft(float dt)
     {
+        ZoneScoped; // PROFILER
+
         auto tIndex = engine.ecs.entityToTransform[player.entities[2].id];
         Transform &transform = engine.ecs.transforms[tIndex];
         glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
@@ -564,6 +583,8 @@ struct Game
 
     void rotateHeadRight(float dt)
     {
+        ZoneScoped; // PROFILER
+
         auto tIndex = engine.ecs.entityToTransform[player.entities[2].id];
         Transform &transform = engine.ecs.transforms[tIndex];
         glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
@@ -620,6 +641,8 @@ struct Game
 
 inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 {
+    ZoneScoped; // PROFILER
+
     // TODO Add scrollMax before release or maybe max when DEBUG isn't present
     Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
     if (!game)

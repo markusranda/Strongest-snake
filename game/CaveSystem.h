@@ -14,7 +14,7 @@ struct CaveSystem
     const float tileSize = 32.0f;
     uint32_t lastMapIndex = 19;
     glm::vec2 size = {tileSize + 1.0f, tileSize + 1.0f}; // Added 1 pixel in both height and width to remove line artifacts
-    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
+    Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
     static constexpr int TREASURE_COUNT = 10;
     std::array<const char *, TREASURE_COUNT> ground_treasures = {
         "gem_blue",
@@ -59,20 +59,23 @@ struct CaveSystem
         ZoneScoped;
 
         std::string key = "ground_mid_1";
-        if (engine.atlasRegions.find(key) == engine.atlasRegions.end())
-            throw std::runtime_error("you cocked up the ground tiles somehow");
-        AtlasRegion region = engine.atlasRegions[key];
-        Transform &t = Transform{{xWorld, yWorld}, size, "ground"};
-        glm::vec4 uvTransform = getUvTransform(region);
-        Entity entity = engine.ecs.createChunkEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform, 8.0f);
-        Health h = Health{100, 100};
+        assert(engine.atlasRegions.find(key) != engine.atlasRegions.end());
+        Transform &transform = Transform{{xWorld, yWorld}, size, "ground"};
+        Entity entity = engine.ecs.createChunkEntity(
+            transform,
+            MeshRegistry::quad,
+            material,
+            RenderLayer::World,
+            EntityType::Ground,
+            getUvTransform(engine.atlasRegions[key]),
+            8.0f);
 
         if (SnakeMath::chance(0.005))
         {
-            createRandomTreasure(entity, t);
+            createRandomTreasure(entity, transform);
         }
 
-        engine.ecs.addToStore(engine.ecs.healths, engine.ecs.entityToHealth, engine.ecs.healthToEntity, entity, h);
+        engine.ecs.addToStore(engine.ecs.healths, engine.ecs.entityToHealth, engine.ecs.healthToEntity, entity, Health{100, 100});
     }
 
     inline void createGraceArea()

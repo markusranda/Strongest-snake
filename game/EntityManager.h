@@ -303,6 +303,8 @@ struct EntityManager
 
     void getIntersectingEntitiesQuadTree(AABB &aabb, std::vector<Entity> &entities)
     {
+        ZoneScoped;
+
         uint32_t attempts = 0;
         std::stack<std::tuple<AABBNode *, uint32_t, bool>> visitedNodes;
         visitedNodes.push({aabbRoot, 0, false}); // We start on root node at child index 0
