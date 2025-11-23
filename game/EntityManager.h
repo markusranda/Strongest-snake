@@ -9,6 +9,7 @@
 #include "Entity.h"
 #include "Health.h"
 #include "Treasure.h"
+#include "EntityType.h"
 
 #include <cstdint>
 #include <functional>
@@ -57,15 +58,6 @@ struct Material
 
     Material(ShaderType shaderType, AtlasIndex atlasIndex, glm::vec2 size) : shaderType(shaderType), atlasIndex(atlasIndex), size(size) {}
     Material(glm::vec4 color, ShaderType shaderType, AtlasIndex atlasIndex, glm::vec2 size) : color(color), shaderType(shaderType), atlasIndex(atlasIndex), size(size) {}
-};
-
-enum class EntityType : uint8_t
-{
-    Player,
-    Ground,
-    Background,
-    Treasure,
-    COUNT
 };
 
 struct EntityManager

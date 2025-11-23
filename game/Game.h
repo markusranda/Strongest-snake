@@ -12,6 +12,7 @@
 #include "SnakeMath.h"
 #include "Health.h"
 #include "CaveSystem.h"
+#include "EntityType.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../libs/miniaudio.h"

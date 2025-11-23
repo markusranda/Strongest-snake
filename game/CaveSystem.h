@@ -1,5 +1,5 @@
 #pragma once
-
+#include "EntityType.h"
 #include "EntityManager.h"
 #include "SnakeMath.h"
 #include "Health.h"
