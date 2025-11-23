@@ -57,15 +57,14 @@ struct CaveSystem
     inline void createGround(float xWorld, float yWorld)
     {
         ZoneScoped;
-        // uint32_t spriteIndex = glm::clamp((uint32_t)floor(radius * lastMapIndex), (uint32_t)1, lastMapIndex);
-        uint32_t spriteIndex = 1; // TODO Be more clever about the sprites being used
-        std::string key = "ground_mid_" + std::to_string(spriteIndex);
+
+        std::string key = "ground_mid_1";
         if (engine.atlasRegions.find(key) == engine.atlasRegions.end())
             throw std::runtime_error("you cocked up the ground tiles somehow");
         AtlasRegion region = engine.atlasRegions[key];
         Transform &t = Transform{{xWorld, yWorld}, size, "ground"};
         glm::vec4 uvTransform = getUvTransform(region);
-        Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform, 8.0f);
+        Entity entity = engine.ecs.createChunkEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Ground, uvTransform, 8.0f);
         Health h = Health{100, 100};
 
         if (SnakeMath::chance(0.005))
@@ -78,14 +77,28 @@ struct CaveSystem
 
     inline void createGraceArea()
     {
-        // Top left corner of grace area
-        float xMin = -2048.0f;
-        float xMax = 2048.0f;
-        float yMin = -2048.0f;
-        float yMax = 2048.0f;
+        ZoneScoped;
+
+        float xMin = -1 * (float)(2 * CHUNK_WORLD_SIZE);
+        float xMax = (float)(3 * CHUNK_WORLD_SIZE);
+        float yMin = -1 * (float)(2 * CHUNK_WORLD_SIZE);
+        float yMax = (float)(3 * CHUNK_WORLD_SIZE);
         float cx = 0.0f;
         float cy = 0.0f;
         float radiusInner = 512.0f;
+
+        for (int dx = -2; dx <= 2; dx++)
+        {
+            for (int dy = -2; dy <= 2; dy++)
+            {
+                int32_t cx = dx * CHUNK_WORLD_SIZE;
+                int32_t cy = dy * CHUNK_WORLD_SIZE;
+
+                engine.ecs.chunks.emplace(
+                    packChunkCoords(cx, cy),
+                    Chunk{cx, cy});
+            }
+        }
 
         for (float y = yMin; y < yMax; y += tileSize)
         {
@@ -98,6 +111,19 @@ struct CaveSystem
                 if (dist < radiusInner)
                     continue;
 
+                createGround(x, y);
+            }
+        }
+    }
+
+    void generateNewChunk(int32_t chunkWorldX, int32_t chunkWorldY)
+    {
+        engine.ecs.chunks.emplace(packChunkCoords(chunkWorldX, chunkWorldY), Chunk{chunkWorldX, chunkWorldY});
+        for (int32_t y = chunkWorldY; y < chunkWorldY + CHUNK_WORLD_SIZE; y += tileSize)
+        {
+            int32_t xMax = chunkWorldX + CHUNK_WORLD_SIZE;
+            for (int32_t x = chunkWorldX; x < xMax; x += tileSize)
+            {
                 createGround(x, y);
             }
         }

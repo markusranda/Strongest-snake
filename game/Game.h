@@ -14,6 +14,7 @@
 #include "CaveSystem.h"
 #include "EntityType.h"
 #include "Material.h"
+#include "Chunk.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../libs/miniaudio.h"
@@ -62,13 +63,15 @@ struct Game
     CaveSystem caveSystem;
 
     // -- Player ---
-    const float thrustPower = 1800.0f; // pixels per second squared
-    const float friction = 4.0f;       // friction coefficient
+    const float thrustPower = 18000.0f; // pixels per second squared
+    // const float thrustPower = 1800.0f; // TODO REVERT THIS
+    const float friction = 4.0f; // friction coefficient
     const uint32_t snakeSize = 32;
 
     glm::vec2 playerVelocity = {0.0f, 0.0f};
     float rotationSpeed = 5.0f;        // tweak this
-    float playerMaxVelocity = 1200.0f; // tweak this
+    float playerMaxVelocity = 2200.0f; // TODO REVERT THIS
+    // float playerMaxVelocity = 1200.0f; // tweak this
 
     // Rotation
     float rotationRadius = 75.0f;       // Increase to stop earlier
@@ -143,14 +146,7 @@ struct Game
             camera = Camera{window.width, window.height};
 
             // --- Ground ----
-            {
-                ZoneScopedN("Create all Grounds");
-
-                // Everything grows outwards circle like.
-                // Center has a grace area with no blocks.
-                // Different block based on radius.
-                caveSystem.createGraceArea();
-            }
+            caveSystem.createGraceArea();
 
             engine.ecs.sortRenderables();
 
@@ -217,9 +213,34 @@ struct Game
     }
 
     // --- Game logic ---
+    void updateWorldGen()
+    {
+        // When player moves into a new chunk we should verify that there are in fact 3x3 loaded chunks around the player
+        Transform &head = engine.ecs.transforms[engine.ecs.entityToTransform[entityIndex(player.entities.front())]];
+        int32_t cx = worldPosToClosestChunk(head.position.x);
+        int32_t cy = worldPosToClosestChunk(head.position.y);
+
+        for (int dx = -2; dx <= 2; dx++)
+        {
+            for (int dy = -2; dy <= 2; dy++)
+            {
+                int32_t chunkWorldX = cx + dx * CHUNK_WORLD_SIZE;
+                int32_t chunkWorldY = cy + dy * CHUNK_WORLD_SIZE;
+                int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
+
+                if (engine.ecs.chunks.find(chunkIdx) == engine.ecs.chunks.end())
+                {
+                    caveSystem.generateNewChunk(chunkWorldX, chunkWorldY);
+                }
+            }
+        }
+    }
+
     void updateLifecycle()
     {
         ZoneScoped;
+
+        updateWorldGen();
 
         // Clear first
         engine.ecs.activeEntities.clear();
@@ -231,7 +252,9 @@ struct Game
             {camera.position.x - halfW, camera.position.y - halfH},
             {camera.position.x + halfW, camera.position.y + halfW},
         };
-        engine.ecs.getIntersectingEntities(cameraBox, engine.ecs.activeEntities);
+        size_t playerIndexT = engine.ecs.entityToTransform[entityIndex(player.entities.front())];
+        Transform playerT = engine.ecs.transforms[playerIndexT];
+        engine.ecs.getIntersectingEntities(playerT, cameraBox, engine.ecs.activeEntities);
 
         size_t writeIndex = 0;
         size_t readIndex = 0;
@@ -376,7 +399,7 @@ struct Game
         drilling = false; // We reset drill state because we don't know if there'll be any drilling yet
 
         std::vector<Entity> collisions;
-        engine.ecs.getIntersectingEntities(newAABB, collisions);
+        engine.ecs.getIntersectingEntities(newTransform, newAABB, collisions);
         for (Entity &entity : collisions)
         {
             AABB &collisionBox = engine.ecs.collisionBoxes[engine.ecs.entityToCollisionBox[entityIndex(entity)]];
@@ -400,7 +423,8 @@ struct Game
                     playerVelocity *= 0.95;
 
                     // Damage block
-                    float damage = 250.0f * dt;
+                    float damage = 25000.0f * dt;
+                    // float damage = 250.0f * dt; TODO REVERT THIS BACK
                     h.current -= damage;
                     drilling = true;
                     break;

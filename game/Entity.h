@@ -6,6 +6,9 @@ struct Entity
 {
     uint32_t id;
 
+    Entity() : id(0xFFFFFFFF) {}
+    Entity(uint32_t id) : id(id) {}
+
     bool operator==(const Entity &other) const noexcept
     {
         return id == other.id;

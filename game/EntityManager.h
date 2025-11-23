@@ -12,6 +12,9 @@
 #include "EntityType.h"
 #include "Renderable.h"
 #include "Material.h"
+#include "../libs/ankerl/unordered_dense.h"
+#include "Chunk.h"
+#include "SnakeMath.h"
 #include <cstdint>
 #include <functional>
 #include <stack>
@@ -59,8 +62,10 @@ struct EntityManager
     std::vector<size_t> healthToEntity;
     std::vector<size_t> treasureToEntity;
 
+    // Spatial storage of entities
     AABBNodePoolBoy poolBoy = AABBNodePoolBoy(1, 1000);
     AABBNode *aabbRoot;
+    ankerl::unordered_dense::map<int64_t, Chunk> chunks;
 
     const uint32_t RESIZE_INCREMENT = 2048;
 
@@ -74,6 +79,51 @@ struct EntityManager
         // AABB tree
         aabbRoot = poolBoy.allocate();
         aabbRoot->aabb = computeWorldAABB(MeshRegistry::quad, Transform{glm::vec2{0, 0}, glm::vec2{2048, 2048}});
+    }
+
+    Entity createChunkEntity(
+        Transform &transform,
+        Mesh mesh,
+        Material material,
+        RenderLayer renderLayer,
+        EntityType entityType,
+        glm::vec4 &uvTransform = glm::vec4{},
+        float z = 0.0f)
+    {
+        uint32_t index;
+        if (!freeIndices.empty())
+        {
+            // Reuse a free slot
+            index = freeIndices.back();
+            freeIndices.pop_back();
+        }
+        else
+        {
+            // Allocate new slot
+            index = (uint32_t)generations.size();
+            generations.push_back(0);
+        }
+
+        uint8_t gen = generations[index];
+        Entity entity = Entity{(gen << 24) | index};
+
+        // ---- Add to stores ----
+        Renderable renderable = {entity, z, 0, renderLayer};
+        renderable.makeDrawKey(material.shaderType, material.atlasIndex, mesh.vertexOffset, mesh.vertexCount);
+        sortedRenderables.push_back(renderable);
+        AABB aabb = computeWorldAABB(mesh, transform);
+
+        addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
+        addToStore<Mesh>(meshes, entityToMesh, meshToEntity, entity, mesh);
+        addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
+        addToStore<Material>(materials, entityToMaterial, materialToEntity, entity, material);
+        addToStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, entity, uvTransform);
+        addToStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, entity, entityType);
+        addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, aabb);
+
+        insertEntityChunk(entity, transform);
+
+        return entity;
     }
 
     Entity createEntity(
@@ -149,35 +199,36 @@ struct EntityManager
         // Remove from quad tree
         if (collidable)
         {
+            // TODO Make a smarter system, now we're checking both spatial storages
             AABB &aabb = collisionBoxes[entityToCollisionBox[entityIndex(e)]];
-            if (!deleteEntityQuadTree(aabbRoot, e, aabb))
-            {
-                char buf[256];
-                std::snprintf(buf, sizeof(buf), "failed to delete entity: %d from quad tree", e.id);
-                throw std::runtime_error(buf);
-            }
+            deleteEntityQuadTree(aabbRoot, e, aabb);
+            deleteEntityChunks(index, aabb);
         }
         uint32_t entityIdx = entityIndex(e);
 
         // --- Remove from stores ---
         // TODO One day you need to figure out a more performant way to clean shit up
-        removeFromStore<Transform>(transforms, entityToTransform, transformToEntity, e);
-        removeFromStore<Mesh>(meshes, entityToMesh, meshToEntity, e);
-        removeFromStore<Renderable>(renderables, entityToRenderable, renderableToEntity, e);
-        removeFromStore<Material>(materials, entityToMaterial, materialToEntity, e);
-        removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
-        removeFromStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, e);
-        removeFromStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, e);
-        if (entityIdx < entityToHealth.size() && entityToHealth[entityIdx] != UINT32_MAX)
-            removeFromStore<Health>(healths, entityToHealth, healthToEntity, e);
-        if (entityIdx < entityToTreasure.size() && entityToTreasure[entityIdx] != UINT32_MAX)
-            removeFromStore<Treasure>(treasures, entityToTreasure, treasureToEntity, e);
+        {
+            ZoneScopedN("Remove from stores");
 
+            removeFromStore<Transform>(transforms, entityToTransform, transformToEntity, e);
+            removeFromStore<Mesh>(meshes, entityToMesh, meshToEntity, e);
+            removeFromStore<Renderable>(renderables, entityToRenderable, renderableToEntity, e);
+            removeFromStore<Material>(materials, entityToMaterial, materialToEntity, e);
+            removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
+            removeFromStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, e);
+            removeFromStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, e);
+            if (entityIdx < entityToHealth.size() && entityToHealth[entityIdx] != UINT32_MAX)
+                removeFromStore<Health>(healths, entityToHealth, healthToEntity, e);
+            if (entityIdx < entityToTreasure.size() && entityToTreasure[entityIdx] != UINT32_MAX)
+                removeFromStore<Treasure>(treasures, entityToTreasure, treasureToEntity, e);
+        }
         sortRenderables();
     }
 
     inline void sortRenderables()
     {
+        ZoneScoped;
         sortedRenderables = renderables;
         std::sort(sortedRenderables.begin(), sortedRenderables.end(), [](Renderable &a, Renderable &b)
                   { return a.drawkey < b.drawkey; });
@@ -243,10 +294,16 @@ struct EntityManager
     }
 
     // Finds all the intersecting nodes of this aabb and cleans up the dead fools
-    void getIntersectingEntities(AABB &aabb, std::vector<Entity> &entities)
+    void getIntersectingEntities(const Transform &player, AABB &aabb, std::vector<Entity> &entities)
     {
         ZoneScoped;
 
+        getIntersectingEntitiesQuadTree(aabb, entities);
+        getIntersectingEntitiesChunks(player, entities);
+    }
+
+    void getIntersectingEntitiesQuadTree(AABB &aabb, std::vector<Entity> &entities)
+    {
         uint32_t attempts = 0;
         std::stack<std::tuple<AABBNode *, uint32_t, bool>> visitedNodes;
         visitedNodes.push({aabbRoot, 0, false}); // We start on root node at child index 0
@@ -305,15 +362,42 @@ struct EntityManager
         }
     }
 
+    void getIntersectingEntitiesChunks(const Transform &player, std::vector<Entity> &entities)
+    {
+        ZoneScoped;
+
+        int32_t cx = worldPosToClosestChunk(player.position.x);
+        int32_t cy = worldPosToClosestChunk(player.position.y);
+
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                int32_t chunkWorldX = cx + dx * CHUNK_WORLD_SIZE;
+                int32_t chunkWorldY = cy + dy * CHUNK_WORLD_SIZE;
+                int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
+
+                assert(chunks.find(chunkIdx) != chunks.end());
+                Chunk &chunk = chunks[chunkIdx];
+
+                int before = entities.size();
+                for (size_t i = 0; i < TILES_PER_CHUNK; i++)
+                {
+                    Entity entity = chunk.tiles[i];
+                    if (entity.id != UINT32_MAX)
+                        entities.push_back(entity);
+                }
+                int after = entities.size();
+            }
+        }
+    }
+
     void quadTreeMoveEntity(AABB &aabbDelete, AABB &aabbInsert, Entity &entity)
     {
         ZoneScoped;
-        if (!deleteEntityQuadTree(aabbRoot, entity, aabbDelete))
-        {
-            char buf[256];
-            std::snprintf(buf, sizeof(buf), "failed to delete entity: %d from quad tree", entity.id);
-            throw std::runtime_error(buf);
-        }
+
+        bool ok = deleteEntityQuadTree(aabbRoot, entity, aabbDelete);
+        assert(ok);
         insertEntityQuadTree(aabbRoot, entity, aabbInsert);
     }
 
@@ -380,6 +464,22 @@ struct EntityManager
         }
 
         return false;
+    }
+
+    void deleteEntityChunks(uint32_t &idToDelete, const AABB &aabb)
+    {
+        ZoneScoped;
+
+        int32_t chunkWorldX = worldPosToClosestChunk(aabb.min.x);
+        int32_t chunkWorldY = worldPosToClosestChunk(aabb.min.y);
+        int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
+        Chunk &chunk = chunks[chunkIdx];
+
+        int32_t localTileX = ((int32_t)aabb.min.x - chunkWorldX) / TILE_WORLD_SIZE;
+        int32_t localTileY = ((int32_t)aabb.min.y - chunkWorldY) / TILE_WORLD_SIZE;
+        size_t tileIdx = localIndexToTileIndex(localTileX, localTileY);
+        Entity &entity = chunk.tiles[tileIdx];
+        entity.id = UINT32_MAX;
     }
 
     void pruneBranch(AABBNode *node)
@@ -558,5 +658,38 @@ struct EntityManager
 
         for (size_t i = 0; i < node->nodeCount; i++)
             collectQuadTreeDebugInstances(node->nodes[i], instances);
+    }
+
+    void collectChunkDebugInstances(std::vector<InstanceData> &instances)
+    {
+        for (auto &[key, val] : chunks)
+        {
+            Transform t = Transform(glm::vec2{val.chunkX, val.chunkY}, glm::vec2{CHUNK_WORLD_SIZE, CHUNK_WORLD_SIZE});
+            glm::vec4 color = glm::vec4(1.0f, 0.0f, 0.0f, 0.25f); // translucent red
+            InstanceData instanceData(t.model, color, glm::vec4(0, 0, 1, 1), glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f});
+            instances.push_back(instanceData);
+        }
+    }
+
+    inline void insertEntityChunk(Entity entity, Transform &transform)
+    {
+        int32_t tileWorldX = transform.position.x;
+        int32_t tileWorldY = transform.position.y;
+        int32_t chunkWorldX = worldPosToClosestChunk(tileWorldX);
+        int32_t chunkWorldY = worldPosToClosestChunk(tileWorldY);
+        int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
+        assert(chunks.find(chunkIdx) != chunks.end());
+
+        int32_t localTileX_world = tileWorldX - chunkWorldX;
+        int32_t localTileY_world = tileWorldY - chunkWorldY;
+        int32_t localTileX = localTileX_world / TILE_WORLD_SIZE;
+        int32_t localTileY = localTileY_world / TILE_WORLD_SIZE;
+
+        assert(localTileX >= 0 && localTileX < TILES_PER_ROW);
+        assert(localTileY >= 0 && localTileY < TILES_PER_ROW);
+        int32_t tileIdx = localIndexToTileIndex(localTileX, localTileY);
+        assert(tileIdx >= 0 && tileIdx < TILES_PER_CHUNK);
+
+        chunks[chunkIdx].tiles[tileIdx] = entity;
     }
 };
