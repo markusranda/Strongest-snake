@@ -78,9 +78,7 @@ struct Engine
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device;
 
-    VkQueue graphicsQueue;
-    VkQueue presentQueue;
-
+    VkQueue queue;
     SwapChain swapchain;
     std::vector<VkImageLayout> swapchainImageLayouts;
 
@@ -366,8 +364,7 @@ struct Engine
             throw std::runtime_error("failed to create logical device!");
         }
 
-        vkGetDeviceQueue(device, queueFamilyIndex, 0, &graphicsQueue);
-        presentQueue = graphicsQueue;
+        vkGetDeviceQueue(device, queueFamilyIndex, 0, &queue);
     }
 
     void createTextures()
@@ -376,13 +373,13 @@ struct Engine
                                    device,
                                    physicalDevice,
                                    commandPool,
-                                   graphicsQueue);
+                                   queue);
 
         fontTexture = LoadTexture("assets/fonts.png",
                                   device,
                                   physicalDevice,
                                   commandPool,
-                                  graphicsQueue);
+                                  queue);
     }
 
     void createAtlasData()
@@ -1062,7 +1059,7 @@ struct Engine
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
+        if (vkQueueSubmit(queue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to submit draw command buffer");
         }
@@ -1078,7 +1075,7 @@ struct Engine
         presentInfo.pImageIndices = &imageIndex;
         presentInfo.pResults = nullptr;
 
-        VkResult pres = vkQueuePresentKHR(presentQueue, &presentInfo);
+        VkResult pres = vkQueuePresentKHR(queue, &presentInfo);
         if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR)
         {
             recreateSwapchain();
