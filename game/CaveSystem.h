@@ -4,10 +4,14 @@
 #include "SnakeMath.h"
 #include "Health.h"
 #include "Material.h"
+#include "Atlas.h"
 #include "glm/common.hpp"
 
 // PROFILING
 #include "tracy/Tracy.hpp"
+
+const char *GROUND_NAME = "ground";
+const char *SPRITE_KEY = "ground_mid_1";
 
 struct CaveSystem
 {
@@ -16,17 +20,17 @@ struct CaveSystem
     glm::vec2 size = {tileSize + 1.0f, tileSize + 1.0f}; // Added 1 pixel in both height and width to remove line artifacts
     Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
     static constexpr int TREASURE_COUNT = 10;
-    std::array<const char *, TREASURE_COUNT> ground_treasures = {
-        "gem_blue",
-        "gem_red",
-        "gem_green",
-        "gem_orange",
-        "gem_purple",
-        "gems_blue",
-        "gems_green",
-        "gems_purple",
-        "gems_orange",
-        "skull",
+    std::array<SpriteID, TREASURE_COUNT> ground_treasures = {
+        SpriteID::SPR_GEM_BLUE,
+        SpriteID::SPR_GEM_RED,
+        SpriteID::SPR_GEM_GREEN,
+        SpriteID::SPR_GEM_ORANGE,
+        SpriteID::SPR_GEM_PURPLE,
+        SpriteID::SPR_GEMS_BLUE,
+        SpriteID::SPR_GEMS_GREEN,
+        SpriteID::SPR_GEMS_PURPLE,
+        SpriteID::SPR_GEMS_ORANGE,
+        SpriteID::SPR_SKULL,
     };
     Engine &engine;
 
@@ -40,11 +44,11 @@ struct CaveSystem
     void createRandomTreasure(Entity &groundEntity, Transform &t)
     {
         int idx = std::lround(SnakeMath::randomBetween(0, TREASURE_COUNT - 1));
-        std::string treasureKey = ground_treasures[idx];
-        createTreasure(groundEntity, t, treasureKey);
+        uint32_t key = ground_treasures[idx];
+        createTreasure(groundEntity, t, key);
     }
 
-    void createTreasure(Entity &groundEntity, Transform &t, std::string key)
+    void createTreasure(Entity &groundEntity, Transform &t, uint32_t key)
     {
         Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
         AtlasRegion region = engine.atlasRegions[key];
@@ -58,16 +62,17 @@ struct CaveSystem
     {
         ZoneScoped;
 
-        std::string key = "ground_mid_1";
-        assert(engine.atlasRegions.find(key) != engine.atlasRegions.end());
-        Transform &transform = Transform{{xWorld, yWorld}, size, "ground"};
+        glm::vec2 position = {xWorld, yWorld};
+        Transform transform = {position, size, GROUND_NAME};
+        AtlasRegion region = engine.atlasRegions[SpriteID::SPR_GROUND_MID_1];
+        glm::vec4 uvTransform = getUvTransform(region);
         Entity entity = engine.ecs.createChunkEntity(
             transform,
             MeshRegistry::quad,
             material,
             RenderLayer::World,
             EntityType::Ground,
-            getUvTransform(engine.atlasRegions[key]),
+            uvTransform,
             8.0f);
 
         if (SnakeMath::chance(0.005))

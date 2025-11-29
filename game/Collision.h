@@ -14,8 +14,9 @@ inline AABB computeWorldAABB(const Mesh &mesh, const Transform &t)
     const auto &verts = MeshRegistry::getVertices(mesh);
     const glm::mat4 &m = t.model;
 
-    for (const auto &v : verts)
+    for (size_t i = mesh.vertexOffset; i < mesh.vertexOffset + mesh.vertexCount; i++)
     {
+        auto v = verts[i];
         float x = v.pos.x * m[0][0] + v.pos.y * m[1][0] + m[3][0];
         float y = v.pos.x * m[0][1] + v.pos.y * m[1][1] + m[3][1];
 

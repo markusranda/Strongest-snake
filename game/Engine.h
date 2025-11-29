@@ -138,7 +138,7 @@ struct Engine
     VkDescriptorSetLayout textureSetLayout;
     Texture fontTexture;
     Texture atlasTexture;
-    std::unordered_map<std::string, AtlasRegion> atlasRegions;
+    AtlasRegion *atlasRegions = new AtlasRegion[MAX_ATLAS_ENTRIES];
     VkDescriptorPool descriptorPool;
     std::array<VkDescriptorSet, 2> descriptorSets;
 
@@ -391,7 +391,7 @@ struct Engine
         while (in.read(buffer, sizeof(buffer)))
         {
             AtlasRegion region = reinterpret_cast<AtlasRegion &>(buffer);
-            atlasRegions[region.name] = region;
+            atlasRegions[region.id] = region;
         }
     }
 
@@ -765,6 +765,109 @@ struct Engine
         return true;
     }
 
+    void buildInstanceData(std::vector<DrawCmd> &drawCmds)
+    {
+        ZoneScoped; // PROFILER
+
+        ShaderType currentShader = ShaderType::COUNT;
+        RenderLayer currentLayer = RenderLayer::World;
+        uint32_t currentVertexCount = UINT32_MAX;
+        uint32_t currentVertexOffset = UINT32_MAX;
+        float currentZ = 0.0f;
+        uint8_t currentTiebreak = 0;
+        uint32_t instanceOffset = 0;
+        AtlasIndex currentAtlasIndex = AtlasIndex::Sprite;
+        glm::vec2 currentAtlasOffset;
+        glm::vec2 currentAtlasScale;
+
+        instances.clear();
+        {
+            ZoneScopedN("Sorting renderables");
+            std::sort(
+                ecs.activeEntities.begin(),
+                ecs.activeEntities.end(),
+                [this](Entity &a, Entity &b)
+                {
+                    Renderable &rA = ecs.renderables[ecs.entityToRenderable[entityIndex(a)]];
+                    Renderable &rB = ecs.renderables[ecs.entityToRenderable[entityIndex(b)]];
+                    return rA.drawkey < rB.drawkey;
+                });
+        }
+
+        if (ecs.activeEntities.empty())
+            return;
+
+        Renderable &firstRenderable = ecs.renderables[ecs.entityToRenderable[entityIndex(ecs.activeEntities[0])]];
+        uint64_t prevDrawKey = firstRenderable.drawkey;
+        for (Entity entity : ecs.activeEntities)
+        {
+            uint32_t entityId = entityIndex(entity);
+            uint32_t &rId = ecs.entityToRenderable[entityId];
+            uint32_t &mId = ecs.entityToMesh[entityId];
+            uint32_t &tId = ecs.entityToTransform[entityId];
+            uint32_t &matId = ecs.entityToMaterial[entityId];
+            uint32_t &uvId = ecs.entityToUvTransforms[entityId];
+
+            Renderable &renderable = ecs.renderables[rId];
+            Mesh &mesh = ecs.meshes[mId];
+            Transform &transform = ecs.transforms[tId];
+            Material &material = ecs.materials[matId];
+            glm::vec4 &uvTransform = ecs.uvTransforms[uvId];
+            glm::vec2 &atlasOffset = glm::vec2{uvTransform.x, uvTransform.y};
+            glm::vec2 &atlasScale = glm::vec2{uvTransform.z, uvTransform.w};
+
+            if (renderable.drawkey != prevDrawKey && !instances.empty())
+            {
+                uint32_t instanceCount = instances.size() - instanceOffset;
+                drawCmds.emplace_back(currentLayer,
+                                      currentShader,
+                                      currentZ,
+                                      currentTiebreak,
+                                      currentVertexCount,
+                                      currentVertexOffset,
+                                      instanceCount,
+                                      instanceOffset,
+                                      material.atlasIndex,
+                                      atlasOffset,
+                                      atlasScale);
+                instanceOffset = instances.size();
+            }
+
+            InstanceData instance = {transform.model, material.color, uvTransform, transform.size, material.size};
+            instances.push_back(instance);
+
+            currentShader = material.shaderType;
+            currentLayer = renderable.renderLayer;
+            currentZ = renderable.z;
+            currentTiebreak = renderable.tiebreak;
+            currentVertexCount = mesh.vertexCount;
+            currentVertexOffset = mesh.vertexOffset;
+            currentAtlasIndex = material.atlasIndex;
+            currentAtlasOffset = atlasOffset;
+            currentAtlasScale = atlasScale;
+
+            // Save current drawKey for next comparison
+            prevDrawKey = renderable.drawkey;
+        }
+
+        // Last batch
+        if (!instances.empty())
+        {
+            uint32_t instanceCount = instances.size() - instanceOffset;
+            drawCmds.emplace_back(currentLayer,
+                                  currentShader,
+                                  currentZ,
+                                  currentTiebreak,
+                                  currentVertexCount,
+                                  currentVertexOffset,
+                                  instanceCount,
+                                  instanceOffset,
+                                  currentAtlasIndex,
+                                  currentAtlasOffset,
+                                  currentAtlasScale);
+        }
+    }
+
     void draw(Camera &camera, float fps, glm::vec2 playerCoords, float delta)
     {
         ZoneScoped; // PROFILER
@@ -778,100 +881,7 @@ struct Engine
 
         // Collect all instance data
         std::vector<DrawCmd> drawCmds;
-        {
-            ZoneScopedN("Build world InstanceData");
-
-            ShaderType currentShader = ShaderType::COUNT;
-            RenderLayer currentLayer = RenderLayer::World;
-            uint32_t currentVertexCount = UINT32_MAX;
-            uint32_t currentVertexOffset = UINT32_MAX;
-            float currentZ = 0.0f;
-            uint8_t currentTiebreak = 0;
-            uint32_t instanceOffset = 0;
-            AtlasIndex currentAtlasIndex = AtlasIndex::Sprite;
-            glm::vec2 currentAtlasOffset;
-            glm::vec2 currentAtlasScale;
-
-            instances.clear();
-            {
-                ZoneScopedN("Sorting renderables");
-                std::sort(ecs.activeEntities.begin(), ecs.activeEntities.end(), [this](Entity &a, Entity &b)
-                          { 
-                    Renderable &rA = ecs.renderables[ecs.entityToRenderable[entityIndex(a)]];
-                    Renderable &rB = ecs.renderables[ecs.entityToRenderable[entityIndex(b)]];
-                    return rA.drawkey < rB.drawkey; });
-            }
-
-            if (ecs.activeEntities.empty())
-                return;
-
-            Renderable &firstRenderable =
-                ecs.renderables[ecs.entityToRenderable[entityIndex(ecs.activeEntities[0])]];
-            uint64_t prevDrawKey = firstRenderable.drawkey;
-            for (Entity entity : ecs.activeEntities)
-            {
-                uint32_t entityId = entityIndex(entity);
-                Renderable renderable = ecs.renderables[ecs.entityToRenderable[entityId]];
-                Mesh &mesh = ecs.meshes[ecs.entityToMesh[entityId]];
-                Transform &transform = ecs.transforms[ecs.entityToTransform[entityId]];
-                Material &material = ecs.materials[ecs.entityToMaterial[entityId]];
-                glm::vec4 &uvTransform = ecs.uvTransforms[ecs.entityToUvTransforms[entityId]];
-                glm::vec2 atlasOffset = glm::vec2{uvTransform.x, uvTransform.y};
-                glm::vec2 atlasScale = glm::vec2{uvTransform.z, uvTransform.w};
-
-                if (renderable.drawkey != prevDrawKey && !instances.empty())
-                {
-                    uint32_t instanceCount = instances.size() - instanceOffset;
-                    DrawCmd drawCmd = DrawCmd(
-                        currentLayer,
-                        currentShader,
-                        currentZ,
-                        currentTiebreak,
-                        currentVertexCount,
-                        currentVertexOffset,
-                        instanceCount,
-                        instanceOffset,
-                        material.atlasIndex,
-                        atlasOffset,
-                        atlasScale);
-                    drawCmds.push_back(drawCmd);
-                    instanceOffset = instances.size();
-                }
-
-                InstanceData instance = {transform.model, material.color, uvTransform, transform.size, material.size};
-                instances.push_back(instance);
-
-                currentShader = material.shaderType;
-                currentLayer = renderable.renderLayer;
-                currentZ = renderable.z;
-                currentTiebreak = renderable.tiebreak;
-                currentVertexCount = mesh.vertexCount;
-                currentVertexOffset = mesh.vertexOffset;
-                currentAtlasIndex = material.atlasIndex;
-                currentAtlasOffset = atlasOffset;
-                currentAtlasScale = atlasScale;
-
-                // Save current drawKey for next comparison
-                prevDrawKey = renderable.drawkey;
-            }
-
-            // Last batch
-            if (!instances.empty())
-            {
-                uint32_t instanceCount = instances.size() - instanceOffset;
-                drawCmds.emplace_back(currentLayer,
-                                      currentShader,
-                                      currentZ,
-                                      currentTiebreak,
-                                      currentVertexCount,
-                                      currentVertexOffset,
-                                      instanceCount,
-                                      instanceOffset,
-                                      currentAtlasIndex,
-                                      currentAtlasOffset,
-                                      currentAtlasScale);
-            }
-        }
+        buildInstanceData(drawCmds);
 
         // Fetch all text instances
         {

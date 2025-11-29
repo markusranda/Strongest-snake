@@ -82,14 +82,61 @@ struct EntityManager
     }
 
     Entity createChunkEntity(
-        Transform &transform,
+        Transform transform,
         Mesh mesh,
         Material material,
         RenderLayer renderLayer,
         EntityType entityType,
-        glm::vec4 &uvTransform = glm::vec4{},
-        float z = 0.0f)
+        glm::vec4 uvTransform,
+        float z)
     {
+        ZoneScoped;
+        uint32_t index;
+        if (!freeIndices.empty())
+        {
+            // Reuse a free slot
+            index = freeIndices.back();
+            freeIndices.pop_back();
+        }
+        else
+        {
+            // Allocate new slot
+            index = (uint32_t)generations.size();
+            generations.push_back(0);
+        }
+
+        uint8_t gen = generations[index];
+        Entity entity = Entity{(gen << 24) | index};
+
+        // ---- Add to stores ----
+        Renderable renderable = {entity, z, 0, renderLayer};
+        renderable.makeDrawKey(material.shaderType, material.atlasIndex, mesh.vertexOffset, mesh.vertexCount);
+        sortedRenderables.push_back(renderable);
+        AABB aabb = computeWorldAABB(mesh, transform);
+
+        addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
+        addToStore<Mesh>(meshes, entityToMesh, meshToEntity, entity, mesh);
+        addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
+        addToStore<Material>(materials, entityToMaterial, materialToEntity, entity, material);
+        addToStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, entity, uvTransform);
+        addToStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, entity, entityType);
+        addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, aabb);
+
+        insertEntityChunk(entity, transform);
+
+        return entity;
+    }
+
+    Entity createChunkEntities(
+        Transform transform,
+        Mesh mesh,
+        Material material,
+        RenderLayer renderLayer,
+        EntityType entityType,
+        glm::vec4 uvTransform,
+        float z)
+    {
+        ZoneScoped;
         uint32_t index;
         if (!freeIndices.empty())
         {
@@ -244,6 +291,8 @@ struct EntityManager
     template <typename A>
     void addToStore(std::vector<A> &denseStorage, std::vector<uint32_t> &sparseToDense, std::vector<size_t> &denseToSparse, Entity &entity, A &item)
     {
+        ZoneScoped;
+
         size_t denseIndex = denseStorage.size();
         uint32_t sparseIndex = entityIndex(entity);
 
@@ -267,6 +316,7 @@ struct EntityManager
     template <typename A>
     void removeFromStore(std::vector<A> &denseStorage, std::vector<uint32_t> &sparseToDense, std::vector<size_t> &denseToSparse, Entity &e)
     {
+        ZoneScoped;
 
         uint32_t denseIndex = sparseToDense[entityIndex(e)];
         uint32_t lastIndex = denseStorage.size() - 1;
@@ -420,7 +470,8 @@ struct EntityManager
         ZoneScoped;
 
         bool ok = deleteEntityQuadTree(aabbRoot, entity, aabbDelete);
-        assert(ok);
+        if (!ok) // TODO Not sure if it's really bad if we skip some deletions
+            std::cout << "Failed to delete entity\n";
         insertEntityQuadTree(aabbRoot, entity, aabbInsert);
     }
 
@@ -551,6 +602,7 @@ struct EntityManager
         }
     }
 
+    // TODO This sometimes goes on infinitely
     void insertEntityQuadTree(AABBNode *node, Entity &entity, AABB &aabb)
     {
         ZoneScoped;

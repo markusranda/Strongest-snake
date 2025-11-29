@@ -1,5 +1,46 @@
 #pragma once
 #include <glm/glm.hpp>
+#include "tracy/Tracy.hpp"
+
+enum SpriteID : uint32_t
+{
+    SPR_GROUND_MID_0 = 0,
+    SPR_DRILL_HEAD = 1,
+    SPR_SNAKE_SKIN = 2,
+    SPR_GEM_BLUE = 3,
+    SPR_GEM_RED = 4,
+    SPR_GEM_GREEN = 5,
+    SPR_GEM_ORANGE = 6,
+    SPR_GEM_PURPLE = 7,
+    SPR_GEMS_BLUE = 8,
+    SPR_GEMS_GREEN = 9,
+    SPR_GEMS_PURPLE = 10,
+    SPR_GEMS_ORANGE = 11,
+
+    SPR_GROUND_MID_1 = 128,
+    SPR_SKULL = 129,
+
+    SPR_GROUND_MID_2 = 256,
+    SPR_CAVE_BACKGROUND = 257,
+
+    SPR_GROUND_MID_3 = 384,
+    SPR_GROUND_MID_4 = 512,
+    SPR_GROUND_MID_5 = 640,
+    SPR_GROUND_MID_6 = 768,
+    SPR_GROUND_MID_7 = 896,
+    SPR_GROUND_MID_8 = 1024,
+    SPR_GROUND_MID_9 = 1152,
+    SPR_GROUND_MID_10 = 1280,
+    SPR_GROUND_MID_11 = 1408,
+    SPR_GROUND_MID_12 = 1536,
+    SPR_GROUND_MID_13 = 1664,
+    SPR_GROUND_MID_14 = 1792,
+    SPR_GROUND_MID_15 = 1920,
+    SPR_GROUND_MID_16 = 2048,
+    SPR_GROUND_MID_17 = 2176,
+    SPR_GROUND_MID_18 = 2304,
+    SPR_GROUND_MID_19 = 2432,
+};
 
 struct AtlasRegion
 {
@@ -16,6 +57,7 @@ constexpr glm::vec2 ATLAS_CELL_SIZE = glm::vec2(32.0f, 32.0f);
 constexpr glm::vec2 FONT_ATLAS_CELL_SIZE = glm::vec2(16.0f, 32.0f);
 constexpr glm::vec2 FONT_ATLAS_SIZE = glm::vec2(1456.0f, 32.0f); // Update this when expanding fonts.png
 constexpr glm::vec2 ATLAS_SIZE = glm::vec2(4096.0f, 4096.0f);    // Update this when expanding atlas.png
+static constexpr int MAX_ATLAS_ENTRIES = (ATLAS_SIZE.x / ATLAS_CELL_SIZE.x) * (ATLAS_SIZE.y / ATLAS_CELL_SIZE.y);
 
 inline glm::vec4 getUvTransform(AtlasRegion &region)
 {

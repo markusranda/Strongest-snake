@@ -15,6 +15,7 @@
 #include "EntityType.h"
 #include "Material.h"
 #include "Chunk.h"
+#include "Atlas.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../libs/miniaudio.h"
@@ -111,7 +112,7 @@ struct Game
 
             // --- Background ---
             {
-                AtlasRegion region = engine.atlasRegions["cave_background"];
+                AtlasRegion region = engine.atlasRegions[SpriteID::SPR_CAVE_BACKGROUND];
                 Transform t = Transform{glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f}};
                 Material material = Material(ShaderType::TextureParallax, AtlasIndex::Sprite, {64.0f, 64.0f});
                 glm::vec4 uvTransform = getUvTransform(region);
@@ -127,13 +128,13 @@ struct Game
                 {
                     Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite, {32.0f, 32.0f}};
                     Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
-                    AtlasRegion region = engine.atlasRegions["drill_head"];
+                    AtlasRegion region = engine.atlasRegions[SpriteID::SPR_DRILL_HEAD];
                     glm::vec4 uvTransform = getUvTransform(region);
 
                     player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, EntityType::Player, uvTransform, 2.0f);
                 }
 
-                AtlasRegion region = engine.atlasRegions["snake_skin"];
+                AtlasRegion region = engine.atlasRegions[SpriteID::SPR_SNAKE_SKIN];
                 glm::vec4 uvTransform = getUvTransform(region);
                 for (size_t i = 1; i < 4; i++)
                 {
