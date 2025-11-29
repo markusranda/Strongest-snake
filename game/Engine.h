@@ -26,6 +26,7 @@
 #include "SnakeMath.h"
 #include "Material.h"
 #include "Renderable.h"
+#include "Text.h"
 
 #include <iostream>
 #include <fstream>
@@ -127,6 +128,7 @@ struct Engine
     VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
     uint32_t maxIntancesPerFrame = 0;
     std::vector<InstanceData> instances;
+    std::vector<DrawCmd> drawCmds;
 
     // Vertices
     VkBuffer vertexBuffer = VK_NULL_HANDLE;
@@ -765,7 +767,7 @@ struct Engine
         return true;
     }
 
-    void buildInstanceData(std::vector<DrawCmd> &drawCmds)
+    void buildInstanceData()
     {
         ZoneScoped; // PROFILER
 
@@ -868,7 +870,52 @@ struct Engine
         }
     }
 
-    void buildDebugQuadTreeInstances(std::vector<DrawCmd> &drawCmds)
+    void buildTextInstances(float fps, glm::vec2 &playerCoords)
+    {
+        ZoneScoped;
+
+        {
+            char text[32];
+            std::snprintf(text, sizeof(text), "FPS: %d", (int)fps);
+            uint32_t offset = instances.size();
+            createTextInstances(text, sizeof(text), glm::vec2(-1.0f, -1.0f), instances);
+            uint32_t count = instances.size() - offset;
+
+            DrawCmd dc(
+                RenderLayer::World, // Add new layer for UI
+                ShaderType::Font,
+                0.0f, 0,
+                6, 0,
+                count,
+                offset,
+                AtlasIndex::Font,
+                glm::vec2{},
+                glm::vec2{});
+            drawCmds.emplace_back(dc);
+        }
+
+        {
+            char text[32];
+            std::snprintf(text, sizeof(text), "POS: (%d, %d)", (int)playerCoords.x, (int)playerCoords.y);
+            uint32_t offset = instances.size();
+            createTextInstances(text, sizeof(text), glm::vec2(-1.0f, 0.9f), instances);
+            uint32_t count = instances.size() - offset;
+
+            DrawCmd dc(
+                RenderLayer::World, // Add new layer for UI
+                ShaderType::Font,
+                0.0f, 0,
+                6, 0,
+                count,
+                offset,
+                AtlasIndex::Font,
+                glm::vec2{},
+                glm::vec2{});
+            drawCmds.emplace_back(dc);
+        }
+    }
+
+    void buildDebugQuadTreeInstances()
     {
         ZoneScoped;
 
@@ -894,7 +941,7 @@ struct Engine
         }
     }
 
-    void buildDebugChunkInstances(std::vector<DrawCmd> &drawCmds)
+    void buildDebugChunkInstances()
     {
         ZoneScoped;
 
@@ -927,59 +974,18 @@ struct Engine
         }
 
         // Collect all instance data
-        std::vector<DrawCmd> drawCmds;
-        buildInstanceData(drawCmds);
-
-        // Fetch all text instances
-        {
-            ZoneScopedN("Build text InstanceData");
-
-            std::vector<InstanceData> textInstances = BuildTextInstances(
-                "FPS: " + std::to_string((int)fps),
-                glm::vec2(-1.0f, -1.0f));
-            uint32_t textOffset = instances.size();
-            instances.insert(instances.end(), textInstances.begin(), textInstances.end());
-            DrawCmd dc = DrawCmd(
-                RenderLayer::World, // Add new layer for UI
-                ShaderType::Font,
-                0.0f, 0,
-                6, 0,
-                static_cast<uint32_t>(textInstances.size()),
-                textOffset,
-                AtlasIndex::Font,
-                glm::vec2{},
-                glm::vec2{});
-            drawCmds.emplace_back(dc);
-
-            std::string coordText = "POS: " + std::to_string((float)playerCoords.x) + ", " + std::to_string((float)playerCoords.y);
-            textOffset = instances.size();
-            textInstances = BuildTextInstances(
-                coordText,
-                glm::vec2(-1.0f, 0.9f));
-            instances.insert(instances.end(), textInstances.begin(), textInstances.end());
-            dc = DrawCmd(
-                RenderLayer::World, // Add new layer for UI
-                ShaderType::Font,
-                0.0f, 0,
-                6, 0,
-                static_cast<uint32_t>(textInstances.size()),
-                textOffset,
-                AtlasIndex::Font,
-                glm::vec2{},
-                glm::vec2{});
-            drawCmds.emplace_back(dc);
-        }
-
-        // buildDebugQuadTreeInstances(drawCmds); ENABLE THIS TO SEE QUAD TREE BOXES
-
-        buildDebugChunkInstances(drawCmds);
+        drawCmds.clear();
+        buildInstanceData();
+        buildTextInstances(fps, playerCoords);
+        // buildDebugQuadTreeInstances(); ENABLE THIS TO SEE QUAD TREE BOXES
+        buildDebugChunkInstances();
 
         for (auto &cmd : drawCmds)
             assert(cmd.firstInstance + cmd.instanceCount <= instances.size());
 
         //  Upload once, then draw all
         uploadToInstanceBuffer();
-        drawCmdList(drawCmds, camera);
+        drawCmdList(camera);
         endDraw(imageIndex);
         // particleSystem.resetSpawn();
 
@@ -1069,7 +1075,7 @@ struct Engine
         return vkAcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, pImageIndex);
     }
 
-    void drawCmdList(const std::vector<DrawCmd> &drawCmds, Camera &camera)
+    void drawCmdList(Camera &camera)
     {
         ZoneScoped; // PROFILER
 
