@@ -16,6 +16,7 @@ struct Chunk
     int32_t chunkX;
     int32_t chunkY;
     Entity tiles[TILES_PER_CHUNK];
+    std::vector<Entity> staticEntities;
 };
 
 inline uint64_t packChunkCoords(int32_t x, int32_t y)

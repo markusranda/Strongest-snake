@@ -53,7 +53,7 @@ struct CaveSystem
         Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
         AtlasRegion region = engine.atlasRegions[key];
         glm::vec4 uvTransform = getUvTransform(region);
-        Entity treasureEntity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Treasure, uvTransform, 0.0f);
+        Entity treasureEntity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Treasure, SpatialStorage::Chunk, uvTransform, 0.0f);
         Treasure treasure = {groundEntity};
         engine.ecs.addToStore(engine.ecs.treasures, engine.ecs.entityToTreasure, engine.ecs.treasureToEntity, treasureEntity, treasure);
     }
@@ -66,12 +66,13 @@ struct CaveSystem
         Transform transform = {position, size, GROUND_NAME};
         AtlasRegion region = engine.atlasRegions[SpriteID::SPR_GROUND_MID_1];
         glm::vec4 uvTransform = getUvTransform(region);
-        Entity entity = engine.ecs.createChunkEntity(
+        Entity entity = engine.ecs.createEntity(
             transform,
             MeshRegistry::quad,
             material,
             RenderLayer::World,
             EntityType::Ground,
+            SpatialStorage::ChunkTile,
             uvTransform,
             8.0f);
 

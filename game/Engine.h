@@ -915,32 +915,6 @@ struct Engine
         }
     }
 
-    void buildDebugQuadTreeInstances()
-    {
-        ZoneScoped;
-
-        std::vector<InstanceData> debugInstances;
-        ecs.collectQuadTreeDebugInstances(ecs.aabbRoot, debugInstances);
-
-        if (!debugInstances.empty())
-        {
-            uint32_t offset = instances.size();
-            instances.insert(instances.end(), debugInstances.begin(), debugInstances.end());
-
-            DrawCmd dc(
-                RenderLayer::World,
-                ShaderType::Border, // or a basic flat color shader
-                0.0f, 0,
-                6, 0,
-                static_cast<uint32_t>(debugInstances.size()),
-                offset,
-                AtlasIndex::Sprite, // or whatever fits your pipeline
-                glm::vec2{},
-                glm::vec2{});
-            drawCmds.emplace_back(dc);
-        }
-    }
-
     void buildDebugChunkInstances()
     {
         ZoneScoped;
@@ -977,7 +951,6 @@ struct Engine
         drawCmds.clear();
         buildInstanceData();
         buildTextInstances(fps, playerCoords);
-        // buildDebugQuadTreeInstances(); ENABLE THIS TO SEE QUAD TREE BOXES
         buildDebugChunkInstances();
 
         for (auto &cmd : drawCmds)

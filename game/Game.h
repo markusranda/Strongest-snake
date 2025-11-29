@@ -118,7 +118,7 @@ struct Game
                 glm::vec4 uvTransform = getUvTransform(region);
                 t.commit();
 
-                background = {engine.ecs.createEntity(t, MeshRegistry::quad, material, RenderLayer::Background, EntityType::Background, uvTransform, 0.0f, false)};
+                background = {engine.ecs.createEntity(t, MeshRegistry::quad, material, RenderLayer::Background, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f)};
             }
 
             // ---- Player ----
@@ -131,7 +131,7 @@ struct Game
                     AtlasRegion region = engine.atlasRegions[SpriteID::SPR_DRILL_HEAD];
                     glm::vec4 uvTransform = getUvTransform(region);
 
-                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, EntityType::Player, uvTransform, 2.0f);
+                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, EntityType::Player, SpatialStorage::Global, uvTransform, 2.0f);
                 }
 
                 AtlasRegion region = engine.atlasRegions[SpriteID::SPR_SNAKE_SKIN];
@@ -141,7 +141,7 @@ struct Game
                     posCursor -= glm::vec2{snakeSize, 0.0f};
                     Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
                     Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
-                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, uvTransform, 2.0f);
+                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, SpatialStorage::Global, uvTransform, 2.0f);
                     player.entities[i] = entity;
                 }
             }
@@ -259,7 +259,7 @@ struct Game
         };
         size_t playerIndexT = engine.ecs.entityToTransform[entityIndex(player.entities.front())];
         Transform playerT = engine.ecs.transforms[playerIndexT];
-        engine.ecs.getIntersectingEntities(playerT, cameraBox, engine.ecs.activeEntities);
+        engine.ecs.getAllRelevantEntities(playerT, engine.ecs.activeEntities);
 
         size_t writeIndex = 0;
         size_t readIndex = 0;
@@ -292,7 +292,7 @@ struct Game
                     break;
                 }
 
-                engine.ecs.destroyEntity(entity);
+                engine.ecs.destroyEntity(entity, SpatialStorage::ChunkTile);
                 break;
             }
             case EntityType::Treasure:
@@ -313,7 +313,7 @@ struct Game
                     break;
                 }
 
-                engine.ecs.destroyEntity(entity);
+                engine.ecs.destroyEntity(entity, SpatialStorage::Chunk);
                 break;
             }
             default:
@@ -521,22 +521,10 @@ struct Game
             // Optionally adjust rotation
             t2.rotation = atan2(dir.y, dir.x);
             t2.commit();
-
-            // Update quad tree please
-            AABB oldAABB = computeWorldAABB(bodyM, t2Old);
-            AABB newAABB = computeWorldAABB(bodyM, t2);
-            engine.ecs.quadTreeMoveEntity(oldAABB, newAABB, entity2);
         }
 
         // Move head
         headT.commit();
-
-        AABB oldAABB = computeWorldAABB(headM, oldHeadT);
-        AABB newAABB = computeWorldAABB(headM, headT);
-        if (oldAABB.min != newAABB.min || oldAABB.max != newAABB.max)
-        {
-            engine.ecs.quadTreeMoveEntity(oldAABB, newAABB, player.entities.front());
-        }
     }
 
     void rotateHeadLeft(float dt)
