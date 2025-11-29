@@ -21,7 +21,6 @@
 #include "Material.h"
 #include "Renderable.h"
 #include "Text.h"
-#include "QueueFamily.h"
 #include "RendererBarriers.h"
 
 #define GLFW_INCLUDE_VULKAN
@@ -82,8 +81,6 @@ struct Engine
     VkQueue graphicsQueue;
     VkQueue presentQueue;
 
-    QueueFamily queuefamily;
-
     SwapChain swapchain;
     std::vector<VkImageLayout> swapchainImageLayouts;
 
@@ -132,7 +129,10 @@ struct Engine
 
     float globalTime = 0.0f;
 
-    void init()
+    uint32_t queueFamilyIndex;
+
+    void
+    init()
     {
         try
         {
@@ -142,7 +142,6 @@ struct Engine
             createSurface();
             pickPhysicalDevice();
             pickMsaaSampleCount();
-            createQueueFamily();
             createLogicalDevice();
             createCommandPool();
             createTextures();
@@ -304,18 +303,36 @@ struct Engine
         colorImageView = CreateImageView(device, colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     }
 
-    void createQueueFamily()
+    uint32_t findUniversalQueueFamily(VkPhysicalDevice gpu, VkSurfaceKHR surface)
     {
-        queuefamily = pickUniversalQueue(physicalDevice, surface);
+        uint32_t count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, nullptr);
+
+        std::vector<VkQueueFamilyProperties> props(count);
+        vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, props.data());
+
+        for (uint32_t i = 0; i < count; i++)
+        {
+            VkBool32 supportsPresent = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surface, &supportsPresent);
+
+            if ((props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
+                supportsPresent)
+            {
+                return i;
+            }
+        }
+
+        throw std::runtime_error("No universal graphics+present queue family found");
     }
 
     void createLogicalDevice()
     {
-        uint32_t idx = queuefamily.index;
+        queueFamilyIndex = findUniversalQueueFamily(physicalDevice, surface);
         float priority = 1.0f;
         VkDeviceQueueCreateInfo info{};
         info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        info.queueFamilyIndex = idx;
+        info.queueFamilyIndex = queueFamilyIndex;
         info.queueCount = 1;
         info.pQueuePriorities = &priority;
 
@@ -349,7 +366,7 @@ struct Engine
             throw std::runtime_error("failed to create logical device!");
         }
 
-        vkGetDeviceQueue(device, queuefamily.index, 0, &graphicsQueue);
+        vkGetDeviceQueue(device, queueFamilyIndex, 0, &graphicsQueue);
         presentQueue = graphicsQueue;
     }
 
@@ -472,7 +489,7 @@ struct Engine
         VkCommandPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolInfo.queueFamilyIndex = queuefamily.index;
+        poolInfo.queueFamilyIndex = queueFamilyIndex;
 
         if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS)
         {
