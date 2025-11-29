@@ -1,11 +1,5 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-#define GLM_FORCE_RADIANS
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
 #include "Window.h"
 #include "SwapChain.h"
 #include "InstanceData.h"
@@ -30,6 +24,12 @@
 #include "QueueFamily.h"
 #include "RendererBarriers.h"
 
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+#define GLM_FORCE_RADIANS
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <vulkan/vulkan.h>
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
@@ -59,7 +59,7 @@ const bool enableValidationLayers = true;
 #endif
 
 const std::vector<const char *> validationLayers = {"VK_LAYER_KHRONOS_validation"};
-const std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME};
+const std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME};
 
 const int MAX_FRAMES_IN_FLIGHT = 3;
 
@@ -85,6 +85,7 @@ struct Engine
     QueueFamily queuefamily;
 
     SwapChain swapchain;
+    std::vector<VkImageLayout> swapchainImageLayouts;
 
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
 
@@ -280,6 +281,7 @@ struct Engine
             device,
             surface,
             &window);
+        swapchainImageLayouts.assign(swapchain.swapChainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
     }
 
     void createColorResources()
@@ -320,6 +322,12 @@ struct Engine
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dyn{};
         dyn.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
         dyn.dynamicRendering = VK_TRUE;
+        dyn.pNext = nullptr;
+
+        VkPhysicalDeviceSynchronization2Features sync2{};
+        sync2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+        sync2.synchronization2 = VK_TRUE;
+        sync2.pNext = &dyn;
 
         VkPhysicalDeviceFeatures deviceFeatures{};
         VkDeviceCreateInfo createInfo{};
@@ -329,7 +337,7 @@ struct Engine
         createInfo.pEnabledFeatures = &deviceFeatures;
         createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
         createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-        createInfo.pNext = &dyn;
+        createInfo.pNext = &sync2;
 
         if (enableValidationLayers)
         {
@@ -878,7 +886,6 @@ struct Engine
         vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
         VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
-
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
@@ -886,7 +893,7 @@ struct Engine
             throw std::runtime_error("failed to begin command buffer");
         }
 
-        barrierPresentToColorOptimal(swapchain, imageIndex, commandBuffer);
+        barrierPresentToColor(swapchain, swapchainImageLayouts, imageIndex, commandBuffer);
 
         // Dynamic rendering setup (MSAA color + resolve to swapchain)
         VkRenderingAttachmentInfoKHR colorAttachment{};
@@ -1022,9 +1029,7 @@ struct Engine
         VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
 
         vkCmdEndRendering(commandBuffer);
-
-        barrierColorOptimalToPresent(swapchain, imageIndex, commandBuffer);
-
+        barrierColorToPresent(swapchain, swapchainImageLayouts, imageIndex, commandBuffer);
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to record command buffer");
@@ -1173,6 +1178,7 @@ struct Engine
         destroyColorResources();
 
         swapchain.create(physicalDevice, device, surface, &window);
+        swapchainImageLayouts.assign(swapchain.swapChainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
         createColorResources();
 
         createSyncObjects();
