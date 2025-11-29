@@ -64,15 +64,14 @@ struct Game
     CaveSystem caveSystem;
 
     // -- Player ---
-    const float thrustPower = 18000.0f; // pixels per second squared
-    // const float thrustPower = 1800.0f; // TODO REVERT THIS
+    const float drillDamage = 250.0f;
+    const float thrustPower = 1800.0f;
     const float friction = 4.0f; // friction coefficient
     const uint32_t snakeSize = 32;
 
     glm::vec2 playerVelocity = {0.0f, 0.0f};
     float rotationSpeed = 5.0f;        // tweak this
-    float playerMaxVelocity = 2200.0f; // TODO REVERT THIS
-    // float playerMaxVelocity = 1200.0f; // tweak this
+    float playerMaxVelocity = 1200.0f; // tweak this
 
     // Rotation
     float rotationRadius = 75.0f;       // Increase to stop earlier
@@ -439,8 +438,7 @@ struct Game
                     playerVelocity *= 0.95;
 
                     // Damage block
-                    float damage = 25000.0f * dt;
-                    // float damage = 250.0f * dt; TODO REVERT THIS BACK
+                    float damage = drillDamage * dt;
                     h.current -= damage;
                     drilling = true;
                     break;
