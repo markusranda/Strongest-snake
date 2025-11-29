@@ -27,6 +27,7 @@
 #include "Material.h"
 #include "Renderable.h"
 #include "Text.h"
+#include "QueueFamily.h"
 
 #include <iostream>
 #include <fstream>
@@ -62,18 +63,6 @@ const std::vector<const char *> validationLayers = {
 const std::vector<const char *> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-struct QueueFamilyIndices
-{
-    std::optional<uint32_t> graphicsFamily;
-    std::optional<uint32_t> presentFamily;
-    std::optional<uint32_t> graphicsAndComputeFamily;
-
-    bool isComplete()
-    {
-        return graphicsFamily.has_value() && presentFamily.has_value();
-    }
-};
-
 const int MAX_FRAMES_IN_FLIGHT = 3;
 
 struct Engine
@@ -96,7 +85,7 @@ struct Engine
     VkQueue presentQueue;
     VkQueue computeQueue;
 
-    QueueFamilyIndices queueFamilies;
+    QueueFamily queuefamily;
 
     SwapChain swapchain;
 
@@ -156,6 +145,7 @@ struct Engine
             createSurface();
             pickPhysicalDevice();
             pickMsaaSampleCount();
+            createQueueFamily();
             createLogicalDevice();
             createCommandPool();
             createTextures();
@@ -203,7 +193,7 @@ struct Engine
         appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
         appInfo.pEngineName = "<insert-engine-name-here>";
         appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.apiVersion = VK_API_VERSION_1_0;
+        appInfo.apiVersion = VK_API_VERSION_1_4;
 
         VkInstanceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -295,9 +285,7 @@ struct Engine
             physicalDevice,
             device,
             surface,
-            &window,
-            queueFamilies.graphicsFamily.value(),
-            queueFamilies.presentFamily.value());
+            &window);
     }
 
     void createColorResources()
@@ -320,29 +308,26 @@ struct Engine
         colorImageView = CreateImageView(device, colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     }
 
+    void createQueueFamily()
+    {
+        queuefamily = pickUniversalQueue(physicalDevice, surface);
+    }
+
     void createLogicalDevice()
     {
-        queueFamilies = findQueueFamilies(physicalDevice);
-
-        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-        std::set<uint32_t> uniqueQueueFamilies = {queueFamilies.graphicsFamily.value(), queueFamilies.presentFamily.value()};
-
-        float queuePriority = 1.0f;
-        for (uint32_t queueFamily : uniqueQueueFamilies)
-        {
-            VkDeviceQueueCreateInfo queueCreateInfo{};
-            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            queueCreateInfo.queueFamilyIndex = queueFamily;
-            queueCreateInfo.queueCount = 1;
-            queueCreateInfo.pQueuePriorities = &queuePriority;
-            queueCreateInfos.push_back(queueCreateInfo);
-        }
+        uint32_t idx = queuefamily.index;
+        float priority = 1.0f;
+        VkDeviceQueueCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        info.queueFamilyIndex = idx;
+        info.queueCount = 1;
+        info.pQueuePriorities = &priority;
 
         VkPhysicalDeviceFeatures deviceFeatures{};
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-        createInfo.pQueueCreateInfos = queueCreateInfos.data();
+        createInfo.queueCreateInfoCount = 1;
+        createInfo.pQueueCreateInfos = &info;
         createInfo.pEnabledFeatures = &deviceFeatures;
         createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
         createInfo.ppEnabledExtensionNames = deviceExtensions.data();
@@ -362,9 +347,9 @@ struct Engine
             throw std::runtime_error("failed to create logical device!");
         }
 
-        vkGetDeviceQueue(device, queueFamilies.graphicsFamily.value(), 0, &graphicsQueue);
-        vkGetDeviceQueue(device, queueFamilies.presentFamily.value(), 0, &presentQueue);
-        vkGetDeviceQueue(device, queueFamilies.graphicsAndComputeFamily.value(), 0, &computeQueue);
+        vkGetDeviceQueue(device, queuefamily.index, 0, &graphicsQueue);
+        presentQueue = graphicsQueue;
+        computeQueue = graphicsQueue;
     }
 
     void createTextures()
@@ -539,12 +524,10 @@ struct Engine
 
     void createCommandPool()
     {
-        QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
-
         VkCommandPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+        poolInfo.queueFamilyIndex = queuefamily.index;
 
         if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS)
         {
@@ -646,19 +629,14 @@ struct Engine
 
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface)
     {
-        QueueFamilyIndices indices = findQueueFamilies(device);
+        if (!checkDeviceExtensionSupport(device))
+            return false;
 
-        bool extensionsSupported = checkDeviceExtensionSupport(device);
+        auto swapChainSupport = swapchain.querySwapChainSupport(device, surface);
+        bool swapChainAdequate = !swapChainSupport.formats.empty() &&
+                                 !swapChainSupport.presentModes.empty();
 
-        bool swapChainAdequate = false;
-        if (extensionsSupported)
-        {
-            auto swapChainSupport = swapchain.querySwapChainSupport(device, surface);
-            swapChainAdequate = !swapChainSupport.formats.empty() &&
-                                !swapChainSupport.presentModes.empty();
-        }
-
-        return indices.isComplete() && extensionsSupported && swapChainAdequate;
+        return swapChainAdequate;
     }
 
     bool checkDeviceExtensionSupport(VkPhysicalDevice device)
@@ -677,48 +655,6 @@ struct Engine
         }
 
         return requiredExtensions.empty();
-    }
-
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device)
-    {
-        QueueFamilyIndices indices;
-
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
-        int i = 0;
-        for (const auto &queueFamily : queueFamilies)
-        {
-            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
-            {
-                indices.graphicsFamily = i;
-            }
-
-            if ((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) && (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT))
-            {
-                indices.graphicsAndComputeFamily = i;
-            }
-
-            VkBool32 presentSupport = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
-
-            if (presentSupport)
-            {
-                indices.presentFamily = i;
-            }
-
-            if (indices.isComplete())
-            {
-                break;
-            }
-
-            i++;
-        }
-
-        return indices;
     }
 
     std::vector<const char *> getRequiredExtensions()
@@ -1248,9 +1184,7 @@ struct Engine
         destroySyncObjects();
 
         swapchain.cleanup(device); // kills framebuffers + image views + swapchain
-        swapchain.create(physicalDevice, device, surface, &window,
-                         queueFamilies.graphicsFamily.value(),
-                         queueFamilies.presentFamily.value());
+        swapchain.create(physicalDevice, device, surface, &window);
         swapchain.createFramebuffers(device, renderPass, colorImageView, msaaSamples);
 
         createSyncObjects();

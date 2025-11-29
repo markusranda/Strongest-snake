@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <array>
 #include <algorithm>
+#include <limits>
 
 struct SwapChainSupportDetails
 {
@@ -28,11 +29,9 @@ struct SwapChain
     void create(VkPhysicalDevice physicalDevice,
                 VkDevice device,
                 VkSurfaceKHR surface,
-                Window *window,
-                uint32_t graphicsFamily,
-                uint32_t presentFamily)
+                Window *window)
     {
-        createSwapChain(physicalDevice, device, surface, window, graphicsFamily, presentFamily);
+        createSwapChain(physicalDevice, device, surface, window);
         createImageViews(device);
     }
 
@@ -60,25 +59,10 @@ struct SwapChain
     void createSwapChain(VkPhysicalDevice physicalDevice,
                          VkDevice device,
                          VkSurfaceKHR surface,
-                         Window *window,
-                         uint32_t graphicsFamily,
-                         uint32_t presentFamily)
+                         Window *window)
     {
-        // Query support
-        SwapChainSupportDetails swapChainSupport;
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &swapChainSupport.capabilities);
+        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
 
-        uint32_t formatCount;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
-        swapChainSupport.formats.resize(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, swapChainSupport.formats.data());
-
-        uint32_t presentModeCount;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
-        swapChainSupport.presentModes.resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, swapChainSupport.presentModes.data());
-
-        // Pick best options
         VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
         VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
         swapChainExtent = chooseSwapExtent(swapChainSupport.capabilities, *window);
@@ -90,7 +74,6 @@ struct SwapChain
             imageCount = swapChainSupport.capabilities.maxImageCount;
         }
 
-        // Create info struct
         VkSwapchainCreateInfoKHR createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         createInfo.surface = surface;
@@ -100,34 +83,21 @@ struct SwapChain
         createInfo.imageExtent = swapChainExtent;
         createInfo.imageArrayLayers = 1;
         createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-        uint32_t queueFamilyIndices[] = {graphicsFamily, presentFamily};
-
-        if (graphicsFamily != presentFamily)
-        {
-            createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-            createInfo.queueFamilyIndexCount = 2;
-            createInfo.pQueueFamilyIndices = queueFamilyIndices;
-        }
-        else
-        {
-            createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        }
-
+        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
         createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         createInfo.presentMode = presentMode;
         createInfo.clipped = VK_TRUE;
+        createInfo.oldSwapchain = VK_NULL_HANDLE;
 
         if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &handle) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create swap chain!");
-        }
+            throw std::runtime_error("failed to create swap chain");
 
-        // Get images
-        vkGetSwapchainImagesKHR(device, handle, &imageCount, nullptr);
+        if (vkGetSwapchainImagesKHR(device, handle, &imageCount, nullptr))
+            throw std::runtime_error("failed to get swapchain image");
         swapChainImages.resize(imageCount);
-        vkGetSwapchainImagesKHR(device, handle, &imageCount, swapChainImages.data());
+        if (vkGetSwapchainImagesKHR(device, handle, &imageCount, swapChainImages.data()))
+            throw std::runtime_error("failed to get swapchain image");
 
         swapChainImageFormat = surfaceFormat.format;
     }
@@ -161,24 +131,18 @@ struct SwapChain
         }
     }
 
-    void createFramebuffers(VkDevice device, VkRenderPass renderPass, VkImageView colorImageView, VkSampleCountFlagBits msaaSamples)
+    void createFramebuffers(VkDevice device, VkRenderPass renderPass,
+                            VkImageView colorImageView, VkSampleCountFlagBits msaaSamples)
     {
+        // Expect msaaSamples > 1, otherwise your renderpass is invalid anyway.
         swapChainFramebuffers.resize(swapChainImageViews.size());
 
         for (size_t i = 0; i < swapChainImageViews.size(); i++)
         {
-            std::array<VkImageView, 2> attachments;
-
-            // If MSAA is enabled (samples > 1), use the color resolve setup.
-            if (msaaSamples > VK_SAMPLE_COUNT_1_BIT)
-            {
-                attachments = {colorImageView, swapChainImageViews[i]};
-            }
-            else
-            {
-                // Fallback to single attachment (no MSAA)
-                attachments = {swapChainImageViews[i]};
-            }
+            std::array<VkImageView, 2> attachments = {
+                colorImageView,        // multisampled color
+                swapChainImageViews[i] // resolve into swapchain
+            };
 
             VkFramebufferCreateInfo framebufferInfo{};
             framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -213,6 +177,7 @@ struct SwapChain
     {
         for (const auto &availablePresentMode : availablePresentModes)
         {
+            // TODO Add vsync option somewhere in the future
             if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
             {
                 return availablePresentMode;
