@@ -51,7 +51,7 @@ inline std::vector<char> readFile(const std::string &filename)
     return buffer;
 }
 
-inline Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, std::string fragPath, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout, VkSampleCountFlagBits msaaSamples)
+inline Pipeline createGraphicsPipeline(VkDevice &device, const std::string &vertPath, const std::string &fragPath, VkDescriptorSetLayout &textureSetLayout, SwapChain &swapchain, VkSampleCountFlagBits &msaaSamples)
 {
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
@@ -180,8 +180,14 @@ inline Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, st
         throw std::runtime_error("failed to create pipeline layout!");
     }
 
+    VkPipelineRenderingCreateInfoKHR renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+    renderInfo.colorAttachmentCount = 1;
+    renderInfo.pColorAttachmentFormats = &swapchain.swapChainImageFormat;
+
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.pNext = &renderInfo;
     pipelineInfo.stageCount = 2;
     pipelineInfo.pStages = shaderStages;
     pipelineInfo.pVertexInputState = &vertexInputInfo;
@@ -192,7 +198,6 @@ inline Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, st
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.renderPass = renderPass;
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
@@ -207,15 +212,15 @@ inline Pipeline createGraphicsPipeline(VkDevice device, std::string vertPath, st
     return Pipeline{graphicsPipeline, pipelineLayout};
 }
 
-inline std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice device, VkRenderPass renderPass, VkDescriptorSetLayout textureSetLayout, VkSampleCountFlagBits msaaSamples)
+inline std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice &device, VkDescriptorSetLayout &textureSetLayout, SwapChain &swapChain, VkSampleCountFlagBits &msaaSamples)
 {
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
-    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_flat.spv", renderPass, textureSetLayout, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::Texture)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture.spv", renderPass, textureSetLayout, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::TextureScrolling)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture_scrolling.spv", renderPass, textureSetLayout, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::TextureParallax)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture_parallax.spv", renderPass, textureSetLayout, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_texture_font.spv", "shaders/frag_texture_font.spv", renderPass, textureSetLayout, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_border.spv", renderPass, textureSetLayout, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_flat.spv", textureSetLayout, swapChain, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::Texture)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture.spv", textureSetLayout, swapChain, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::TextureScrolling)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture_scrolling.spv", textureSetLayout, swapChain, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::TextureParallax)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture_parallax.spv", textureSetLayout, swapChain, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_texture_font.spv", "shaders/frag_texture_font.spv", textureSetLayout, swapChain, msaaSamples);
+    pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_border.spv", textureSetLayout, swapChain, msaaSamples);
 
     return pipelines;
 }

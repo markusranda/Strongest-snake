@@ -6,6 +6,7 @@
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <vector>
+#include <array>
 
 // IMPORTANT These structs need to match the insides of comp_particle.comp
 struct Particle
@@ -42,24 +43,27 @@ struct ParticleSystem
     void *spawnMapped = nullptr;
     void *freeListHeadMapped = nullptr;
 
-    // compute pipeline
-    VkDescriptorSetLayout computeDescriptorSetLayout;
-    VkDescriptorSet computeDescriptorSet;
-    VkDescriptorPool computeDescriptorPool;
-    VkPipelineLayout computePipelineLayout;
-    VkPipeline computePipeline;
+    // Compute pipeline
+    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSet computeDescriptorSet = VK_NULL_HANDLE;
+    VkDescriptorPool computeDescriptorPool = VK_NULL_HANDLE;
+    VkPipelineLayout computePipelineLayout = VK_NULL_HANDLE;
+    VkPipeline computePipeline = VK_NULL_HANDLE;
 
     // Graphics pipeline
-    VkDescriptorSetLayout graphicsDescriptorSetLayout;
-    VkDescriptorSet graphicsDescriptorSet;
-    VkDescriptorPool graphicsDescriptorPool;
-    Pipeline graphicsPipeline;
+    VkDescriptorSetLayout graphicsDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSet graphicsDescriptorSet = VK_NULL_HANDLE;
+    VkDescriptorPool graphicsDescriptorPool = VK_NULL_HANDLE;
+    Pipeline graphicsPipeline{}; // {VkPipeline, VkPipelineLayout}
 
     uint32_t maxParticles = 100'000;
 
+    // -------------------------
+    // COMPUTE PIPELINE
+    // -------------------------
     void createComputePipeline(VkDevice &device, VkDeviceSize &particleSize)
     {
-        // Descriptor set
+        // Descriptor set layout bindings
         VkDescriptorSetLayoutBinding particleBinding{};
         particleBinding.binding = 0;
         particleBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -94,29 +98,43 @@ struct ParticleSystem
 
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = (uint32_t)bindings.size();
+        layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
         layoutInfo.pBindings = bindings.data();
-        vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &computeDescriptorSetLayout);
 
-        // Descriptor set + pool
-        VkDescriptorPoolSize poolSizes[1]{};
-        poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        poolSizes[0].descriptorCount = (uint32_t)bindings.size();
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &computeDescriptorSetLayout) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create compute descriptor set layout");
+        }
+
+        // Descriptor pool
+        VkDescriptorPoolSize poolSize{};
+        poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        poolSize.descriptorCount = static_cast<uint32_t>(bindings.size());
+
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = 1;
-        poolInfo.pPoolSizes = poolSizes;
+        poolInfo.pPoolSizes = &poolSize;
         poolInfo.maxSets = 1;
-        vkCreateDescriptorPool(device, &poolInfo, nullptr, &computeDescriptorPool);
 
+        if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &computeDescriptorPool) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create compute descriptor pool");
+        }
+
+        // Descriptor set
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = computeDescriptorPool;
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &computeDescriptorSetLayout;
-        vkAllocateDescriptorSets(device, &allocInfo, &computeDescriptorSet);
 
-        // Update descriptor set
+        if (vkAllocateDescriptorSets(device, &allocInfo, &computeDescriptorSet) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to allocate compute descriptor set");
+        }
+
+        // Buffer infos
         VkDescriptorBufferInfo particleInfo{};
         particleInfo.buffer = particleBuffer;
         particleInfo.offset = 0;
@@ -184,7 +202,7 @@ struct ParticleSystem
         writes[4].descriptorCount = 1;
         writes[4].pBufferInfo = &debugInfo;
 
-        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
         // Push constants
         VkPushConstantRange pushRange{};
@@ -200,30 +218,43 @@ struct ParticleSystem
         layout.pushConstantRangeCount = 1;
         layout.pPushConstantRanges = &pushRange;
 
-        vkCreatePipelineLayout(device, &layout, nullptr, &computePipelineLayout);
+        if (vkCreatePipelineLayout(device, &layout, nullptr, &computePipelineLayout) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create compute pipeline layout");
+        }
 
         // Compute pipeline
         std::vector<char> vertShaderCode = readFile("shaders/comp_particle.spv");
         VkShaderModule computeShader = createShaderModule(vertShaderCode, device);
+
         VkPipelineShaderStageCreateInfo stage{};
         stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
         stage.module = computeShader;
         stage.pName = "main";
+
         VkComputePipelineCreateInfo pipelineInfo{};
         pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
         pipelineInfo.stage = stage;
         pipelineInfo.layout = computePipelineLayout;
 
-        vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline);
+        if (vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline) != VK_SUCCESS)
+        {
+            vkDestroyShaderModule(device, computeShader, nullptr);
+            throw std::runtime_error("failed to create compute pipeline");
+        }
+
         vkDestroyShaderModule(device, computeShader, nullptr);
     }
 
+    // -------------------------
+    // GRAPHICS PIPELINE (Dynamic Rendering)
+    // -------------------------
     void createGraphicsPipeline(VkDevice &device,
                                 VkSampleCountFlagBits &msaaSamples,
-                                VkRenderPass &renderPass)
+                                SwapChain &swapchain)
     {
-        // Binding 0 = particle buffer
+        // Binding 0 = particle buffer (storage buffer)
         VkDescriptorSetLayoutBinding particleBinding{};
         particleBinding.binding = 0;
         particleBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -235,7 +266,10 @@ struct ParticleSystem
         layoutInfo.bindingCount = 1;
         layoutInfo.pBindings = &particleBinding;
 
-        vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &graphicsDescriptorSetLayout);
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &graphicsDescriptorSetLayout) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create particle graphics descriptor set layout");
+        }
 
         // Pool
         VkDescriptorPoolSize poolSize{};
@@ -248,18 +282,24 @@ struct ParticleSystem
         poolInfo.pPoolSizes = &poolSize;
         poolInfo.maxSets = 1;
 
-        vkCreateDescriptorPool(device, &poolInfo, nullptr, &graphicsDescriptorPool);
+        if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &graphicsDescriptorPool) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create particle graphics descriptor pool");
+        }
 
-        // Allocate
+        // Allocate descriptor set
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = graphicsDescriptorPool;
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &graphicsDescriptorSetLayout;
 
-        vkAllocateDescriptorSets(device, &allocInfo, &graphicsDescriptorSet);
+        if (vkAllocateDescriptorSets(device, &allocInfo, &graphicsDescriptorSet) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to allocate particle graphics descriptor set");
+        }
 
-        // Update
+        // Update descriptor set
         VkDescriptorBufferInfo particleInfo{};
         particleInfo.buffer = particleBuffer;
         particleInfo.offset = 0;
@@ -275,8 +315,9 @@ struct ParticleSystem
 
         vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
 
-        auto vertShaderCode = readFile("shaders/vert_particle.spv");
-        auto fragShaderCode = readFile("shaders/frag_particle.spv");
+        // Shaders
+        std::vector<char> vertShaderCode = readFile("shaders/vert_particle.spv");
+        std::vector<char> fragShaderCode = readFile("shaders/frag_particle.spv");
 
         VkShaderModule vertShaderModule = createShaderModule(vertShaderCode, device);
         VkShaderModule fragShaderModule = createShaderModule(fragShaderCode, device);
@@ -295,7 +336,7 @@ struct ParticleSystem
 
         VkPipelineShaderStageCreateInfo stages[] = {vertStage, fragStage};
 
-        // NO vertex input
+        // No vertex input – all from storage buffer
         VkPipelineVertexInputStateCreateInfo vertexInput{};
         vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
         vertexInput.vertexBindingDescriptionCount = 0;
@@ -324,6 +365,7 @@ struct ParticleSystem
         VkPipelineMultisampleStateCreateInfo msaa{};
         msaa.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
         msaa.rasterizationSamples = msaaSamples;
+        msaa.sampleShadingEnable = VK_FALSE;
 
         VkPipelineColorBlendAttachmentState colorAttachment{};
         colorAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
@@ -343,13 +385,14 @@ struct ParticleSystem
                 VK_DYNAMIC_STATE_SCISSOR};
         VkPipelineDynamicStateCreateInfo dynamic{};
         dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynamic.dynamicStateCount = dynamicStates.size();
+        dynamic.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
         dynamic.pDynamicStates = dynamicStates.data();
 
+        // Push constants: mat4 viewProj + float zoom
         VkPushConstantRange pushRange{};
         pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         pushRange.offset = 0;
-        pushRange.size = sizeof(glm::mat4) + sizeof(float); // 68
+        pushRange.size = sizeof(glm::mat4) + sizeof(float);
 
         VkPipelineLayoutCreateInfo layout{};
         layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -359,7 +402,18 @@ struct ParticleSystem
         layout.pPushConstantRanges = &pushRange;
 
         VkPipelineLayout pipeLayout;
-        vkCreatePipelineLayout(device, &layout, nullptr, &pipeLayout);
+        if (vkCreatePipelineLayout(device, &layout, nullptr, &pipeLayout) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create particle graphics pipeline layout");
+        }
+
+        // Dynamic rendering attachment info
+        VkFormat colorFormat = swapchain.swapChainImageFormat;
+
+        VkPipelineRenderingCreateInfoKHR renderInfo{};
+        renderInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+        renderInfo.colorAttachmentCount = 1;
+        renderInfo.pColorAttachmentFormats = &colorFormat;
 
         // Graphics pipeline
         VkGraphicsPipelineCreateInfo pipelineInfo{};
@@ -374,11 +428,16 @@ struct ParticleSystem
         pipelineInfo.pColorBlendState = &colorBlending;
         pipelineInfo.pDynamicState = &dynamic;
         pipelineInfo.layout = pipeLayout;
-        pipelineInfo.renderPass = renderPass;
+        pipelineInfo.renderPass = VK_NULL_HANDLE; // dynamic rendering
         pipelineInfo.subpass = 0;
+        pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineInfo.pNext = &renderInfo;
 
         VkPipeline vkPipeline;
-        vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vkPipeline);
+        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vkPipeline) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create particle graphics pipeline");
+        }
 
         vkDestroyShaderModule(device, vertShaderModule, nullptr);
         vkDestroyShaderModule(device, fragShaderModule, nullptr);
@@ -386,7 +445,10 @@ struct ParticleSystem
         graphicsPipeline = Pipeline{vkPipeline, pipeLayout};
     }
 
-    void init(VkDevice &device, VkPhysicalDevice &physicalDevice, VkCommandPool &cmdPool, VkQueue &queue, VkRenderPass &renderPass, VkSampleCountFlagBits &msaaSamples)
+    // -------------------------
+    // INIT
+    // -------------------------
+    void init(VkDevice &device, VkPhysicalDevice &physicalDevice, VkSampleCountFlagBits &msaaSamples, SwapChain &swapchain)
     {
         // Free list buffer
         CreateBuffer(device,
@@ -396,11 +458,12 @@ struct ParticleSystem
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                      freeListBuffer,
                      freeListMemory);
+
         void *freeListMapped = nullptr;
         vkMapMemory(device, freeListMemory, 0, sizeof(uint32_t) * maxParticles, 0, &freeListMapped);
-        uint32_t *list = reinterpret_cast<uint32_t *>(freeListMapped);
+        auto *list = reinterpret_cast<uint32_t *>(freeListMapped);
         for (uint32_t i = 0; i < maxParticles; i++)
-            list[i] = i; // freelist[i] = i
+            list[i] = i;
         vkUnmapMemory(device, freeListMemory);
 
         // Free list head buffer
@@ -411,6 +474,7 @@ struct ParticleSystem
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                      freeListHeadBuffer,
                      freeListHeadMemory);
+
         vkMapMemory(device, freeListHeadMemory, 0, sizeof(uint32_t), 0, &freeListHeadMapped);
         *(uint32_t *)freeListHeadMapped = maxParticles;
 
@@ -432,9 +496,10 @@ struct ParticleSystem
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                      particleBuffer,
                      particleMemory);
+
         void *mapped = nullptr;
         vkMapMemory(device, particleMemory, 0, particleSize, 0, &mapped);
-        memset(mapped, 0, particleSize);
+        memset(mapped, 0, static_cast<size_t>(particleSize));
         vkUnmapMemory(device, particleMemory);
 
         // Spawn buffer
@@ -449,16 +514,20 @@ struct ParticleSystem
 
         vkMapMemory(device, spawnMemory, 0, spawnSize, 0, &spawnMapped);
         {
-            SpawnData *sd = reinterpret_cast<SpawnData *>(spawnMapped);
+            auto *sd = reinterpret_cast<SpawnData *>(spawnMapped);
             sd->pos = glm::vec2(0.0f);
             sd->forward = glm::vec2(0.0f);
             sd->amount = 0;
         }
 
+        // Pipelines
         createComputePipeline(device, particleSize);
-        createGraphicsPipeline(device, msaaSamples, renderPass);
+        createGraphicsPipeline(device, msaaSamples, swapchain);
     }
 
+    // -------------------------
+    // DEBUG
+    // -------------------------
     void debugPrintParticles(VkDevice device)
     {
         float *dbg = nullptr;
@@ -467,22 +536,22 @@ struct ParticleSystem
         vkUnmapMemory(device, debugMemory);
     }
 
-    // Updates spawndata in gpu buffer
+    // -------------------------
+    // SPAWN / COMPUTE
+    // -------------------------
     void updateSpawnFlag(glm::vec2 pos, glm::vec2 forward, uint32_t amount)
     {
         if (!spawnMapped)
             return;
 
-        SpawnData *sd = reinterpret_cast<SpawnData *>(spawnMapped);
+        auto *sd = reinterpret_cast<SpawnData *>(spawnMapped);
         sd->pos = pos;
         sd->forward = forward;
         sd->amount = amount;
     }
 
-    // Send a new command to do stuff in the compute shader
     void recordCompute(VkCommandBuffer cmd, float delta)
     {
-        // CPU has written spawnMapped – now tell GPU it’s updated
         VkMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
         barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
@@ -504,6 +573,7 @@ struct ParticleSystem
                                 0, 1,
                                 &computeDescriptorSet,
                                 0, nullptr);
+
         vkCmdPushConstants(cmd, computePipelineLayout,
                            VK_SHADER_STAGE_COMPUTE_BIT,
                            0,
@@ -520,7 +590,7 @@ struct ParticleSystem
         if (!spawnMapped)
             return;
 
-        SpawnData *sd = reinterpret_cast<SpawnData *>(spawnMapped);
+        auto *sd = reinterpret_cast<SpawnData *>(spawnMapped);
         sd->amount = 0;
     }
 };

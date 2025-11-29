@@ -28,6 +28,7 @@
 #include "Renderable.h"
 #include "Text.h"
 #include "QueueFamily.h"
+#include "RendererBarriers.h"
 
 #include <iostream>
 #include <fstream>
@@ -57,11 +58,8 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-const std::vector<const char *> validationLayers = {
-    "VK_LAYER_KHRONOS_validation"};
-
-const std::vector<const char *> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+const std::vector<const char *> validationLayers = {"VK_LAYER_KHRONOS_validation"};
+const std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME};
 
 const int MAX_FRAMES_IN_FLIGHT = 3;
 
@@ -83,13 +81,11 @@ struct Engine
 
     VkQueue graphicsQueue;
     VkQueue presentQueue;
-    VkQueue computeQueue;
 
     QueueFamily queuefamily;
 
     SwapChain swapchain;
 
-    VkRenderPass renderPass;
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
 
     // Particle system
@@ -151,13 +147,11 @@ struct Engine
             createTextures();
             createSwapChain();
             createColorResources();
-            createRenderPass();
             createGraphicsPipeline();
             createAtlasData();
             createDescriptorPool();
             createDescriptorSets();
             createStaticVertexBuffer();
-            createFramebuffers();
             createImagesInFlight();
             createCommandBuffers();
             createSyncObjects();
@@ -323,6 +317,10 @@ struct Engine
         info.queueCount = 1;
         info.pQueuePriorities = &priority;
 
+        VkPhysicalDeviceDynamicRenderingFeaturesKHR dyn{};
+        dyn.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
+        dyn.dynamicRendering = VK_TRUE;
+
         VkPhysicalDeviceFeatures deviceFeatures{};
         VkDeviceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -331,6 +329,7 @@ struct Engine
         createInfo.pEnabledFeatures = &deviceFeatures;
         createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
         createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+        createInfo.pNext = &dyn;
 
         if (enableValidationLayers)
         {
@@ -349,7 +348,6 @@ struct Engine
 
         vkGetDeviceQueue(device, queuefamily.index, 0, &graphicsQueue);
         presentQueue = graphicsQueue;
-        computeQueue = graphicsQueue;
     }
 
     void createTextures()
@@ -442,56 +440,6 @@ struct Engine
                                0, nullptr);
     }
 
-    void createRenderPass()
-    {
-        VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = swapchain.swapChainImageFormat;
-        colorAttachment.samples = msaaSamples;
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-        VkAttachmentDescription colorAttachmentResolve{};
-        colorAttachmentResolve.format = swapchain.swapChainImageFormat;
-        colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
-        colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachmentResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachmentResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-        VkAttachmentReference colorAttachmentRef{};
-        colorAttachmentRef.attachment = 0;
-        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-        VkAttachmentReference colorAttachmentResolveRef{};
-        colorAttachmentResolveRef.attachment = 1;
-        colorAttachmentResolveRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-        VkSubpassDescription subpass{};
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorAttachmentRef;
-        subpass.pResolveAttachments = &colorAttachmentResolveRef;
-
-        std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, colorAttachmentResolve};
-        VkRenderPassCreateInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-        renderPassInfo.pAttachments = attachments.data();
-        renderPassInfo.subpassCount = 1;
-        renderPassInfo.pSubpasses = &subpass;
-
-        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create render pass!");
-        }
-    }
-
     void createGraphicsPipeline()
     {
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
@@ -508,18 +456,12 @@ struct Engine
 
         vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &textureSetLayout);
 
-        pipelines = CreateGraphicsPipelines(device, renderPass, textureSetLayout, msaaSamples);
-    }
-
-    void createFramebuffers()
-    {
-        swapchain.createFramebuffers(device, renderPass, colorImageView, msaaSamples);
+        pipelines = CreateGraphicsPipelines(device, textureSetLayout, swapchain, msaaSamples);
     }
 
     void createImagesInFlight()
     {
-        imagesInFlight.clear();
-        imagesInFlight.resize(swapchain.swapChainFramebuffers.size(), VK_NULL_HANDLE);
+        imagesInFlight.resize(swapchain.swapChainImages.size(), VK_NULL_HANDLE);
     }
 
     void createCommandPool()
@@ -553,7 +495,7 @@ struct Engine
 
     void createSyncObjects()
     {
-        size_t imageCount = swapchain.swapChainFramebuffers.size();
+        size_t imageCount = swapchain.swapChainImages.size();
 
         imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
         inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
@@ -580,7 +522,7 @@ struct Engine
 
     void createParticleSystem()
     {
-        particleSystem.init(device, physicalDevice, commandPool, computeQueue, renderPass, msaaSamples);
+        particleSystem.init(device, physicalDevice, msaaSamples, swapchain);
     }
 
     void pickMsaaSampleCount()
@@ -905,6 +847,7 @@ struct Engine
     {
         ZoneScoped; // PROFILER
         waitForFence(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+
         uint32_t imageIndex;
         VkResult result = acquireNextImageKHR(
             device,
@@ -914,12 +857,16 @@ struct Engine
             VK_NULL_HANDLE,
             &imageIndex);
 
+        if (imagesInFlight.size() != swapchain.swapChainImages.size())
+        {
+            imagesInFlight.assign(swapchain.swapChainImages.size(), VK_NULL_HANDLE);
+        }
+
         if (imagesInFlight[imageIndex] != VK_NULL_HANDLE)
         {
             waitForFence(device, 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
         }
 
-        // Mark this image as now being in use by this frame
         imagesInFlight[imageIndex] = inFlightFences[currentFrame];
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
@@ -931,6 +878,7 @@ struct Engine
         {
             throw std::runtime_error("failed to acquire swap chain image!");
         }
+
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
         vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
@@ -938,23 +886,38 @@ struct Engine
 
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        vkBeginCommandBuffer(commandBuffer, &beginInfo);
+        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to begin command buffer");
+        }
 
-        VkRenderPassBeginInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassInfo.renderPass = renderPass;
-        renderPassInfo.framebuffer = swapchain.swapChainFramebuffers[imageIndex];
-        renderPassInfo.renderArea.offset = {0, 0};
-        renderPassInfo.renderArea.extent = swapchain.swapChainExtent;
+        barrierPresentToColorOptimal(swapchain, imageIndex, commandBuffer);
 
-        VkClearValue clearColor = {{{0.5f, 0.5f, 0.5f, 1.0f}}};
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearColor;
+        // Dynamic rendering setup (MSAA color + resolve to swapchain)
+        VkRenderingAttachmentInfoKHR colorAttachment{};
+        colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
+        colorAttachment.imageView = colorImageView; // MSAA image
+        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+        colorAttachment.resolveImageView = swapchain.swapChainImageViews[imageIndex];
+        colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.clearValue.color = {0.5f, 0.5f, 0.5f, 1.0f};
 
-        // Update particle system
+        VkRenderingInfoKHR renderInfo{};
+        renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
+        renderInfo.renderArea.offset = {0, 0};
+        renderInfo.renderArea.extent = swapchain.swapChainExtent;
+        renderInfo.layerCount = 1;
+        renderInfo.colorAttachmentCount = 1;
+        renderInfo.pColorAttachments = &colorAttachment;
+
+        // Compute pass before rendering
         particleSystem.recordCompute(commandBuffer, delta);
 
-        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBeginRendering(commandBuffer, &renderInfo);
+
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -969,7 +932,7 @@ struct Engine
         scissor.extent = swapchain.swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        return imageIndex;
+        return static_cast<int32_t>(imageIndex);
     }
 
     void waitForFence(VkDevice device, uint32_t fenceCount, const VkFence *pFences, VkBool32 waitAll, uint64_t timeout)
@@ -1063,8 +1026,14 @@ struct Engine
         ZoneScoped; // PROFILER
         VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
 
-        vkCmdEndRenderPass(commandBuffer);
-        vkEndCommandBuffer(commandBuffer);
+        vkCmdEndRendering(commandBuffer);
+
+        barrierColorOptimalToPresent(swapchain, imageIndex, commandBuffer);
+
+        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to record command buffer");
+        }
 
         // --- Submit ---
         VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
@@ -1081,18 +1050,31 @@ struct Engine
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]);
+        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to submit draw command buffer");
+        }
 
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = signalSemaphores;
+
         VkSwapchainKHR swapChains[] = {swapchain.handle};
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = swapChains;
         presentInfo.pImageIndices = &imageIndex;
+        presentInfo.pResults = nullptr;
 
-        vkQueuePresentKHR(presentQueue, &presentInfo);
+        VkResult pres = vkQueuePresentKHR(presentQueue, &presentInfo);
+        if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR)
+        {
+            recreateSwapchain();
+        }
+        else if (pres != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to present swap chain image");
+        }
 
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
@@ -1114,7 +1096,7 @@ struct Engine
         memcpy(data, vertices.data(), (size_t)size);
         vkUnmapMemory(device, vertexBufferMemory);
 
-        vertexCapacity = static_cast<uint32_t>(size);
+        vertexCapacity = static_cast<uint32_t>(vertices.size());
     }
 
     void uploadToInstanceBuffer()
@@ -1165,27 +1147,38 @@ struct Engine
         memcpy(static_cast<char *>(instanceBufferMapped) + frameOffset, instances.data(), static_cast<size_t>(copySize));
     }
 
+    void destroyColorResources()
+    {
+        if (colorImageView)
+            vkDestroyImageView(device, colorImageView, nullptr);
+        if (colorImage)
+            vkDestroyImage(device, colorImage, nullptr);
+        if (colorImageMemory)
+            vkFreeMemory(device, colorImageMemory, nullptr);
+
+        colorImageView = VK_NULL_HANDLE;
+        colorImage = VK_NULL_HANDLE;
+        colorImageMemory = VK_NULL_HANDLE;
+    }
+
     void recreateSwapchain()
     {
-        ZoneScopedN("Sort Entities");
-        Logrador::info("Recreating swapchain");
-
         int width = 0, height = 0;
         window.getFramebufferSize(width, height);
-
-        // Avoid recreating if minimized (some platforms give 0-size extents)
         while (width == 0 || height == 0)
         {
             window.getFramebufferSize(width, height);
-            glfwWaitEvents(); // block until window is usable again
+            glfwWaitEvents();
         }
 
         vkDeviceWaitIdle(device);
-        destroySyncObjects();
 
-        swapchain.cleanup(device); // kills framebuffers + image views + swapchain
+        destroySyncObjects();
+        swapchain.cleanup(device);
+        destroyColorResources();
+
         swapchain.create(physicalDevice, device, surface, &window);
-        swapchain.createFramebuffers(device, renderPass, colorImageView, msaaSamples);
+        createColorResources();
 
         createSyncObjects();
         createImagesInFlight();

@@ -22,7 +22,6 @@ struct SwapChain
     VkSwapchainKHR handle = VK_NULL_HANDLE;
     std::vector<VkImage> swapChainImages;
     std::vector<VkImageView> swapChainImageViews;
-    std::vector<VkFramebuffer> swapChainFramebuffers;
     VkFormat swapChainImageFormat;
     VkExtent2D swapChainExtent;
 
@@ -37,12 +36,6 @@ struct SwapChain
 
     void cleanup(VkDevice device)
     {
-        for (auto framebuffer : swapChainFramebuffers)
-        {
-            vkDestroyFramebuffer(device, framebuffer, nullptr);
-        }
-        swapChainFramebuffers.clear();
-
         for (auto imageView : swapChainImageViews)
         {
             vkDestroyImageView(device, imageView, nullptr);
@@ -127,35 +120,6 @@ struct SwapChain
             if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS)
             {
                 throw std::runtime_error("failed to create image views!");
-            }
-        }
-    }
-
-    void createFramebuffers(VkDevice device, VkRenderPass renderPass,
-                            VkImageView colorImageView, VkSampleCountFlagBits msaaSamples)
-    {
-        // Expect msaaSamples > 1, otherwise your renderpass is invalid anyway.
-        swapChainFramebuffers.resize(swapChainImageViews.size());
-
-        for (size_t i = 0; i < swapChainImageViews.size(); i++)
-        {
-            std::array<VkImageView, 2> attachments = {
-                colorImageView,        // multisampled color
-                swapChainImageViews[i] // resolve into swapchain
-            };
-
-            VkFramebufferCreateInfo framebufferInfo{};
-            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            framebufferInfo.renderPass = renderPass;
-            framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-            framebufferInfo.pAttachments = attachments.data();
-            framebufferInfo.width = swapChainExtent.width;
-            framebufferInfo.height = swapChainExtent.height;
-            framebufferInfo.layers = 1;
-
-            if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS)
-            {
-                throw std::runtime_error("failed to create framebuffer!");
             }
         }
     }
