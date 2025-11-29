@@ -15,7 +15,7 @@ struct Transform
     const char *name = "not defined";
     glm::mat4 model = glm::mat4(1.0f);
 
-    Transform(glm::vec2 position, glm::vec2 size, char *name = "not defined")
+    Transform(glm::vec2 position, glm::vec2 size, const char *name = "not defined")
         : position(position), size(size), name(name)
     {
         model = transformToModelMatrix();
@@ -49,7 +49,7 @@ struct Transform
 private:
     glm::mat4 transformToModelMatrix()
     {
-        ZoneScopedN("Transform to model");
+        ZoneScoped;
 
         glm::vec2 pivotOffset = this->size * this->pivotPoint;
         glm::mat4 model = glm::mat4(1.0f);                            // Identity matrix
