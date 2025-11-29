@@ -461,7 +461,7 @@ struct Engine
 
     void createImagesInFlight()
     {
-        imagesInFlight.resize(swapchain.swapChainImages.size(), VK_NULL_HANDLE);
+        imagesInFlight.assign(swapchain.swapChainImages.size(), VK_NULL_HANDLE);
     }
 
     void createCommandPool()
@@ -856,11 +856,6 @@ struct Engine
             imageAvailableSemaphores[currentFrame],
             VK_NULL_HANDLE,
             &imageIndex);
-
-        if (imagesInFlight.size() != swapchain.swapChainImages.size())
-        {
-            imagesInFlight.assign(swapchain.swapChainImages.size(), VK_NULL_HANDLE);
-        }
 
         if (imagesInFlight[imageIndex] != VK_NULL_HANDLE)
         {
