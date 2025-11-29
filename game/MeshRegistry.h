@@ -23,15 +23,9 @@ namespace MeshRegistry
         Vertex{{0.0f, 1.0f}, {0.0f, 1.0f}},
     };
 
-    static std::vector<Vertex> getVertices(const Mesh &mesh)
+    static const Vertex *getVertices(const Mesh &mesh)
     {
-        auto it = vertices.begin();
-        auto start = it + mesh.vertexOffset;
-        auto end = start + mesh.vertexCount;
-
-        assert(start >= vertices.begin() && end <= vertices.end() && "Mesh vertex range out of bounds");
-
-        return std::vector<Vertex>(start, end);
+        return vertices.data() + mesh.vertexOffset;
     }
 
     static Vertex getDrillTipLocal()
