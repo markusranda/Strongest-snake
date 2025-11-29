@@ -868,7 +868,33 @@ struct Engine
         }
     }
 
-    void buildDebugInstances(std::vector<DrawCmd> &drawCmds)
+    void buildDebugQuadTreeInstances(std::vector<DrawCmd> &drawCmds)
+    {
+        ZoneScoped;
+
+        std::vector<InstanceData> debugInstances;
+        ecs.collectQuadTreeDebugInstances(ecs.aabbRoot, debugInstances);
+
+        if (!debugInstances.empty())
+        {
+            uint32_t offset = instances.size();
+            instances.insert(instances.end(), debugInstances.begin(), debugInstances.end());
+
+            DrawCmd dc(
+                RenderLayer::World,
+                ShaderType::Border, // or a basic flat color shader
+                0.0f, 0,
+                6, 0,
+                static_cast<uint32_t>(debugInstances.size()),
+                offset,
+                AtlasIndex::Sprite, // or whatever fits your pipeline
+                glm::vec2{},
+                glm::vec2{});
+            drawCmds.emplace_back(dc);
+        }
+    }
+
+    void buildDebugChunkInstances(std::vector<DrawCmd> &drawCmds)
     {
         ZoneScoped;
 
@@ -944,32 +970,9 @@ struct Engine
             drawCmds.emplace_back(dc);
         }
 
-        // {
-        //     ZoneScopedN("Debug QuadTree");
+        // buildDebugQuadTreeInstances(drawCmds); ENABLE THIS TO SEE QUAD TREE BOXES
 
-        //     std::vector<InstanceData> debugInstances;
-        //     ecs.collectQuadTreeDebugInstances(ecs.aabbRoot, debugInstances);
-
-        //     if (!debugInstances.empty())
-        //     {
-        //         uint32_t offset = instances.size();
-        //         instances.insert(instances.end(), debugInstances.begin(), debugInstances.end());
-
-        //         DrawCmd dc(
-        //             RenderLayer::World,
-        //             ShaderType::Border, // or a basic flat color shader
-        //             0.0f, 0,
-        //             6, 0,
-        //             static_cast<uint32_t>(debugInstances.size()),
-        //             offset,
-        //             AtlasIndex::Sprite, // or whatever fits your pipeline
-        //             glm::vec2{},
-        //             glm::vec2{});
-        //         drawCmds.emplace_back(dc);
-        //     }
-        // }
-
-        buildDebugInstances(drawCmds);
+        buildDebugChunkInstances(drawCmds);
 
         for (auto &cmd : drawCmds)
             assert(cmd.firstInstance + cmd.instanceCount <= instances.size());
