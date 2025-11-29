@@ -81,6 +81,7 @@ struct EntityManager
         transforms.reserve(RESIZE_INCREMENT);
         meshes.reserve(RESIZE_INCREMENT);
         renderables.reserve(RESIZE_INCREMENT);
+        freeIndices.reserve(RESIZE_INCREMENT);
     }
 
     Entity createEntity(
@@ -295,20 +296,20 @@ struct EntityManager
                 int32_t chunkWorldX = cx + dx * CHUNK_WORLD_SIZE;
                 int32_t chunkWorldY = cy + dy * CHUNK_WORLD_SIZE;
                 int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
-                assert(chunks.find(chunkIdx) != chunks.end());
-                Chunk &chunk = chunks[chunkIdx];
-                entities.insert(entities.end(), chunk.staticEntities.begin(), chunk.staticEntities.end());
+                auto it = chunks.find(chunkIdx);
+                assert(it != chunks.end());
+                entities.insert(entities.end(), it->second.staticEntities.begin(), it->second.staticEntities.end());
 
                 for (size_t i = 0; i < TILES_PER_CHUNK; i += 8)
                 {
-                    const Entity &e0 = chunk.tiles[i + 0];
-                    const Entity &e1 = chunk.tiles[i + 1];
-                    const Entity &e2 = chunk.tiles[i + 2];
-                    const Entity &e3 = chunk.tiles[i + 3];
-                    const Entity &e4 = chunk.tiles[i + 4];
-                    const Entity &e5 = chunk.tiles[i + 5];
-                    const Entity &e6 = chunk.tiles[i + 6];
-                    const Entity &e7 = chunk.tiles[i + 7];
+                    const Entity &e0 = it->second.tiles[i + 0];
+                    const Entity &e1 = it->second.tiles[i + 1];
+                    const Entity &e2 = it->second.tiles[i + 2];
+                    const Entity &e3 = it->second.tiles[i + 3];
+                    const Entity &e4 = it->second.tiles[i + 4];
+                    const Entity &e5 = it->second.tiles[i + 5];
+                    const Entity &e6 = it->second.tiles[i + 6];
+                    const Entity &e7 = it->second.tiles[i + 7];
 
                     if (e0.id != UINT32_MAX)
                         localBuf[count++] = e0;
@@ -355,7 +356,9 @@ struct EntityManager
         int32_t chunkWorldX = worldPosToClosestChunk(aabb.min.x);
         int32_t chunkWorldY = worldPosToClosestChunk(aabb.min.y);
         int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
-        Chunk &chunk = chunks[chunkIdx];
+        auto it = chunks.find(chunkIdx);
+        assert(it != chunks.end());
+        Chunk &chunk = it->second;
 
         size_t foundAt = chunk.staticEntities.size();
         for (size_t i = 0; i < chunk.staticEntities.size(); i++)
@@ -378,7 +381,9 @@ struct EntityManager
         int32_t chunkWorldX = worldPosToClosestChunk(aabb.min.x);
         int32_t chunkWorldY = worldPosToClosestChunk(aabb.min.y);
         int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
-        Chunk &chunk = chunks[chunkIdx];
+        auto it = chunks.find(chunkIdx);
+        assert(it != chunks.end());
+        Chunk &chunk = it->second;
 
         int32_t localTileX = ((int32_t)aabb.min.x - chunkWorldX) / TILE_WORLD_SIZE;
         int32_t localTileY = ((int32_t)aabb.min.y - chunkWorldY) / TILE_WORLD_SIZE;
@@ -405,9 +410,11 @@ struct EntityManager
         int32_t chunkWorldX = worldPosToClosestChunk(tileWorldX);
         int32_t chunkWorldY = worldPosToClosestChunk(tileWorldY);
         int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
-        assert(chunks.find(chunkIdx) != chunks.end());
+        auto it = chunks.find(chunkIdx);
+        assert(it != chunks.end());
+        Chunk &chunk = it->second;
 
-        chunks[chunkIdx].staticEntities.push_back(entity);
+        chunk.staticEntities.push_back(entity);
     }
 
     inline void insertEntityInChunkTile(Entity entity, Transform &transform)
@@ -417,7 +424,9 @@ struct EntityManager
         int32_t chunkWorldX = worldPosToClosestChunk(tileWorldX);
         int32_t chunkWorldY = worldPosToClosestChunk(tileWorldY);
         int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
-        assert(chunks.find(chunkIdx) != chunks.end());
+        auto it = chunks.find(chunkIdx);
+        assert(it != chunks.end());
+        Chunk &chunk = it->second;
 
         int32_t localTileX_world = tileWorldX - chunkWorldX;
         int32_t localTileY_world = tileWorldY - chunkWorldY;
@@ -429,6 +438,6 @@ struct EntityManager
         int32_t tileIdx = localIndexToTileIndex(localTileX, localTileY);
         assert(tileIdx >= 0 && tileIdx < TILES_PER_CHUNK);
 
-        chunks[chunkIdx].tiles[tileIdx] = entity;
+        chunk.tiles[tileIdx] = entity;
     }
 };

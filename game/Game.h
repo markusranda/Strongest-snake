@@ -235,7 +235,7 @@ struct Game
 
                 if (engine.ecs.chunks.find(chunkIdx) == engine.ecs.chunks.end())
                 {
-                    caveSystem.generateNewChunk(chunkWorldX, chunkWorldY);
+                    caveSystem.generateNewChunk(chunkIdx, chunkWorldX, chunkWorldY);
                 }
             }
         }
