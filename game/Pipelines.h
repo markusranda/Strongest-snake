@@ -180,8 +180,8 @@ inline Pipeline createGraphicsPipeline(VkDevice &device, const std::string &vert
         throw std::runtime_error("failed to create pipeline layout!");
     }
 
-    VkPipelineRenderingCreateInfoKHR renderInfo{};
-    renderInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+    VkPipelineRenderingCreateInfo renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
     renderInfo.colorAttachmentCount = 1;
     renderInfo.pColorAttachmentFormats = &swapchain.swapChainImageFormat;
 

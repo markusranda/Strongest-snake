@@ -59,7 +59,7 @@ const bool enableValidationLayers = true;
 #endif
 
 const std::vector<const char *> validationLayers = {"VK_LAYER_KHRONOS_validation"};
-const std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME};
+const std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
 const int MAX_FRAMES_IN_FLIGHT = 3;
 
@@ -319,15 +319,10 @@ struct Engine
         info.queueCount = 1;
         info.pQueuePriorities = &priority;
 
-        VkPhysicalDeviceDynamicRenderingFeaturesKHR dyn{};
-        dyn.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
-        dyn.dynamicRendering = VK_TRUE;
-        dyn.pNext = nullptr;
-
-        VkPhysicalDeviceSynchronization2Features sync2{};
-        sync2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
-        sync2.synchronization2 = VK_TRUE;
-        sync2.pNext = &dyn;
+        VkPhysicalDeviceVulkan13Features features13{};
+        features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+        features13.dynamicRendering = VK_TRUE;
+        features13.synchronization2 = VK_TRUE;
 
         VkPhysicalDeviceFeatures deviceFeatures{};
         VkDeviceCreateInfo createInfo{};
@@ -337,7 +332,7 @@ struct Engine
         createInfo.pEnabledFeatures = &deviceFeatures;
         createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
         createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-        createInfo.pNext = &sync2;
+        createInfo.pNext = &features13;
 
         if (enableValidationLayers)
         {
