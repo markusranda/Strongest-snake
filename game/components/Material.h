@@ -1,6 +1,6 @@
 #pragma once
-#include "Shadertype.h"
-#include "AtlasIndex.h"
+#include "../Shadertype.h"
+#include "../AtlasIndex.h"
 #include <glm/glm.hpp>
 
 struct Material

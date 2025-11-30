@@ -1,7 +1,7 @@
 #pragma once
 #include "glm/vec2.hpp"
 #include "MeshRegistry.h"
-#include "AABB.h"
+#include "components/AABB.h"
 
 // PROFILING
 #include "tracy/Tracy.hpp"

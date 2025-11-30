@@ -1,6 +1,6 @@
 #pragma once
-#include "Entity.h"
-#include "Transform.h"
+#include "components/Entity.h"
+#include "components/Transform.h"
 #include <glm/glm.hpp>
 #include <vector>
 

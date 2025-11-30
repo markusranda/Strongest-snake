@@ -1,5 +1,8 @@
 #pragma once
 
+#include "components/Transform.h"
+#include "components/Material.h"
+#include "components/Renderable.h"
 #include "Window.h"
 #include "InstanceData.h"
 #include "Logrador.h"
@@ -9,13 +12,10 @@
 #include "DrawCmd.h"
 #include "EntityManager.h"
 #include "Camera.h"
-#include "Transform.h"
 #include "Texture.h"
 #include "Pipelines.h"
 #include "Atlas.h"
 #include "ParticleSystem.h"
-#include "Material.h"
-#include "Renderable.h"
 #include "Text.h"
 #include "RendererSwapchain.h"
 #include "RendererBarriers.h"

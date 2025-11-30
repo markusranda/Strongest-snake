@@ -1,8 +1,8 @@
 #pragma once
 #include "Entity.h"
-#include "RenderLayer.h"
-#include "Shadertype.h"
-#include "AtlasIndex.h"
+#include "../RenderLayer.h"
+#include "../Shadertype.h"
+#include "../AtlasIndex.h"
 #include <cstdint>
 
 struct Renderable

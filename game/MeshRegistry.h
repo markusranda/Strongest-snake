@@ -1,5 +1,5 @@
 #pragma once
-#include "Mesh.h"
+#include "components/Mesh.h"
 #include <vector>
 
 namespace MeshRegistry

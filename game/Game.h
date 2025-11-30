@@ -1,4 +1,8 @@
 #pragma once
+#include "components/Health.h"
+#include "components/EntityType.h"
+#include "components/Material.h"
+#include "components/Transform.h"
 #include "Renderer.h"
 #include "Window.h"
 #include "Vertex.h"
@@ -8,12 +12,8 @@
 #include "Collision.h"
 #include "TextureComponent.h"
 #include "Colors.h"
-#include "Transform.h"
 #include "SnakeMath.h"
-#include "Health.h"
 #include "CaveSystem.h"
-#include "EntityType.h"
-#include "Material.h"
 #include "Chunk.h"
 #include "Atlas.h"
 

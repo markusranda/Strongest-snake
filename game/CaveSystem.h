@@ -1,9 +1,9 @@
 #pragma once
-#include "EntityType.h"
+#include "components/EntityType.h"
+#include "components/Material.h"
+#include "components/Health.h"
 #include "EntityManager.h"
 #include "SnakeMath.h"
-#include "Health.h"
-#include "Material.h"
 #include "Atlas.h"
 #include "glm/common.hpp"
 
