@@ -276,7 +276,7 @@ struct Renderer
 
     void buildInstanceData()
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         ShaderType currentShader = ShaderType::COUNT;
         RenderLayer currentLayer = RenderLayer::World;
@@ -445,7 +445,7 @@ struct Renderer
 
     uint32_t prepareDraw(float delta)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
         uint32_t imageIndex = semaphores.acquireImageIndex(application.device, currentFrame, swapchain);
         if (imageIndex == UINT32_MAX)
             return imageIndex;
@@ -506,7 +506,7 @@ struct Renderer
 
     void drawCmdList(Camera &camera)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         VkCommandBuffer cmd = commandBuffers[currentFrame];
         CameraPushConstant cameraData = {camera.getViewProj()};
@@ -580,7 +580,7 @@ struct Renderer
 
     void endDraw(uint32_t imageIndex)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
         VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
 
         vkCmdEndRendering(commandBuffer);
@@ -623,7 +623,7 @@ struct Renderer
         // TODO  Rewrite instanceBuffer in Renderer to use three seperate buffer based on the three different frames
         // that exist at the same time. This means we can allocate a new buffer without bothering the gpu. Pack it in a FrameResource.
 
-        ZoneScoped; // PROFILER
+        ZoneScoped;
         VkDeviceSize copySize = sizeof(InstanceData) * instances.size();
 
         // Resize if capacity too small
@@ -706,7 +706,7 @@ struct Renderer
 
     void draw(Camera &camera, float fps, glm::vec2 playerCoords, float delta)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         uint32_t imageIndex = prepareDraw(delta);
         if (imageIndex == UINT32_MAX)

@@ -97,7 +97,7 @@ struct Game
     // --- Lifecycle ---
     void init()
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         try
         {
@@ -150,8 +150,6 @@ struct Game
             // --- Ground ----
             caveSystem.createGraceArea();
 
-            engine.ecs.sortRenderables();
-
             // --- AUDIO ---
             ma_engine_set_volume(&audioEngine, 0.025);
             ma_sound_init_from_file(&audioEngine, "assets/engine_idle.wav", 0, NULL, NULL, &engineIdleAudio);
@@ -181,7 +179,7 @@ struct Game
 
         while (!window.shouldClose())
         {
-            ZoneScoped; // PROFILER
+            ZoneScoped;
 
             window.pollEvents();
 
@@ -218,7 +216,7 @@ struct Game
     // --- Game logic ---
     void updateWorldGen()
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         // When player moves into a new chunk we should verify that there are in fact 3x3 loaded chunks around the player
         Transform &head = engine.ecs.transforms[engine.ecs.entityToTransform[entityIndex(player.entities.front())]];
@@ -331,7 +329,7 @@ struct Game
 
     void updateCamera()
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         Entity entity = background.entity;
         size_t playerIndexT = engine.ecs.entityToTransform[entityIndex(player.entities.front())];
@@ -358,14 +356,14 @@ struct Game
 
     void updateTimers(double delta)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         particleTimer = max(particleTimer - delta, 0.0f);
     }
 
     void updateGame(double delta)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         // Constants / parameters
         GLFWwindow *handle = window.handle;
@@ -387,7 +385,7 @@ struct Game
 
     void updateEngineRevs()
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
         if (drilling)
         {
             ma_sound_set_pitch(&engineIdleAudio, highRev);
@@ -405,7 +403,7 @@ struct Game
 
     void tryMove(Transform &head, Mesh &mesh, const glm::vec2 &targetPos, float dt)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         Transform newTransform = head;
         newTransform.position = targetPos;
@@ -468,7 +466,7 @@ struct Game
 
     void updateMovement(float dt, bool pressing)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         uint32_t headEntityId = entityIndex(player.entities.front());
         auto headIndexT = engine.ecs.entityToTransform[headEntityId];
@@ -528,7 +526,7 @@ struct Game
 
     void rotateHeadLeft(float dt)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         auto tIndex = engine.ecs.entityToTransform[player.entities[2].id];
         Transform &transform = engine.ecs.transforms[tIndex];
@@ -571,7 +569,7 @@ struct Game
 
     void rotateHeadRight(float dt)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         auto tIndex = engine.ecs.entityToTransform[player.entities[2].id];
         Transform &transform = engine.ecs.transforms[tIndex];
@@ -611,7 +609,7 @@ struct Game
 
     void updateFPSCounter(float delta)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
         frameCount++;
 
         if (frameCount >= 400)
@@ -629,7 +627,7 @@ struct Game
 
 inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 {
-    ZoneScoped; // PROFILER
+    ZoneScoped;
 
     // TODO Add scrollMax before release or maybe max when DEBUG isn't present
     Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));

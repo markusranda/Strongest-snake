@@ -127,7 +127,7 @@ struct CaveSystem
 
     void generateNewChunk(int64_t &chunkIdx, int32_t &chunkWorldX, int32_t &chunkWorldY)
     {
-        ZoneScoped; // PROFILER
+        ZoneScoped;
 
         engine.ecs.chunks.emplace(chunkIdx, Chunk{chunkWorldX, chunkWorldY});
         for (int32_t y = chunkWorldY; y < chunkWorldY + CHUNK_WORLD_SIZE; y += tileSize)

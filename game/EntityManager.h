@@ -39,7 +39,6 @@ struct EntityManager
     std::vector<Transform> transforms;
     std::vector<Mesh> meshes;
     std::vector<Renderable> renderables;
-    std::vector<Renderable> sortedRenderables;
     std::vector<Material> materials;
     std::vector<AABB> collisionBoxes;
     std::vector<glm::vec4> uvTransforms;
@@ -134,7 +133,6 @@ struct EntityManager
         // ---- Add to stores ----
         Renderable renderable = {entity, z, 0, renderLayer};
         renderable.makeDrawKey(material.shaderType, material.atlasIndex, mesh.vertexOffset, mesh.vertexCount);
-        sortedRenderables.push_back(renderable);
         AABB aabb = computeWorldAABB(mesh, transform);
 
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
@@ -207,16 +205,6 @@ struct EntityManager
                 removeFromStore<Treasure>(treasures, entityToTreasure, treasureToEntity, e);
             removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
         }
-
-        sortRenderables();
-    }
-
-    inline void sortRenderables()
-    {
-        ZoneScoped;
-        sortedRenderables = renderables;
-        std::sort(sortedRenderables.begin(), sortedRenderables.end(), [](Renderable &a, Renderable &b)
-                  { return a.drawkey < b.drawkey; });
     }
 
     template <typename A>

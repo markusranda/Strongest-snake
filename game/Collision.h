@@ -31,16 +31,16 @@ inline AABB computeWorldAABB(const Mesh &mesh, const Transform &t)
 
 inline bool rectIntersects(AABB &A, AABB &B)
 {
-    ZoneScoped; // PROFILER
+    ZoneScoped;
     return (A.min.x < B.max.x &&
             A.max.x > B.min.x &&
             A.min.y < B.max.y &&
             A.max.y > B.min.y);
 }
 
-inline bool rectIntersectsInclusive(AABB &A, AABB &B)
+inline bool rectIntersectsExclusive(AABB &A, AABB &B)
 {
-    ZoneScoped; // PROFILER
+    ZoneScoped;
     return (A.min.x < B.max.x &&
             A.max.x > B.min.x &&
             A.min.y < B.max.y &&
@@ -49,7 +49,7 @@ inline bool rectIntersectsInclusive(AABB &A, AABB &B)
 
 inline bool rectFullyInside(AABB &A, AABB &B)
 {
-    ZoneScoped; // PROFILER
+    ZoneScoped;
     return (A.min.x >= B.min.x &&
             A.max.x <= B.max.x &&
             A.min.y >= B.min.y &&
