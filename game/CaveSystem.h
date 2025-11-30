@@ -32,9 +32,9 @@ struct CaveSystem
         SpriteID::SPR_GEMS_ORANGE,
         SpriteID::SPR_SKULL,
     };
-    Engine &engine;
+    Renderer &engine;
 
-    CaveSystem(Engine &engine) : engine(engine) {}
+    CaveSystem(Renderer &engine) : engine(engine) {}
 
     float worldToTileCoord(float coord)
     {

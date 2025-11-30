@@ -63,9 +63,9 @@ const std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_N
 
 const int MAX_FRAMES_IN_FLIGHT = 3;
 
-struct Engine
+struct Renderer
 {
-    Engine(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
+    Renderer(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
     EntityManager ecs;
     uint32_t width;
@@ -132,7 +132,7 @@ struct Engine
     {
         try
         {
-            Logrador::info("Engine is being created");
+            Logrador::info("Renderer is being created");
             createInstance();
             createDebugMessenger();
             createSurface();
@@ -151,7 +151,7 @@ struct Engine
             createSemaphores();
             createCommandBuffers();
             createParticleSystem();
-            Logrador::info("Engine is complete");
+            Logrador::info("Renderer is complete");
         }
         catch (const std::exception &e)
         {
@@ -953,7 +953,7 @@ struct Engine
 
     void uploadToInstanceBuffer()
     {
-        // TODO  Rewrite instanceBuffer in Engine to use three seperate buffer based on the three different frames
+        // TODO  Rewrite instanceBuffer in Renderer to use three seperate buffer based on the three different frames
         // that exist at the same time. This means we can allocate a new buffer without bothering the gpu. Pack it in a FrameResource.
 
         ZoneScoped; // PROFILER

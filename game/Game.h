@@ -1,5 +1,5 @@
 #pragma once
-#include "Engine.h"
+#include "Renderer.h"
 #include "Window.h"
 #include "Vertex.h"
 #include "MeshRegistry.h"
@@ -49,7 +49,7 @@ struct Game
 {
     // Core engine + window
     Window window;
-    Engine engine;
+    Renderer engine;
 
     // Timing
     uint32_t frameCount = 0;
