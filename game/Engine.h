@@ -777,36 +777,6 @@ struct Engine
         drawCmds.emplace_back(dc);
     }
 
-    void draw(Camera &camera, float fps, glm::vec2 playerCoords, float delta)
-    {
-        ZoneScoped; // PROFILER
-
-        uint32_t imageIndex = prepareDraw(delta);
-        if (imageIndex == UINT32_MAX)
-        {
-            recreateSwapchain();
-            Logrador::debug("Skipping draw : Recreating swapchain");
-            return;
-        }
-
-        // Collect all instance data
-        drawCmds.clear();
-        buildInstanceData();
-        buildTextInstances(fps, playerCoords);
-        buildDebugChunkInstances();
-
-        for (auto &cmd : drawCmds)
-            assert(cmd.firstInstance + cmd.instanceCount <= instances.size());
-
-        //  Upload once, then draw all
-        uploadToInstanceBuffer();
-        drawCmdList(camera);
-        endDraw((uint32_t)imageIndex);
-        // particleSystem.resetSpawn();
-
-        FrameMark;
-    }
-
     uint32_t prepareDraw(float delta)
     {
         ZoneScoped; // PROFILER
@@ -950,50 +920,13 @@ struct Engine
         vkCmdEndRendering(commandBuffer);
         barrierColorToPresent(swapchain, swapchainImageLayouts, imageIndex, commandBuffer);
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
-        {
             throw std::runtime_error("failed to record command buffer");
-        }
 
-        // --- Submit ---
-        VkSemaphore waitSemaphores[] = {semaphores.imageAvailableSemaphores[currentFrame]};
-        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-        VkSemaphore signalSemaphores[] = {semaphores.renderFinishedSemaphores[currentFrame]};
-
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = waitSemaphores;
-        submitInfo.pWaitDstStageMask = waitStages;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = signalSemaphores;
-
-        if (vkQueueSubmit(queue, 1, &submitInfo, semaphores.inFlightFences[currentFrame]) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to submit draw command buffer");
-        }
-
-        VkPresentInfoKHR presentInfo{};
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = signalSemaphores;
-
-        VkSwapchainKHR swapChains[] = {swapchain.handle};
-        presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = swapChains;
-        presentInfo.pImageIndices = &imageIndex;
-        presentInfo.pResults = nullptr;
-
-        VkResult pres = vkQueuePresentKHR(queue, &presentInfo);
+        VkResult pres = semaphores.submitEndDraw(swapchain, currentFrame, commandBuffers, queue, imageIndex);
         if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR)
-        {
             recreateSwapchain();
-        }
-        else if (pres != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to present swap chain image");
-        }
+        else
+            assert(pres == VK_SUCCESS);
 
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
@@ -1102,5 +1035,34 @@ struct Engine
 
         semaphores.init(device, swapchain, MAX_FRAMES_IN_FLIGHT);
         currentFrame = 0;
+    }
+
+    void draw(Camera &camera, float fps, glm::vec2 playerCoords, float delta)
+    {
+        ZoneScoped; // PROFILER
+
+        uint32_t imageIndex = prepareDraw(delta);
+        if (imageIndex == UINT32_MAX)
+        {
+            recreateSwapchain();
+            Logrador::debug("Skipping draw : Recreating swapchain");
+            return;
+        }
+
+        // Collect all instance data
+        drawCmds.clear();
+        buildInstanceData();
+        buildTextInstances(fps, playerCoords);
+        buildDebugChunkInstances();
+
+        for (auto &cmd : drawCmds)
+            assert(cmd.firstInstance + cmd.instanceCount <= instances.size());
+
+        //  Upload once, then draw all
+        uploadToInstanceBuffer();
+        drawCmdList(camera);
+        endDraw((uint32_t)imageIndex);
+
+        FrameMark;
     }
 };
