@@ -17,7 +17,7 @@ struct SwapChainSupportDetails
     std::vector<VkPresentModeKHR> presentModes;
 };
 
-struct SwapChain
+struct RendererSwapchain
 {
     VkSwapchainKHR handle = VK_NULL_HANDLE;
     std::vector<VkImage> swapChainImages;

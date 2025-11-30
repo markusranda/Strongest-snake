@@ -1,8 +1,8 @@
 #pragma once
 #include <vulkan/vulkan.h>
-#include "SwapChain.h"
+#include "RendererSwapchain.h"
 
-inline void barrierPresentToColor(SwapChain &swapchain, std::vector<VkImageLayout> &layoutTable, uint32_t imageIndex, VkCommandBuffer cmd)
+inline void barrierPresentToColor(RendererSwapchain &swapchain, std::vector<VkImageLayout> &layoutTable, uint32_t imageIndex, VkCommandBuffer cmd)
 {
     VkImageLayout oldLayout = layoutTable[imageIndex];
     if (oldLayout != VK_IMAGE_LAYOUT_UNDEFINED &&
@@ -34,7 +34,7 @@ inline void barrierPresentToColor(SwapChain &swapchain, std::vector<VkImageLayou
     layoutTable[imageIndex] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 }
 
-inline void barrierColorToPresent(SwapChain &swapchain, std::vector<VkImageLayout> &layoutTable, uint32_t imageIndex, VkCommandBuffer cmd)
+inline void barrierColorToPresent(RendererSwapchain &swapchain, std::vector<VkImageLayout> &layoutTable, uint32_t imageIndex, VkCommandBuffer cmd)
 {
     VkImageMemoryBarrier2 barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;

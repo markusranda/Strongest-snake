@@ -1,5 +1,5 @@
 #pragma once
-#include "SwapChain.h"
+#include "RendererSwapchain.h"
 #include <vector>
 #include <vulkan/vulkan.h>
 
@@ -10,7 +10,7 @@ struct RendererSempahores
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> imagesInFlight;
 
-    void init(VkDevice &device, SwapChain &swapchain, const uint32_t &maxFrames)
+    void init(VkDevice &device, RendererSwapchain &swapchain, const uint32_t &maxFrames)
     {
         size_t imageCount = swapchain.swapChainImages.size();
 
@@ -66,7 +66,7 @@ struct RendererSempahores
     /**
      * Tries to acquire nexct image. Returns UINT32_MAX on failure
      */
-    uint32_t acquireImageIndex(VkDevice &device, uint32_t &currentFrame, SwapChain &swapchain)
+    uint32_t acquireImageIndex(VkDevice &device, uint32_t &currentFrame, RendererSwapchain &swapchain)
     {
         uint32_t imageIndex;
         vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, 10'000'000'000ull);
@@ -86,7 +86,7 @@ struct RendererSempahores
         return imageIndex;
     }
 
-    VkResult submitEndDraw(SwapChain &swapchain, uint32_t &currentFrame, std::vector<VkCommandBuffer> &commandBuffers, VkQueue &queue, uint32_t &imageIndex)
+    VkResult submitEndDraw(RendererSwapchain &swapchain, uint32_t &currentFrame, std::vector<VkCommandBuffer> &commandBuffers, VkQueue &queue, uint32_t &imageIndex)
     {
         VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};

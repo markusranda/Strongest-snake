@@ -1,5 +1,5 @@
 #pragma once
-#include "SwapChain.h"
+#include "RendererSwapchain.h"
 #include "RendererDebug.h"
 #include <vulkan/vulkan.h>
 #include <stdexcept>
@@ -32,7 +32,7 @@ struct RendererApplication
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
     RendererApplication() {}
-    RendererApplication(GLFWwindow *window, SwapChain &swapchain)
+    RendererApplication(GLFWwindow *window, RendererSwapchain &swapchain)
     {
         Logrador::info("RendererApplication is being created");
         createInstance();
@@ -170,7 +170,7 @@ struct RendererApplication
         return requiredExtensions.empty();
     }
 
-    bool isDeviceSuitable(VkPhysicalDevice &device, VkSurfaceKHR &surface, SwapChain &swapchain)
+    bool isDeviceSuitable(VkPhysicalDevice &device, VkSurfaceKHR &surface, RendererSwapchain &swapchain)
     {
         if (!checkDeviceExtensionSupport(device))
             return false;
@@ -182,7 +182,7 @@ struct RendererApplication
         return swapChainAdequate;
     }
 
-    void pickPhysicalDevice(SwapChain &swapchain)
+    void pickPhysicalDevice(RendererSwapchain &swapchain)
     {
         uint32_t deviceCount = 0;
         vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);

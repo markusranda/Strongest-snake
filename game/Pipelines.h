@@ -5,6 +5,7 @@
 #include "Pipelines.h"
 #include "InstanceData.h"
 #include "PushConstants.h"
+#include "RendererSwapchain.h"
 
 #include <fstream>
 #include <unordered_map>
@@ -51,7 +52,7 @@ inline std::vector<char> readFile(const std::string &filename)
     return buffer;
 }
 
-inline Pipeline createGraphicsPipeline(VkDevice &device, const std::string &vertPath, const std::string &fragPath, VkDescriptorSetLayout &textureSetLayout, SwapChain &swapchain, VkSampleCountFlagBits &msaaSamples)
+inline Pipeline createGraphicsPipeline(VkDevice &device, const std::string &vertPath, const std::string &fragPath, VkDescriptorSetLayout &textureSetLayout, RendererSwapchain &swapchain, VkSampleCountFlagBits &msaaSamples)
 {
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
@@ -211,7 +212,7 @@ inline Pipeline createGraphicsPipeline(VkDevice &device, const std::string &vert
     return Pipeline{graphicsPipeline, pipelineLayout};
 }
 
-inline std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice &device, VkDescriptorSetLayout &textureSetLayout, SwapChain &swapChain, VkSampleCountFlagBits &msaaSamples)
+inline std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphicsPipelines(VkDevice &device, VkDescriptorSetLayout &textureSetLayout, RendererSwapchain &swapChain, VkSampleCountFlagBits &msaaSamples)
 {
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
     pipelines[static_cast<size_t>(ShaderType::FlatColor)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_flat.spv", textureSetLayout, swapChain, msaaSamples);

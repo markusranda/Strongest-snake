@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Window.h"
-#include "SwapChain.h"
 #include "InstanceData.h"
 #include "Logrador.h"
 #include "Vertex.h"
@@ -18,6 +17,7 @@
 #include "Material.h"
 #include "Renderable.h"
 #include "Text.h"
+#include "RendererSwapchain.h"
 #include "RendererBarriers.h"
 #include "RendererSempahores.h"
 #include "RendererApplication.h"
@@ -57,7 +57,7 @@ struct Renderer
 
     uint32_t currentFrame = 0;
 
-    SwapChain swapchain;
+    RendererSwapchain swapchain;
     std::vector<VkImageLayout> swapchainImageLayouts;
 
     std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;

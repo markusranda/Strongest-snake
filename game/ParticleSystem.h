@@ -2,6 +2,7 @@
 
 #include "Buffer.h"
 #include "Pipelines.h"
+#include "RendererSwapchain.h"
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
@@ -252,7 +253,7 @@ struct ParticleSystem
     // -------------------------
     void createGraphicsPipeline(VkDevice &device,
                                 VkSampleCountFlagBits &msaaSamples,
-                                SwapChain &swapchain)
+                                RendererSwapchain &swapchain)
     {
         // Binding 0 = particle buffer (storage buffer)
         VkDescriptorSetLayoutBinding particleBinding{};
@@ -448,7 +449,7 @@ struct ParticleSystem
     // -------------------------
     // INIT
     // -------------------------
-    void init(VkDevice &device, VkPhysicalDevice &physicalDevice, VkSampleCountFlagBits &msaaSamples, SwapChain &swapchain)
+    void init(VkDevice &device, VkPhysicalDevice &physicalDevice, VkSampleCountFlagBits &msaaSamples, RendererSwapchain &swapchain)
     {
         // Free list buffer
         CreateBuffer(device,
