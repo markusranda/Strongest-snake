@@ -22,6 +22,7 @@
 #include "Renderable.h"
 #include "Text.h"
 #include "RendererBarriers.h"
+#include "RendererSempahores.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -98,11 +99,8 @@ struct Engine
     std::vector<VkCommandBuffer> commandBuffers;
 
     // Semaphores
-    std::vector<VkSemaphore> imageAvailableSemaphores;
-    std::vector<VkSemaphore> renderFinishedSemaphores;
-    std::vector<VkFence> inFlightFences;
+    RendererSempahores semaphores;
     uint32_t currentFrame = 0;
-    std::vector<VkFence> imagesInFlight;
 
     // Instances
     VkBuffer instanceBuffer = VK_NULL_HANDLE;
@@ -150,9 +148,8 @@ struct Engine
             createDescriptorPool();
             createDescriptorSets();
             createStaticVertexBuffer();
-            createImagesInFlight();
+            createSemaphores();
             createCommandBuffers();
-            createSyncObjects();
             createParticleSystem();
             Logrador::info("Engine is complete");
         }
@@ -476,11 +473,6 @@ struct Engine
         pipelines = CreateGraphicsPipelines(device, textureSetLayout, swapchain, msaaSamples);
     }
 
-    void createImagesInFlight()
-    {
-        imagesInFlight.assign(swapchain.swapChainImages.size(), VK_NULL_HANDLE);
-    }
-
     void createCommandPool()
     {
         VkCommandPoolCreateInfo poolInfo{};
@@ -492,6 +484,11 @@ struct Engine
         {
             throw std::runtime_error("failed to create graphics command pool!");
         }
+    }
+
+    void createSemaphores()
+    {
+        semaphores.init(device, swapchain, MAX_FRAMES_IN_FLIGHT);
     }
 
     void createCommandBuffers()
@@ -507,33 +504,6 @@ struct Engine
         if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to allocate command buffers!");
-        }
-    }
-
-    void createSyncObjects()
-    {
-        size_t imageCount = swapchain.swapChainImages.size();
-
-        imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-        inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-        renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-
-        VkSemaphoreCreateInfo semaphoreInfo{};
-        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-        VkFenceCreateInfo fenceInfo{};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-        // Create per-frame semaphores + fences
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-        {
-            if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-                vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
-                vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS)
-            {
-                throw std::runtime_error("failed to create per-frame sync objects!");
-            }
         }
     }
 
@@ -560,30 +530,6 @@ struct Engine
             samples = VK_SAMPLE_COUNT_2_BIT;
 
         msaaSamples = samples;
-    }
-
-    void destroySyncObjects()
-    {
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-        {
-            if (imageAvailableSemaphores[i] != VK_NULL_HANDLE)
-            {
-                vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-                imageAvailableSemaphores[i] = VK_NULL_HANDLE;
-            }
-
-            if (renderFinishedSemaphores[i] != VK_NULL_HANDLE)
-            {
-                vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-                renderFinishedSemaphores[i] = VK_NULL_HANDLE;
-            }
-
-            if (inFlightFences[i] != VK_NULL_HANDLE)
-            {
-                vkDestroyFence(device, inFlightFences[i], nullptr);
-                inFlightFences[i] = VK_NULL_HANDLE;
-            }
-        }
     }
 
     bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface)
@@ -835,9 +781,10 @@ struct Engine
     {
         ZoneScoped; // PROFILER
 
-        int32_t imageIndex = prepareDraw(delta);
-        if (imageIndex < 0)
+        uint32_t imageIndex = prepareDraw(delta);
+        if (imageIndex == UINT32_MAX)
         {
+            recreateSwapchain();
             Logrador::debug("Skipping draw : Recreating swapchain");
             return;
         }
@@ -854,44 +801,19 @@ struct Engine
         //  Upload once, then draw all
         uploadToInstanceBuffer();
         drawCmdList(camera);
-        endDraw(imageIndex);
+        endDraw((uint32_t)imageIndex);
         // particleSystem.resetSpawn();
 
         FrameMark;
     }
 
-    int32_t prepareDraw(float delta)
+    uint32_t prepareDraw(float delta)
     {
         ZoneScoped; // PROFILER
-        waitForFence(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+        uint32_t imageIndex = semaphores.acquireImageIndex(device, currentFrame, swapchain);
+        if (imageIndex == UINT32_MAX)
+            return imageIndex;
 
-        uint32_t imageIndex;
-        VkResult result = acquireNextImageKHR(
-            device,
-            swapchain.handle,
-            UINT64_MAX,
-            imageAvailableSemaphores[currentFrame],
-            VK_NULL_HANDLE,
-            &imageIndex);
-
-        if (imagesInFlight[imageIndex] != VK_NULL_HANDLE)
-        {
-            waitForFence(device, 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
-        }
-
-        imagesInFlight[imageIndex] = inFlightFences[currentFrame];
-
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-        {
-            recreateSwapchain();
-            return -1;
-        }
-        else if (result != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to acquire swap chain image!");
-        }
-
-        vkResetFences(device, 1, &inFlightFences[currentFrame]);
         vkResetCommandBuffer(commandBuffers[currentFrame], 0);
 
         VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
@@ -943,19 +865,7 @@ struct Engine
         scissor.extent = swapchain.swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        return static_cast<int32_t>(imageIndex);
-    }
-
-    void waitForFence(VkDevice device, uint32_t fenceCount, const VkFence *pFences, VkBool32 waitAll, uint64_t timeout)
-    {
-        ZoneScopedN("vkWaitForFences");
-        vkWaitForFences(device, fenceCount, pFences, waitAll, timeout);
-    }
-
-    VkResult acquireNextImageKHR(VkDevice device, VkSwapchainKHR swapchain, uint64_t timeout, VkSemaphore semaphore, VkFence fence, uint32_t *pImageIndex)
-    {
-        ZoneScopedN("vkAcquireNextImageKHR");
-        return vkAcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, pImageIndex);
+        return imageIndex;
     }
 
     void drawCmdList(Camera &camera)
@@ -1045,9 +955,9 @@ struct Engine
         }
 
         // --- Submit ---
-        VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
+        VkSemaphore waitSemaphores[] = {semaphores.imageAvailableSemaphores[currentFrame]};
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-        VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
+        VkSemaphore signalSemaphores[] = {semaphores.renderFinishedSemaphores[currentFrame]};
 
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1059,7 +969,7 @@ struct Engine
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        if (vkQueueSubmit(queue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
+        if (vkQueueSubmit(queue, 1, &submitInfo, semaphores.inFlightFences[currentFrame]) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to submit draw command buffer");
         }
@@ -1182,7 +1092,7 @@ struct Engine
 
         vkDeviceWaitIdle(device);
 
-        destroySyncObjects();
+        semaphores.destroySemaphores(device, MAX_FRAMES_IN_FLIGHT);
         swapchain.cleanup(device);
         destroyColorResources();
 
@@ -1190,8 +1100,7 @@ struct Engine
         swapchainImageLayouts.assign(swapchain.swapChainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
         createColorResources();
 
-        createSyncObjects();
-        createImagesInFlight();
+        semaphores.init(device, swapchain, MAX_FRAMES_IN_FLIGHT);
         currentFrame = 0;
     }
 };

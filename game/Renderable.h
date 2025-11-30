@@ -16,7 +16,6 @@ struct Renderable
     // 64-bit draw key
     // [ 8 bits layer ] [ 16 bits shaderType ] [ 8 bits meshGroup ] [ 8 bits atlasIndex ] [ 16 bits vertexOffset ] [ 8 bits tie ]
     // | 63....56 | 55....40 | 39....32 | 31....24 | 23....8 | 7....0 |
-
     inline void makeDrawKey(ShaderType shader, AtlasIndex atlasIndex, uint32_t vertexOffset, uint32_t vertexCount)
     {
         static_assert(sizeof(RenderLayer) == 1, "RenderLayer must be 8 bits");
