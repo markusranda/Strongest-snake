@@ -187,6 +187,7 @@ struct Game
 
             double currentTime = glfwGetTime();
             double delta = currentTime - lastTime;
+            delta = std::fmin(delta, 0.033);
             lastTime = currentTime;
 
             if (gameOver)
