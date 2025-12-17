@@ -18,13 +18,9 @@ layout(set = 0, binding = 0) uniform sampler2D texSampler;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    float scroll = fract(pc.globalTime * 0.000025); 
+    float scroll = fract(pc.globalTime * 0.0025); 
+    vec2 localUv = tileOrigin + fragUV * tileSize;
 
-    // Local UV inside the tile (0–1)
-    vec2 localUv = fract(fragUV * repeatCount);
-    localUv = tileOrigin + localUv * tileSize;
-    
-    // localUv.y += scroll;
     float val = localUv.y + scroll;
     localUv.y = pc.atlasOffset.y + mod(val - pc.atlasOffset.y, pc.atlasScale.y);
 

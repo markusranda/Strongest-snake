@@ -10,7 +10,7 @@ layout(location = 2) in mat4 instanceModel;
 layout(location = 6) in vec4 instanceColor;
 layout(location = 7) in vec4 instanceUV; 
 layout(location = 8) in vec2 worldSize; 
-layout(location = 9) in float textureLength; 
+layout(location = 9) in vec2 textureSize; 
 
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec2 fragUV;
@@ -25,5 +25,5 @@ void main() {
 
     tileOrigin = instanceUV.xy;
     tileSize = instanceUV.zw;
-    repeatCount = worldSize / textureLength; 
+    repeatCount = worldSize / textureSize; 
 }
