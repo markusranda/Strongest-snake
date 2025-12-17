@@ -68,33 +68,15 @@ inline glm::vec4 getUvTransform(AtlasRegion &region)
         ATLAS_CELL_SIZE.y / ATLAS_SIZE.y,
     };
 
-    float epsilonU = 1.0f / ATLAS_SIZE.x;
-    float epsilonV = 1.0f / ATLAS_SIZE.y;
+    // TODO: This doesn't really work that well, find a better way.
+    // Sometimes it helps with glitching lines but it also fucks up a bunch of stuff
 
-    model.x += epsilonU;
-    model.y += epsilonV;
-    model.z -= 2.0f * epsilonU;
-    model.w -= 2.0f * epsilonV;
-
-    return model;
-}
-
-inline glm::vec4 getUvTransform(glm::vec2 &region, glm::vec2 cellSize, glm::vec2 atlasSize)
-{
-    glm::vec4 model = glm::vec4{
-        region.x * cellSize.x / atlasSize.x,
-        region.y * cellSize.y / atlasSize.y,
-        cellSize.x / atlasSize.x,
-        cellSize.y / atlasSize.y,
-    };
-
-    float epsilonU = 1.0f / atlasSize.x;
-    float epsilonV = 1.0f / atlasSize.y;
-
-    model.x += epsilonU;
-    model.y += epsilonV;
-    model.z -= 2.0f * epsilonU;
-    model.w -= 2.0f * epsilonV;
+    // float epsilonU = 1.0f / ATLAS_SIZE.x;
+    // float epsilonV = 1.0f / ATLAS_SIZE.y;
+    // model.x += epsilonU;
+    // model.y += epsilonV;
+    // model.z -= 2.0f * epsilonU;
+    // model.w -= 2.0f * epsilonV;
 
     return model;
 }
