@@ -16,11 +16,18 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 // Must be power-of-two
 static const uint32_t INSTANCE_BLOCK_SIZE = 128;
 static_assert((INSTANCE_BLOCK_SIZE & (INSTANCE_BLOCK_SIZE - 1)) == 0, "INSTANCE_BLOCK_SIZE must be power of two");
 static const uint32_t INSTANCE_BLOCK_HALF = INSTANCE_BLOCK_SIZE / 2;
+
+struct InstanceDataEntry
+{
+    uint32_t blockIdx = UINT32_MAX;
+    uint32_t localIdx = UINT32_MAX;
+};
 
 struct InstanceBlock
 {
@@ -142,8 +149,7 @@ private:
             }
         }
 
-        // If we reach this then we failed to find match
-        auto debug = unpackDrawKey(drawKey);
+        // We should never not find something
         assert(false);
     }
 
@@ -182,9 +188,10 @@ private:
                   { return a.drawKey < b.drawKey; });
     }
 
-    void blockInsert(InstanceBlock &block, InstanceData &instanceData, uint32_t &localIdx)
+    void blockInsert(InstanceData &instanceData, uint32_t blockIdx, uint32_t &localIdx)
     {
         ZoneScoped;
+        InstanceBlock &block = instanceBlocks[blockIdx];
         assert(block.size < block.capacity);
         assert(localIdx <= block.size);
 
@@ -201,48 +208,33 @@ private:
         block.lastKey = block[block.size - 1].drawKey;
     }
 
-    /**
-     * Find the first block that might contain this drawKey.
-     * The strategy used is to find the find the 'earliest' block that
-     * can't contain this drawKey, and then go one step back.
-     *
-     * Example:
-     *  drawKey = 125
-     *  0 123 []
-     *  1 124 [] <--
-     *  2 126 []
-     *  3 126 []
-     *  4 126 []
-     */
     uint32_t getBlockIndex(uint64_t drawKey)
     {
+        ZoneScoped;
+
+        // No need to search if we only have one
+        if (instanceBlocks.size == 1)
+            return 0;
+
+        // [left, right)
         size_t left = 0;
         size_t right = instanceBlocks.size;
 
         while (left < right)
         {
             size_t mid = (left + right) >> 1;
-            if (instanceBlocks[mid].firstKey <= drawKey)
-                left = mid + 1; // Move left search bound upwards
+            if (instanceBlocks[mid].firstKey < drawKey)
+                left = mid + 1; // GO RIGHT - Move left search bound upwards
             else
-                right = mid; // Move right search bound upwards
+                right = mid; // GO LEFT - Move right search bound upwards
         }
 
-        return (left == 0) ? 0 : uint32_t(left - 1);
+        if (left < instanceBlocks.size && instanceBlocks[left].firstKey == drawKey)
+            return uint32_t(left);
+
+        return (left - 1 > 0) ? left - 1 : 0;
     }
 
-    /**
-     * Find index right before the first drawKey that is larger or equal to newDrawKey.
-     *
-     * Example:
-     *  newDrawKey = 124
-     *  0 123
-     *  1 123
-     *  2 124 <---
-     *  3 124
-     *  4 124
-     *  5 124
-     */
     uint32_t getBlockLocalIndex(InstanceBlock &block, uint64_t newDrawKey)
     {
         size_t left = 0;
@@ -259,33 +251,11 @@ private:
         return left;
     }
 
-    uint32_t getBlockIndexSlow(uint64_t drawKey)
-    {
-        assert(instanceBlocks.size > 0);
-
-        // No need to search if we only have one
-        if (instanceBlocks.size == 1)
-            return 0;
-
-        // Find first block whose range could contain drawKey, or where it should be inserted
-        for (uint32_t i = 0; i < instanceBlocks.size; ++i)
-        {
-            InstanceBlock &b = instanceBlocks[i];
-
-            // If drawKey is before this block, insert here
-            if (drawKey >= b.firstKey)
-                return i;
-        }
-
-        // Otherwise, it goes at the end
-        return uint32_t(instanceBlocks.size - 1);
-    }
-
-    std::array<uint32_t, 2> findIndices(Entity entity, uint64_t drawKey)
+    InstanceDataEntry findEntry(Entity entity, uint64_t drawKey)
     {
         ZoneScoped;
 
-        uint32_t blockIdx = getBlockIndexSlow(drawKey);
+        uint32_t blockIdx = getBlockIndex(drawKey);
         uint32_t localIdx = 0;
         for (; blockIdx < instanceBlocks.size; blockIdx++)
         {
@@ -304,35 +274,13 @@ private:
         }
 
         // We should never not find something
-        auto debug = unpackDrawKey(drawKey);
         assert(false);
-
-        return {UINT32_MAX, UINT32_MAX};
-    }
-
-    void sizeCapacitySanityCheck()
-    {
-        if (true)
-            return;
-
-        for (size_t i = 0; i < instanceBlocks.size; ++i)
-        {
-            InstanceBlock &block = instanceBlocks[i];
-            assert(block.size <= INSTANCE_BLOCK_SIZE);
-            assert(block.capacity == INSTANCE_BLOCK_SIZE);
-            if (block.size > 0)
-            {
-                assert(block.firstKey == block[0].drawKey);
-                assert(block.lastKey == block[block.size - 1].drawKey);
-            }
-        }
+        return {};
     }
 
 public:
     void push(InstanceData instanceData)
     {
-        sizeCapacitySanityCheck();
-
         ZoneScoped;
 
         // --- Make sure we have room ---
@@ -347,7 +295,7 @@ public:
         }
 
         // --- Find indices ---
-        uint32_t blockIdx = getBlockIndexSlow(instanceData.drawKey);
+        uint32_t blockIdx = getBlockIndex(instanceData.drawKey);
         uint32_t localIdx = getBlockLocalIndex(instanceBlocks[blockIdx], instanceData.drawKey);
 
         // --- Do the splits ---
@@ -385,62 +333,53 @@ public:
             storedRight.lastKey = right._data[right.size - 1].drawKey;
         }
 
-        InstanceBlock &block = instanceBlocks[blockIdx];
-
         // --- Insert into block ---
-        blockInsert(block, instanceData, localIdx);
+        blockInsert(instanceData, blockIdx, localIdx);
     }
 
     InstanceData *find(Entity entity, uint64_t drawKey)
     {
-        sizeCapacitySanityCheck();
-
         ZoneScoped;
 
-        uint32_t blockIdx = getBlockIndexSlow(drawKey);
-        InstanceData *instance = nullptr;
-
-        bool found = false;
+        uint32_t blockIdx = getBlockIndex(drawKey);
+        uint32_t localIdx = 0;
         for (; blockIdx < instanceBlocks.size; blockIdx++)
         {
-            if (found)
-                break;
-            for (size_t i = 0; i < instanceBlocks[blockIdx].size; i++)
+            InstanceBlock &block = instanceBlocks[blockIdx];
+            assert(block.size <= block.capacity);
+
+            // Reset before next block
+            localIdx = 0;
+            for (; localIdx < block.size; localIdx++)
             {
-                if (entityIndex(instanceBlocks[blockIdx][i].entity) == entityIndex(entity))
+                if (entityIndex(block[localIdx].entity) == entityIndex(entity))
                 {
-                    instance = &instanceBlocks[blockIdx][i];
-                    found = true;
-                    break;
+                    return &block[localIdx];
                 }
             }
         }
 
-        return instance;
+        return nullptr;
     }
 
     void erase(Entity entity, uint64_t drawKey)
     {
-        sizeCapacitySanityCheck();
-
         ZoneScoped;
+        InstanceDataEntry entry = findEntry(entity, drawKey);
 
-        std::array<uint32_t, 2> indices = findIndices(entity, drawKey);
-        uint32_t blockIdx = indices[0];
-        uint32_t localIdx = indices[1];
-
-        instanceBlocks[blockIdx].shiftLeftDelete(localIdx);
-
-        if (instanceBlocks[blockIdx].size <= 0)
+        // Delete inside block
+        instanceBlocks[entry.blockIdx].shiftLeftDelete(entry.localIdx);
+        if (instanceBlocks[entry.blockIdx].size <= 0)
         {
             // Remove block
-            instanceBlocks.shiftLeftDelete(blockIdx);
+            instanceBlocks.shiftLeftDelete(entry.blockIdx);
         }
         else
         {
             // Update block's keys
-            instanceBlocks[blockIdx].firstKey = instanceBlocks[blockIdx][0].drawKey;
-            instanceBlocks[blockIdx].lastKey = instanceBlocks[blockIdx][instanceBlocks[blockIdx].size - 1].drawKey;
+            instanceBlocks[entry.blockIdx].firstKey = instanceBlocks[entry.blockIdx][0].drawKey;
+            instanceBlocks[entry.blockIdx].lastKey =
+                instanceBlocks[entry.blockIdx][instanceBlocks[entry.blockIdx].size - 1].drawKey;
         }
 
         instanceCount--;
@@ -449,8 +388,6 @@ public:
 
     void uploadToGPUBuffer(char *out, size_t outCapacityBytes)
     {
-        sizeCapacitySanityCheck();
-
         ZoneScoped;
 
         size_t instanceSize = sizeof(InstanceData);
