@@ -21,6 +21,7 @@
 #include "RendererBarriers.h"
 #include "RendererSempahores.h"
 #include "RendererApplication.h"
+#include "RendererInstanceStorage.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -54,6 +55,7 @@ struct Renderer
 
     RendererApplication application;
     RendererSempahores semaphores;
+    RendererInstanceStorage instanceStorage;
 
     uint32_t currentFrame = 0;
 
@@ -76,15 +78,13 @@ struct Renderer
     // Instances
     VkBuffer instanceBuffer = VK_NULL_HANDLE;
     VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
+    void *instanceBufferMapped = nullptr;
     uint32_t maxIntancesPerFrame = 0;
-    std::vector<InstanceData> instances;
-    std::vector<DrawCmd> drawCmds;
 
     // Vertices
     VkBuffer vertexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
     uint32_t vertexCapacity = 0;
-    void *instanceBufferMapped = nullptr;
 
     // Texture
     VkDescriptorSetLayout textureSetLayout;
@@ -274,174 +274,74 @@ struct Renderer
         particleSystem.init(application.device, application.physicalDevice, application.msaaSamples, swapchain);
     }
 
-    void buildInstanceData()
-    {
-        ZoneScoped;
+    // void buildTextInstances(float fps, glm::vec2 &playerCoords)
+    // {
+    //     ZoneScoped;
 
-        ShaderType currentShader = ShaderType::COUNT;
-        RenderLayer currentLayer = RenderLayer::World;
-        uint32_t currentVertexCount = UINT32_MAX;
-        uint32_t currentVertexOffset = UINT32_MAX;
-        float currentZ = 0.0f;
-        uint8_t currentTiebreak = 0;
-        uint32_t instanceOffset = 0;
-        AtlasIndex currentAtlasIndex = AtlasIndex::Sprite;
-        glm::vec2 currentAtlasOffset;
-        glm::vec2 currentAtlasScale;
+    //     {
+    //         char text[32];
+    //         std::snprintf(text, sizeof(text), "FPS: %d", (int)fps);
+    //         uint32_t offset = instances.size();
+    //         createTextInstances(text, sizeof(text), glm::vec2(-1.0f, -1.0f), instances);
+    //         uint32_t count = instances.size() - offset;
 
-        instances.clear();
-        {
-            ZoneScopedN("Sorting renderables");
-            std::sort(
-                ecs.activeEntities.begin(),
-                ecs.activeEntities.end(),
-                [this](Entity &a, Entity &b)
-                {
-                    Renderable &rA = ecs.renderables[ecs.entityToRenderable[entityIndex(a)]];
-                    Renderable &rB = ecs.renderables[ecs.entityToRenderable[entityIndex(b)]];
-                    return rA.drawkey < rB.drawkey;
-                });
-        }
+    //         DrawCmd dc(
+    //             UINT64_MAX,
+    //             RenderLayer::World, // Add new layer for UI
+    //             ShaderType::Font,
+    //             0.0f, 0,
+    //             6, 0,
+    //             count,
+    //             offset,
+    //             AtlasIndex::Font,
+    //             glm::vec2{},
+    //             glm::vec2{});
+    //         drawCmds.emplace_back(dc);
+    //     }
 
-        if (ecs.activeEntities.empty())
-            return;
+    //     {
+    //         char text[32];
+    //         std::snprintf(text, sizeof(text), "POS: (%d, %d)", (int)playerCoords.x, (int)playerCoords.y);
+    //         uint32_t offset = instances.size();
+    //         createTextInstances(text, sizeof(text), glm::vec2(-1.0f, 0.9f), instances);
+    //         uint32_t count = instances.size() - offset;
 
-        Renderable &firstRenderable = ecs.renderables[ecs.entityToRenderable[entityIndex(ecs.activeEntities[0])]];
-        uint64_t prevDrawKey = firstRenderable.drawkey;
-        for (Entity entity : ecs.activeEntities)
-        {
-            uint32_t entityId = entityIndex(entity);
-            uint32_t &rId = ecs.entityToRenderable[entityId];
-            uint32_t &mId = ecs.entityToMesh[entityId];
-            uint32_t &tId = ecs.entityToTransform[entityId];
-            uint32_t &matId = ecs.entityToMaterial[entityId];
-            uint32_t &uvId = ecs.entityToUvTransforms[entityId];
+    //         DrawCmd dc(
+    //             UINT64_MAX - 1,
+    //             RenderLayer::World, // Add new layer for UI
+    //             ShaderType::Font,
+    //             0.0f, 0,
+    //             6, 0,
+    //             count,
+    //             offset,
+    //             AtlasIndex::Font,
+    //             glm::vec2{},
+    //             glm::vec2{});
+    //         drawCmds.emplace_back(dc);
+    //     }
+    // }
 
-            Renderable &renderable = ecs.renderables[rId];
-            Mesh &mesh = ecs.meshes[mId];
-            Transform &transform = ecs.transforms[tId];
-            Material &material = ecs.materials[matId];
-            glm::vec4 &uvTransform = ecs.uvTransforms[uvId];
-            glm::vec2 &atlasOffset = glm::vec2{uvTransform.x, uvTransform.y};
-            glm::vec2 &atlasScale = glm::vec2{uvTransform.z, uvTransform.w};
+    // void buildDebugChunkInstances()
+    // {
+    //     ZoneScoped;
 
-            if (renderable.drawkey != prevDrawKey && !instances.empty())
-            {
-                uint32_t instanceCount = instances.size() - instanceOffset;
-                drawCmds.emplace_back(currentLayer,
-                                      currentShader,
-                                      currentZ,
-                                      currentTiebreak,
-                                      currentVertexCount,
-                                      currentVertexOffset,
-                                      instanceCount,
-                                      instanceOffset,
-                                      material.atlasIndex,
-                                      atlasOffset,
-                                      atlasScale);
-                instanceOffset = instances.size();
-            }
+    //     uint32_t offset = instances.size();
+    //     ecs.collectChunkDebugInstances(instances);
+    //     uint32_t count = instances.size() - offset;
 
-            InstanceData instance = {transform.model, material.color, uvTransform, transform.size, material.size};
-            instances.push_back(instance);
-
-            currentShader = material.shaderType;
-            currentLayer = renderable.renderLayer;
-            currentZ = renderable.z;
-            currentTiebreak = renderable.tiebreak;
-            currentVertexCount = mesh.vertexCount;
-            currentVertexOffset = mesh.vertexOffset;
-            currentAtlasIndex = material.atlasIndex;
-            currentAtlasOffset = atlasOffset;
-            currentAtlasScale = atlasScale;
-
-            // Save current drawKey for next comparison
-            prevDrawKey = renderable.drawkey;
-        }
-
-        // Last batch
-        if (!instances.empty())
-        {
-            uint32_t instanceCount = instances.size() - instanceOffset;
-            drawCmds.emplace_back(currentLayer,
-                                  currentShader,
-                                  currentZ,
-                                  currentTiebreak,
-                                  currentVertexCount,
-                                  currentVertexOffset,
-                                  instanceCount,
-                                  instanceOffset,
-                                  currentAtlasIndex,
-                                  currentAtlasOffset,
-                                  currentAtlasScale);
-        }
-    }
-
-    void buildTextInstances(float fps, glm::vec2 &playerCoords)
-    {
-        ZoneScoped;
-
-        {
-            char text[32];
-            std::snprintf(text, sizeof(text), "FPS: %d", (int)fps);
-            uint32_t offset = instances.size();
-            createTextInstances(text, sizeof(text), glm::vec2(-1.0f, -1.0f), instances);
-            uint32_t count = instances.size() - offset;
-
-            DrawCmd dc(
-                RenderLayer::World, // Add new layer for UI
-                ShaderType::Font,
-                0.0f, 0,
-                6, 0,
-                count,
-                offset,
-                AtlasIndex::Font,
-                glm::vec2{},
-                glm::vec2{});
-            drawCmds.emplace_back(dc);
-        }
-
-        {
-            char text[32];
-            std::snprintf(text, sizeof(text), "POS: (%d, %d)", (int)playerCoords.x, (int)playerCoords.y);
-            uint32_t offset = instances.size();
-            createTextInstances(text, sizeof(text), glm::vec2(-1.0f, 0.9f), instances);
-            uint32_t count = instances.size() - offset;
-
-            DrawCmd dc(
-                RenderLayer::World, // Add new layer for UI
-                ShaderType::Font,
-                0.0f, 0,
-                6, 0,
-                count,
-                offset,
-                AtlasIndex::Font,
-                glm::vec2{},
-                glm::vec2{});
-            drawCmds.emplace_back(dc);
-        }
-    }
-
-    void buildDebugChunkInstances()
-    {
-        ZoneScoped;
-
-        uint32_t offset = instances.size();
-        ecs.collectChunkDebugInstances(instances);
-        uint32_t count = instances.size() - offset;
-
-        DrawCmd dc(
-            RenderLayer::World,
-            ShaderType::Border, // or a basic flat color shader
-            0.0f, 0,
-            6, 0,
-            count,
-            offset,
-            AtlasIndex::Sprite, // or whatever fits your pipeline
-            glm::vec2{},
-            glm::vec2{});
-        drawCmds.emplace_back(dc);
-    }
+    //     DrawCmd dc(
+    //         UINT64_MAX - 2,
+    //         RenderLayer::World,
+    //         ShaderType::Border, // or a basic flat color shader
+    //         0.0f, 0,
+    //         6, 0,
+    //         count,
+    //         offset,
+    //         AtlasIndex::Sprite, // or whatever fits your pipeline
+    //         glm::vec2{},
+    //         glm::vec2{});
+    //     drawCmds.emplace_back(dc);
+    // }
 
     uint32_t prepareDraw(float delta)
     {
@@ -513,7 +413,8 @@ struct Renderer
         float zoom = camera.zoom;
 
         // Draw all instances
-        for (const auto &dc : drawCmds)
+        int instanceOffset = 0;
+        for (const auto &dc : instanceStorage.drawCmds)
         {
             assert(dc.vertexCount > 0 && "DrawCmd has zero vertexCount");
             assert(dc.instanceCount > 0 && "DrawCmd has zero instanceCount");
@@ -553,7 +454,8 @@ struct Renderer
             vkCmdBindVertexBuffers(cmd, 0, 2, vertexBuffers, offsets);
 
             // Issue draw
-            vkCmdDraw(cmd, dc.vertexCount, dc.instanceCount, dc.firstVertex, dc.firstInstance);
+            vkCmdDraw(cmd, dc.vertexCount, dc.instanceCount, dc.firstVertex, instanceOffset);
+            instanceOffset += dc.instanceCount;
         }
 
         // Draw particles
@@ -620,17 +522,16 @@ struct Renderer
 
     void uploadToInstanceBuffer()
     {
+        ZoneScoped;
         // TODO  Rewrite instanceBuffer in Renderer to use three seperate buffer based on the three different frames
         // that exist at the same time. This means we can allocate a new buffer without bothering the gpu. Pack it in a FrameResource.
-
-        ZoneScoped;
-        VkDeviceSize copySize = sizeof(InstanceData) * instances.size();
+        VkDeviceSize stride = maxIntancesPerFrame * sizeof(InstanceData);
 
         // Resize if capacity too small
-        if (instances.size() > maxIntancesPerFrame)
+        if (instanceStorage.instanceCount > maxIntancesPerFrame)
         {
-            maxIntancesPerFrame = static_cast<uint32_t>(instances.size() * 5);
-            VkDeviceSize stride = maxIntancesPerFrame * sizeof(InstanceData);
+            maxIntancesPerFrame = static_cast<uint32_t>(instanceStorage.instanceCount * 5);
+            stride = maxIntancesPerFrame * sizeof(InstanceData);
             VkDeviceSize totalSize = stride * MAX_FRAMES_IN_FLIGHT;
 
             if (instanceBufferMemory)
@@ -660,10 +561,8 @@ struct Renderer
         }
 
         // Write to the correct frame slice
-        VkDeviceSize stride = maxIntancesPerFrame * sizeof(InstanceData);
-        assert(copySize <= stride && "instance data exceeds slice capacity");
         size_t frameOffset = currentFrame * stride;
-        memcpy(static_cast<char *>(instanceBufferMapped) + frameOffset, instances.data(), static_cast<size_t>(copySize));
+        instanceStorage.uploadToGPUBuffer(static_cast<char *>(instanceBufferMapped) + frameOffset, stride);
     }
 
     void destroyColorResources()
@@ -715,15 +614,6 @@ struct Renderer
             Logrador::debug("Skipping draw : Recreating swapchain");
             return;
         }
-
-        // Collect all instance data
-        drawCmds.clear();
-        buildInstanceData();
-        buildTextInstances(fps, playerCoords);
-        buildDebugChunkInstances();
-
-        for (auto &cmd : drawCmds)
-            assert(cmd.firstInstance + cmd.instanceCount <= instances.size());
 
         //  Upload once, then draw all
         uploadToInstanceBuffer();

@@ -5,35 +5,36 @@
 
 struct DrawCmd
 {
+    uint64_t drawKey;
     ShaderType shaderType;
     RenderLayer renderLayer;
     uint32_t vertexCount;   // usually 6 for quads
     uint32_t firstVertex;   // offset in vertex buffer
     uint32_t instanceCount; // how many instances to draw
-    uint32_t firstInstance; // instance buffer offset (in instances, not bytes)
-    float z;                // used only for sorting
+    uint16_t z;             // used only for sorting
     uint8_t tiebreak;
     AtlasIndex atlasIndex;
     glm::vec2 atlasOffset;
     glm::vec2 atlasScale;
 
-    DrawCmd(RenderLayer layer,
+    DrawCmd() = default;
+    DrawCmd(uint64_t drawKey,
+            RenderLayer layer,
             ShaderType shader,
-            float z,
+            uint16_t z,
             uint8_t tie,
             uint32_t vertexCount,
             uint32_t firstVertex,
             uint32_t instanceCount,
-            uint32_t firstInstance,
             AtlasIndex atlasIndex,
             glm::vec2 atlasOffset,
             glm::vec2 atlasScale)
-        : shaderType(shader),
+        : drawKey(drawKey),
+          shaderType(shader),
           renderLayer(layer),
           vertexCount(vertexCount),
           firstVertex(firstVertex),
           instanceCount(instanceCount),
-          firstInstance(firstInstance),
           z(z),
           tiebreak(tie),
           atlasIndex(atlasIndex),

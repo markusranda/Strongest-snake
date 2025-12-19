@@ -33,9 +33,11 @@
 // PROFILING
 #include "tracy/Tracy.hpp"
 
+const int playerLength = 4;
+
 struct Player
 {
-    std::array<Entity, 4> entities;
+    std::array<Entity, playerLength> entities;
 };
 
 struct Background
@@ -68,14 +70,13 @@ struct Game
     const float thrustPower = 1800.0f;
     const float friction = 4.0f; // friction coefficient
     const uint32_t snakeSize = 32;
-
     glm::vec2 playerVelocity = {0.0f, 0.0f};
-    float rotationSpeed = 5.0f;        // tweak this
-    float playerMaxVelocity = 1200.0f; // tweak this
+    float rotationSpeed = 5.0f;
+    float playerMaxVelocity = 1200.0f;
 
     // Rotation
-    float rotationRadius = 75.0f;       // Increase to stop earlier
-    float maxDistance = rotationRadius; // Increase to stop earlier
+    float rotationRadius = 75.0f;
+    float maxRotDistance = rotationRadius;
 
     // Engine revs
     float lowRev = 0.75;
@@ -94,7 +95,95 @@ struct Game
 
     Game(Window &w) : window(w), engine(w.width, w.height, w), caveSystem(engine) {}
 
-    // --- Lifecycle ---
+    void updateInstanceData(Entity &entity, Transform &transform)
+    {
+        ZoneScoped;
+        Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
+        Material material = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(entity)]];
+        InstanceData *instanceData = engine.instanceStorage.find(entity, renderable.drawkey);
+        assert(instanceData);
+
+        instanceData->model = transform.model;
+        instanceData->worldSize = transform.size;
+        instanceData->textureSize = material.size;
+    }
+
+    void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, Renderable renderable, glm::vec4 uvTransform)
+    {
+        ZoneScoped;
+        InstanceData instance = {
+            transform.model,
+            material.color,
+            uvTransform,
+            transform.size,
+            material.size,
+            glm::vec2{uvTransform.x, uvTransform.y},
+            glm::vec2{uvTransform.z, uvTransform.w},
+            renderable.renderLayer,
+            material.shaderType,
+            renderable.z,
+            renderable.tiebreak,
+            mesh,
+            material.atlasIndex,
+            renderable.drawkey,
+            entity,
+        };
+
+        engine.instanceStorage.push(instance);
+    }
+
+    void createPlayer()
+    {
+        glm::vec2 posCursor = glm::vec2{0.0f, 0.0f};
+        RenderLayer layer = RenderLayer::World;
+        EntityType entityType = EntityType::Player;
+        SpatialStorage spatialStorage = SpatialStorage::Global;
+
+        // --- HEAD ---
+        {
+            AtlasRegion region = engine.atlasRegions[SpriteID::SPR_DRILL_HEAD];
+            glm::vec4 uvTransform = getUvTransform(region);
+            Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite, {32.0f, 32.0f}};
+            Transform transform = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
+            Mesh mesh = MeshRegistry::triangle;
+            Entity entity = engine.ecs.createEntity(transform,
+                                                    mesh,
+                                                    material,
+                                                    layer,
+                                                    entityType,
+                                                    spatialStorage,
+                                                    uvTransform,
+                                                    2.0f);
+            player.entities[0] = entity;
+            Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
+            createInstanceData(entity, transform, material, mesh, renderable, uvTransform);
+        }
+
+        // --- BODY SEGMENTS ---
+        {
+            AtlasRegion region = engine.atlasRegions[SpriteID::SPR_SNAKE_SKIN];
+            glm::vec4 uvTransform = getUvTransform(region);
+            Mesh mesh = MeshRegistry::quad;
+            Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
+            for (size_t i = 1; i < playerLength; i++)
+            {
+                posCursor -= glm::vec2{snakeSize, 0.0f};
+                Transform transform = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
+                Entity entity = engine.ecs.createEntity(transform,
+                                                        mesh,
+                                                        material,
+                                                        layer,
+                                                        entityType,
+                                                        spatialStorage,
+                                                        uvTransform,
+                                                        2.0f);
+                player.entities[i] = entity;
+                Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
+                createInstanceData(entity, transform, material, mesh, renderable, uvTransform);
+            }
+        }
+    }
+
     void init()
     {
         ZoneScoped;
@@ -111,39 +200,25 @@ struct Game
 
             // --- Background ---
             {
+                AtlasIndex atlasIndex = AtlasIndex::Sprite;
                 AtlasRegion region = engine.atlasRegions[SpriteID::SPR_CAVE_BACKGROUND];
                 Transform t = Transform{glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f}};
-                Material material = Material(ShaderType::TextureParallax, AtlasIndex::Sprite, {64.0f, 64.0f});
+                ShaderType shader = ShaderType::TextureParallax;
+                Material material = Material(shader, atlasIndex, {64.0f, 64.0f});
+                Mesh mesh = MeshRegistry::quad;
+                RenderLayer layer = RenderLayer::Background;
                 glm::vec4 uvTransform = getUvTransform(region);
+                float z = 0.0f;
                 t.commit();
 
-                background = {engine.ecs.createEntity(t, MeshRegistry::quad, material, RenderLayer::Background, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f)};
+                Entity &entity = engine.ecs.createEntity(t, mesh, material, layer, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f);
+                background = {entity};
+                Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
+                createInstanceData(background.entity, t, material, mesh, renderable, uvTransform);
             }
 
-            // ---- Player ----
-            {
-                // Start off center map above the grass
-                glm::vec2 posCursor = glm::vec2{0.0f, 0.0f};
-                {
-                    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite, {32.0f, 32.0f}};
-                    Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
-                    AtlasRegion region = engine.atlasRegions[SpriteID::SPR_DRILL_HEAD];
-                    glm::vec4 uvTransform = getUvTransform(region);
+            createPlayer();
 
-                    player.entities[0] = engine.ecs.createEntity(t, MeshRegistry::triangle, m, RenderLayer::World, EntityType::Player, SpatialStorage::Global, uvTransform, 2.0f);
-                }
-
-                AtlasRegion region = engine.atlasRegions[SpriteID::SPR_SNAKE_SKIN];
-                glm::vec4 uvTransform = getUvTransform(region);
-                for (size_t i = 1; i < 4; i++)
-                {
-                    posCursor -= glm::vec2{snakeSize, 0.0f};
-                    Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
-                    Transform t = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
-                    Entity entity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Player, SpatialStorage::Global, uvTransform, 2.0f);
-                    player.entities[i] = entity;
-                }
-            }
             // --- Camera ---
             camera = Camera{window.width, window.height};
 
@@ -263,9 +338,8 @@ struct Game
         size_t readIndex = 0;
         for (; readIndex < engine.ecs.activeEntities.size(); ++readIndex)
         {
-            ZoneScopedN("updateLifeCycleEntity");
-
             Entity entity = engine.ecs.activeEntities[readIndex];
+            Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
             uint32_t entityIdx = entityIndex(entity);
             uint32_t &entityTypeIndex = engine.ecs.entityToEntityTypes[entityIdx];
             if (entityTypeIndex == UINT32_MAX)
@@ -281,16 +355,25 @@ struct Game
             {
                 Health &health = engine.ecs.healths[engine.ecs.entityToHealth[entityIdx]];
                 Material &material = engine.ecs.materials[engine.ecs.entityToMaterial[entityIdx]];
-                material.color.a = health.current / health.max;
 
                 // Check if ground block has died
                 if (health.current > 0)
                 {
+                    float prevAlpha = material.color.a;
+                    material.color.a = health.current / health.max;
+                    if (prevAlpha != material.color.a)
+                    {
+                        InstanceData *instanceData = engine.instanceStorage.find(entity, renderable.drawkey);
+                        assert(instanceData);
+                        instanceData->color.a = material.color.a;
+                    }
+
                     engine.ecs.activeEntities[writeIndex++] = entity;
                     break;
                 }
 
                 engine.ecs.destroyEntity(entity, SpatialStorage::ChunkTile);
+                engine.instanceStorage.erase(entity, renderable.drawkey);
                 break;
             }
             case EntityType::Treasure:
@@ -312,6 +395,7 @@ struct Game
                 }
 
                 engine.ecs.destroyEntity(entity, SpatialStorage::Chunk);
+                engine.instanceStorage.erase(entity, renderable.drawkey);
                 break;
             }
             default:
@@ -350,14 +434,14 @@ struct Game
         backgroundTransform.position = camera.position - viewSize * 0.5f;
         backgroundTransform.size = viewSize;
         backgroundTransform.commit();
-        AABB oldAABB = computeWorldAABB(mesh, backgroundTransformOld);
-        AABB newAABB = computeWorldAABB(mesh, backgroundTransform);
+
+        // Update renderable stuff
+        updateInstanceData(background.entity, backgroundTransform);
     }
 
     void updateTimers(double delta)
     {
         ZoneScoped;
-
         particleTimer = max(particleTimer - delta, 0.0f);
     }
 
@@ -518,10 +602,12 @@ struct Game
             // Optionally adjust rotation
             t2.rotation = atan2(dir.y, dir.x);
             t2.commit();
+            updateInstanceData(entity2, t2);
         }
 
         // Move head
         headT.commit();
+        updateInstanceData(player.entities.front(), headT);
     }
 
     void rotateHeadLeft(float dt)
@@ -534,8 +620,8 @@ struct Game
         glm::vec2 leftDir = glm::vec2(forward.y, -forward.x);
         glm::vec2 radiusCenter = transform.position + leftDir * rotationRadius;
 
-        float rotationSpeed = 5.0f;         // tweak this
-        float maxDistance = rotationRadius; // Increase to stop earlier
+        float rotationSpeed = 5.0f;            // tweak this
+        float maxRotDistance = rotationRadius; // Increase to stop earlier
 
         for (size_t i = 0; i < 2; i++)
         {
@@ -557,7 +643,7 @@ struct Game
                 deltaAngle += 2.0f * SnakeMath::PI;
 
             float dist = glm::length(segment.position - radiusCenter);
-            if (dist < maxDistance)
+            if (dist < maxRotDistance)
                 continue;
 
             segment.position = segment.position - dt * (localCenter);
@@ -597,7 +683,7 @@ struct Game
                 deltaAngle += 2.0f * SnakeMath::PI;
 
             float dist = glm::length(segment.position - radiusCenter);
-            if (dist < maxDistance)
+            if (dist < maxRotDistance)
                 continue;
 
             segment.position = segment.position - dt * (localCenter);

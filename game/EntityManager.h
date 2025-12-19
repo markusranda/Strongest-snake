@@ -91,7 +91,7 @@ struct EntityManager
         EntityType entityType,
         const SpatialStorage &spatialStorage,
         glm::vec4 uvTransform = glm::vec4{},
-        float z = 0.0f)
+        uint16_t z = 0)
     {
         // ---- Generate entity ----
         uint32_t index;
@@ -132,7 +132,7 @@ struct EntityManager
 
         // ---- Add to stores ----
         Renderable renderable = {entity, z, 0, renderLayer};
-        renderable.makeDrawKey(material.shaderType, material.atlasIndex, mesh.vertexOffset, mesh.vertexCount);
+        renderable.packDrawKey(material.shaderType, mesh.vertexOffset);
         AABB aabb = computeWorldAABB(mesh, transform);
 
         addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
@@ -380,16 +380,29 @@ struct EntityManager
         entity.id = UINT32_MAX;
     }
 
-    void collectChunkDebugInstances(std::vector<InstanceData> &instances)
-    {
-        for (auto &[key, val] : chunks)
-        {
-            Transform t = Transform(glm::vec2{val.chunkX, val.chunkY}, glm::vec2{CHUNK_WORLD_SIZE, CHUNK_WORLD_SIZE});
-            glm::vec4 color = glm::vec4(1.0f, 0.0f, 0.0f, 0.25f); // translucent red
-            InstanceData instanceData(t.model, color, glm::vec4(0, 0, 1, 1), glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f});
-            instances.push_back(instanceData);
-        }
-    }
+    // TODO: Reimplement
+    // void collectChunkDebugInstances(std::vector<InstanceData> &instances)
+    // {
+    //     for (auto &[key, val] : chunks)
+    //     {
+    //         Transform t = Transform(glm::vec2{val.chunkX, val.chunkY}, glm::vec2{CHUNK_WORLD_SIZE, CHUNK_WORLD_SIZE});
+    //         glm::vec4 color = glm::vec4(1.0f, 0.0f, 0.0f, 0.25f); // translucent red
+    //         InstanceData instanceData(
+    //             t.model,
+    //             color,
+    //             glm::vec4(0, 0, 1, 1),
+    //             glm::vec2{0.0f, 0.0f},
+    //             glm::vec2{0.0f, 0.0f},
+    //             RenderLayer::World,
+    //             ShaderType::FlatColor,
+    //             0.0f,
+    //             0,
+    //             MeshRegistry::quad,
+    //             AtlasIndex::Sprite,
+    //             UINT64_MAX,);
+    //         instances.push_back(instanceData);
+    //     }
+    // }
 
     inline void insertEntityInChunk(Entity entity, Transform &transform)
     {

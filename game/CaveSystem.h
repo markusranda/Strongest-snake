@@ -41,6 +41,30 @@ struct CaveSystem
         return coord * tileSize;
     }
 
+    void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, Renderable renderable, glm::vec4 uvTransform)
+    {
+        ZoneScoped;
+        InstanceData instance = {
+            transform.model,
+            material.color,
+            uvTransform,
+            transform.size,
+            material.size,
+            glm::vec2{uvTransform.x, uvTransform.y},
+            glm::vec2{uvTransform.z, uvTransform.w},
+            renderable.renderLayer,
+            material.shaderType,
+            renderable.z,
+            renderable.tiebreak,
+            mesh,
+            material.atlasIndex,
+            renderable.drawkey,
+            entity,
+        };
+
+        engine.instanceStorage.push(instance);
+    }
+
     void createRandomTreasure(Entity &groundEntity, Transform &t)
     {
         int idx = std::lround(SnakeMath::randomBetween(0, TREASURE_COUNT - 1));
@@ -48,14 +72,17 @@ struct CaveSystem
         createTreasure(groundEntity, t, key);
     }
 
-    void createTreasure(Entity &groundEntity, Transform &t, uint32_t key)
+    void createTreasure(Entity &groundEntity, Transform &transform, uint32_t key)
     {
         Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
         AtlasRegion region = engine.atlasRegions[key];
         glm::vec4 uvTransform = getUvTransform(region);
-        Entity treasureEntity = engine.ecs.createEntity(t, MeshRegistry::quad, m, RenderLayer::World, EntityType::Treasure, SpatialStorage::Chunk, uvTransform, 0.0f);
+        Mesh mesh = MeshRegistry::quad;
+        Entity treasureEntity = engine.ecs.createEntity(transform, mesh, m, RenderLayer::World, EntityType::Treasure, SpatialStorage::Chunk, uvTransform, 0.0f);
         Treasure treasure = {groundEntity};
         engine.ecs.addToStore(engine.ecs.treasures, engine.ecs.entityToTreasure, engine.ecs.treasureToEntity, treasureEntity, treasure);
+        Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(treasureEntity)]];
+        createInstanceData(treasureEntity, transform, material, mesh, renderable, uvTransform);
     }
 
     inline void createGround(float xWorld, float yWorld)
@@ -66,9 +93,10 @@ struct CaveSystem
         Transform transform = {position, size, GROUND_NAME};
         AtlasRegion region = engine.atlasRegions[SpriteID::SPR_GROUND_MID_1];
         glm::vec4 uvTransform = getUvTransform(region);
+        Mesh mesh = MeshRegistry::quad;
         Entity entity = engine.ecs.createEntity(
             transform,
-            MeshRegistry::quad,
+            mesh,
             material,
             RenderLayer::World,
             EntityType::Ground,
@@ -80,8 +108,12 @@ struct CaveSystem
         {
             createRandomTreasure(entity, transform);
         }
-
         engine.ecs.addToStore(engine.ecs.healths, engine.ecs.entityToHealth, engine.ecs.healthToEntity, entity, Health{100, 100});
+
+        // Update renderer
+        Renderable renderable = {entity, 0, 0, RenderLayer::World};
+        renderable.packDrawKey(material.shaderType, mesh.vertexOffset);
+        createInstanceData(entity, transform, material, mesh, renderable, uvTransform);
     }
 
     inline void createGraceArea()
