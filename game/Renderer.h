@@ -410,6 +410,7 @@ struct Renderer
 
         VkCommandBuffer cmd = commandBuffers[currentFrame];
         CameraPushConstant cameraData = {camera.getViewProj()};
+        FragPushConstant fragmentPushConstant = FragPushConstant{camera.position, globalTime};
         float zoom = camera.zoom;
 
         // Draw all instances
@@ -423,8 +424,6 @@ struct Renderer
             assert(descriptorSets[(size_t)dc.atlasIndex] != VK_NULL_HANDLE && "Descriptor set missing!");
 
             const Pipeline &pipeline = pipelines[(size_t)dc.shaderType];
-            FragPushConstant fragmentPushConstant = FragPushConstant{dc.atlasOffset, dc.atlasScale, camera.position, globalTime};
-            const size_t constantSize = sizeof(FragPushConstant);
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
             vkCmdBindDescriptorSets(cmd,
                                     VK_PIPELINE_BIND_POINT_GRAPHICS,

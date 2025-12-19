@@ -25,8 +25,6 @@ struct InstanceData
     alignas(8) glm::vec2 textureSize;
 
     // CPU SIDE
-    glm::vec2 atlasOffset;
-    glm::vec2 atlasScale;
     RenderLayer layer;
     ShaderType shader;
     uint16_t z;
@@ -42,8 +40,6 @@ struct InstanceData
                  glm::vec4 uvTransform,
                  glm::vec2 worldSize,
                  glm::vec2 textureSize,
-                 glm::vec2 atlasOffset,
-                 glm::vec2 atlasScale,
                  RenderLayer layer,
                  ShaderType shader,
                  uint16_t z,
@@ -57,8 +53,6 @@ struct InstanceData
           uvTransform(uvTransform),
           worldSize(worldSize),
           textureSize(textureSize),
-          atlasOffset(atlasOffset),
-          atlasScale(atlasScale),
           layer(layer),
           shader(shader),
           z(z),

@@ -1,9 +1,7 @@
 #version 450
 
 layout(push_constant, std430) uniform FragPushConstant {
-    layout(offset = 64) vec2 atlasOffset;
-    vec2 atlasScale;
-    vec2 cameraWorldPos;
+    layout(offset = 64) vec2 cameraWorldPos;
     float globalTime;
 } pc;
 

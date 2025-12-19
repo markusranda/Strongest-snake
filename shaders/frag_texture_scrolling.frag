@@ -1,9 +1,7 @@
 #version 450
 
 layout(push_constant, std430) uniform FragPushConstant {
-    layout(offset = 64) vec2 atlasOffset;
-    vec2 atlasScale;
-    vec2 cameraWorldPos;
+    layout(offset = 64) vec2 cameraWorldPos;
     float globalTime;
 } pc;
 
@@ -18,11 +16,11 @@ layout(set = 0, binding = 0) uniform sampler2D texSampler;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    float scroll = fract(pc.globalTime * 0.0025); 
+    float scroll = fract(pc.globalTime * 0.0055); 
     vec2 localUv = tileOrigin + fragUV * tileSize;
 
     float val = localUv.y + scroll;
-    localUv.y = pc.atlasOffset.y + mod(val - pc.atlasOffset.y, pc.atlasScale.y);
+    localUv.y = tileOrigin.y + mod(val - tileOrigin.y, tileSize.y);
 
     vec4 texel = texture(texSampler, localUv);
     outColor = texel * fragColor;

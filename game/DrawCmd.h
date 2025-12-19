@@ -14,8 +14,6 @@ struct DrawCmd
     uint16_t z;             // used only for sorting
     uint8_t tiebreak;
     AtlasIndex atlasIndex;
-    glm::vec2 atlasOffset;
-    glm::vec2 atlasScale;
 
     DrawCmd() = default;
     DrawCmd(uint64_t drawKey,
@@ -26,9 +24,7 @@ struct DrawCmd
             uint32_t vertexCount,
             uint32_t firstVertex,
             uint32_t instanceCount,
-            AtlasIndex atlasIndex,
-            glm::vec2 atlasOffset,
-            glm::vec2 atlasScale)
+            AtlasIndex atlasIndex)
         : drawKey(drawKey),
           shaderType(shader),
           renderLayer(layer),
@@ -37,9 +33,7 @@ struct DrawCmd
           instanceCount(instanceCount),
           z(z),
           tiebreak(tie),
-          atlasIndex(atlasIndex),
-          atlasOffset(atlasOffset),
-          atlasScale(atlasScale)
+          atlasIndex(atlasIndex)
     {
     }
 };

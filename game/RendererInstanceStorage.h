@@ -177,8 +177,6 @@ private:
             instanceData.mesh.vertexOffset,
             1,
             instanceData.atlasIndex,
-            instanceData.atlasOffset,
-            instanceData.atlasScale,
         });
 
         // Always sort drawCmds by drawKey.

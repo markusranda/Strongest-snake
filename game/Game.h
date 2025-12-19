@@ -117,8 +117,6 @@ struct Game
             uvTransform,
             transform.size,
             material.size,
-            glm::vec2{uvTransform.x, uvTransform.y},
-            glm::vec2{uvTransform.z, uvTransform.w},
             renderable.renderLayer,
             material.shaderType,
             renderable.z,
