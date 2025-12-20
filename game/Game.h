@@ -108,9 +108,10 @@ struct Game
         instanceData->textureSize = material.size;
     }
 
-    void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, Renderable renderable, glm::vec4 uvTransform)
+    void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, glm::vec4 uvTransform)
     {
         ZoneScoped;
+        Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
         InstanceData instance = {
             transform.model,
             material.color,
@@ -153,8 +154,7 @@ struct Game
                                                     uvTransform,
                                                     2.0f);
             player.entities[0] = entity;
-            Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
-            createInstanceData(entity, transform, material, mesh, renderable, uvTransform);
+            createInstanceData(entity, transform, material, mesh, uvTransform);
         }
 
         // --- BODY SEGMENTS ---
@@ -177,7 +177,7 @@ struct Game
                                                         2.0f);
                 player.entities[i] = entity;
                 Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
-                createInstanceData(entity, transform, material, mesh, renderable, uvTransform);
+                createInstanceData(entity, transform, material, mesh, uvTransform);
             }
         }
     }
@@ -212,7 +212,7 @@ struct Game
                 Entity &entity = engine.ecs.createEntity(t, mesh, material, layer, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f);
                 background = {entity};
                 Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
-                createInstanceData(background.entity, t, material, mesh, renderable, uvTransform);
+                createInstanceData(background.entity, t, material, mesh, uvTransform);
             }
 
             createPlayer();

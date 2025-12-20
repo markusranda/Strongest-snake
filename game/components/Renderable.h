@@ -38,8 +38,8 @@ struct Renderable
         key |= (uint64_t(renderLayer) & MASK_8_BITS) << 56;
         key |= (uint64_t(shader) & MASK_16_BITS) << 40;
         key |= (uint64_t(vertexOffset) & MASK_16_BITS) << 24;
-        key |= (uint64_t)z & MASK_16_BITS << 8;
-        key |= (uint64_t)tiebreak & MASK_8_BITS << 0;
+        key |= (uint64_t(z) & MASK_16_BITS) << 8;
+        key |= (uint64_t(tiebreak) & MASK_8_BITS) << 0;
 
         // Commit
         drawkey = key;

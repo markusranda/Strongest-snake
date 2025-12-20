@@ -41,9 +41,10 @@ struct CaveSystem
         return coord * tileSize;
     }
 
-    void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, Renderable renderable, glm::vec4 uvTransform)
+    void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, glm::vec4 uvTransform)
     {
         ZoneScoped;
+        Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
         InstanceData instance = {
             transform.model,
             material.color,
@@ -76,11 +77,19 @@ struct CaveSystem
         AtlasRegion region = engine.atlasRegions[key];
         glm::vec4 uvTransform = getUvTransform(region);
         Mesh mesh = MeshRegistry::quad;
-        Entity treasureEntity = engine.ecs.createEntity(transform, mesh, m, RenderLayer::World, EntityType::Treasure, SpatialStorage::Chunk, uvTransform, 0.0f);
+        Entity treasureEntity = engine.ecs.createEntity(
+            transform,
+            mesh,
+            m,
+            RenderLayer::World,
+            EntityType::Treasure,
+            SpatialStorage::Chunk,
+            uvTransform,
+            1);
         Treasure treasure = {groundEntity};
         engine.ecs.addToStore(engine.ecs.treasures, engine.ecs.entityToTreasure, engine.ecs.treasureToEntity, treasureEntity, treasure);
-        Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(treasureEntity)]];
-        createInstanceData(treasureEntity, transform, material, mesh, renderable, uvTransform);
+
+        createInstanceData(treasureEntity, transform, material, mesh, uvTransform);
     }
 
     inline void createGround(float xWorld, float yWorld)
@@ -100,7 +109,7 @@ struct CaveSystem
             EntityType::Ground,
             SpatialStorage::ChunkTile,
             uvTransform,
-            8.0f);
+            0);
 
         if (SnakeMath::chance(0.005))
         {
@@ -109,9 +118,7 @@ struct CaveSystem
         engine.ecs.addToStore(engine.ecs.healths, engine.ecs.entityToHealth, engine.ecs.healthToEntity, entity, Health{100, 100});
 
         // Update renderer
-        Renderable renderable = {entity, 0, 0, RenderLayer::World};
-        renderable.packDrawKey(material.shaderType, mesh.vertexOffset);
-        createInstanceData(entity, transform, material, mesh, renderable, uvTransform);
+        createInstanceData(entity, transform, material, mesh, uvTransform);
     }
 
     inline void createGraceArea()
