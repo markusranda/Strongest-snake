@@ -38,29 +38,15 @@ struct InstanceBlockArray
         return _data[i];
     }
 
-    BlockID &insert(size_t idx, BlockID blockId)
+    size_t push(BlockID blockId)
     {
-        assert(idx <= size);
-
         // --- Grow if needed ---
         if (size == capacity)
             grow();
-
-        // --- Insert ---
+        size_t idx = size++;
         _data[idx] = blockId;
-        size++;
 
-        assert(size <= capacity);
-        return _data[idx];
-    }
-
-    BlockID &push(BlockID blockId)
-    {
-        // --- Grow if needed ---
-        if (size == capacity)
-            grow();
-
-        return _data[size++] = blockId;
+        return idx;
     }
 
     BlockID &shiftRightInsert(size_t idx, BlockID blockId)
@@ -113,13 +99,20 @@ struct EntityInstanceMap
     InstanceDataEntry *_data = nullptr;
     static_assert(std::is_trivially_copyable_v<InstanceDataEntry>);
 
-    InstanceDataEntry &insert(uint32_t idx, InstanceDataEntry dataEntry)
+    bool slotEmpty(uint32_t idx)
+    {
+        return _data[idx].blockId == UINT32_MAX && _data[idx].localIdx == UINT32_MAX;
+    }
+
+    InstanceDataEntry &set(uint32_t idx, InstanceDataEntry dataEntry)
     {
         if (idx >= capacity)
             grow(idx);
 
+        if (slotEmpty(idx))
+            inserts++;
+
         _data[idx] = dataEntry;
-        inserts++;
 
         return _data[idx];
     }
@@ -127,12 +120,16 @@ struct EntityInstanceMap
     InstanceDataEntry &get(uint32_t idx)
     {
         assert(idx < capacity);
+        assert(!slotEmpty(idx));
+
         return _data[idx];
     }
 
     void erase(size_t idx)
     {
         assert(idx < capacity);
+        assert(inserts > 0);
+        assert(!slotEmpty(idx));
 
         std::memset(_data + idx, 0xFF, 1 * sizeof(InstanceDataEntry));
         inserts--;
@@ -147,7 +144,7 @@ struct EntityInstanceMap
             throw std::bad_alloc();
 
         // Overwrite new memory
-        std::memset(newData, 0xFF, newCapacity);
+        std::memset(newData, 0xFF, newCapacity * sizeof(InstanceDataEntry));
 
         // copy existing elements
         if (_data)
@@ -163,7 +160,7 @@ struct EntityInstanceMap
 
 struct RendererInstanceStorage
 {
-    InstanceBlockArray instanceBlocks;
+    InstanceBlockArray sortedBlocks;
     EntityInstanceMap entityInstances;
     WinInstanceBlockPool pool;
     std::vector<DrawCmd> drawCmds;
@@ -231,20 +228,26 @@ public:
 
     void push(InstanceData instanceData)
     {
-        // --- Initialize empty instanceBlocks ---
-        if (instanceBlocks.size == 0)
+        InstanceDataEntry entry = {};
+        bool added = false;
+
+        // --- No duplicate entities in my house ---
+        uint32_t idx = entityIndex(instanceData.entity);
+        if (idx < entityInstances.capacity)
+            assert(entityInstances.slotEmpty(idx));
+
+        // --- Initialize empty sortedBlocks ---
+        if (sortedBlocks.size == 0)
         {
             BlockID blockId = pool.alloc();
-            BlockID inserted = instanceBlocks.insert(0, blockId);
+            sortedBlocks.push(blockId);
             pool.ptr(blockId)->drawKey = instanceData.drawKey;
         }
 
         // --- Find empty block for this drawKey ---
-        InstanceDataEntry entry = {};
-        bool added = false;
-        for (size_t i = 0; i < instanceBlocks.size; i++)
+        for (size_t i = 0; i < sortedBlocks.size; i++)
         {
-            BlockID blockId = instanceBlocks[i];
+            BlockID blockId = sortedBlocks[i];
             InstanceBlock *block = pool.ptr(blockId);
             assert(block);
 
@@ -265,13 +268,13 @@ public:
             InstanceBlock *block = pool.ptr(blockId);
             block->drawKey = instanceData.drawKey;
 
-            for (size_t i = 0; i < instanceBlocks.size; i++)
+            for (size_t i = 0; i < sortedBlocks.size; i++)
             {
-                BlockID matchBlockId = instanceBlocks[i];
+                BlockID matchBlockId = sortedBlocks[i];
                 uint64_t matchKey = pool.ptr(matchBlockId)->drawKey;
                 if (matchKey >= block->drawKey)
                 {
-                    BlockID inserted = instanceBlocks.shiftRightInsert(i, blockId);
+                    sortedBlocks.shiftRightInsert(i, blockId);
                     added = true;
                     break;
                 }
@@ -279,7 +282,8 @@ public:
 
             if (!added)
             {
-                BlockID inserted = instanceBlocks.push(blockId);
+                sortedBlocks.push(blockId);
+                added = true;
             }
 
             // --- Finally append data ----
@@ -288,8 +292,12 @@ public:
             entry.localIdx = localIdx;
         }
 
+        assert(added);
+        assert(entry.blockId != UINT32_MAX);
+        assert(entry.localIdx != UINT32_MAX);
+
         incrementDrawCmds(instanceData);
-        entityInstances.insert(entityIndex(instanceData.entity), entry);
+        entityInstances.set(entityIndex(instanceData.entity), entry);
         instanceCount++;
 
         assert(instanceCount == entityInstances.inserts);
@@ -310,19 +318,44 @@ public:
         uint32_t entityIdx = entityIndex(entity);
         InstanceDataEntry entry = entityInstances.get(entityIdx);
 
+        // --- Update InstanceData ---
         InstanceBlock *block = pool.ptr(entry.blockId);
         assert(block);
-        InstanceData &instance = block->_data[entry.localIdx];
-        block->erase(entry.localIdx);
+
+        // --- Update DrawCmds ---
+        uint64_t drawKey = block->_data[entry.localIdx].drawKey;
+        decrementDrawCmds(drawKey);
+
+        InstanceData *swappedInstance = block->erase_swap(entry.localIdx);
+
+        // --- Update sortedBlocks ---
         if (block->size == 0)
         {
-            instanceBlocks.shiftLeftRemove(entry.blockId);
+            size_t pos = SIZE_MAX;
+            for (size_t i = 0; i < sortedBlocks.size; ++i)
+            {
+                if (sortedBlocks[i] == entry.blockId)
+                {
+                    pos = i;
+                    break;
+                }
+            }
+            assert(pos != SIZE_MAX);
+
+            sortedBlocks.shiftLeftRemove(pos);
+            pool.free(entry.blockId);
         }
 
+        // --- Update entityInstances ---
+        if (swappedInstance)
+        {
+            assert(swappedInstance->entity != entity);
+            entityInstances.set(entityIndex(swappedInstance->entity), entry);
+        }
         entityInstances.erase(entityIdx);
-        instanceCount--;
-        decrementDrawCmds(instance.drawKey);
 
+        // --- Update instanceCount ---
+        instanceCount--;
         assert(instanceCount == entityInstances.inserts);
     }
 
@@ -333,9 +366,9 @@ public:
 
         size_t instanceSize = sizeof(InstanceData);
         size_t outBytes = 0;
-        for (size_t b = 0; b < instanceBlocks.size; ++b)
+        for (size_t b = 0; b < sortedBlocks.size; ++b)
         {
-            BlockID blockId = instanceBlocks[b];
+            BlockID blockId = sortedBlocks[b];
             InstanceBlock *blk = pool.ptr(blockId);
             const size_t bytes = blk->size * instanceSize;
             assert(outBytes + bytes <= outCapacityBytes);

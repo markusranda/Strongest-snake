@@ -13,6 +13,11 @@ struct Entity
     {
         return id == other.id;
     }
+
+    bool operator!=(const Entity &other) const noexcept
+    {
+        return id != other.id;
+    }
 };
 
 inline uint32_t entityIndex(Entity &e)

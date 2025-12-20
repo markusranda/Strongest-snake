@@ -41,7 +41,7 @@ struct InstanceBlock
         return idx;
     }
 
-    void erase(size_t idx)
+    InstanceData *erase_swap(size_t idx)
     {
         assert(size > 0);
         assert(idx < size);
@@ -49,10 +49,12 @@ struct InstanceBlock
         if (size == 1)
         {
             size--;
-            return;
+            return nullptr;
         }
 
         _data[idx] = _data[size - 1];
         size--;
+
+        return &_data[idx];
     }
 };
