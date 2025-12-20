@@ -50,4 +50,16 @@ namespace SnakeMath
         std::uniform_real_distribution<double> dist(min, max);
         return dist(rng);
     }
+
+    /**
+     * chunkPow2 must be power of two
+     */
+    inline uint32_t roundUpMultiplePow2(uint32_t v, uint32_t chunkPow2)
+    {
+        if (v == 0)
+            return chunkPow2;
+
+        return (v + (chunkPow2 - 1)) & ~(chunkPow2 - 1);
+    }
+
 }

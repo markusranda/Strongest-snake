@@ -62,6 +62,23 @@ struct InstanceData
           drawKey(drawKey),
           entity(entity) {}
 
+    bool operator==(const InstanceData &other) const
+    {
+        return model == other.model &&
+               color == other.color &&
+               uvTransform == other.uvTransform &&
+               worldSize == other.worldSize &&
+               textureSize == other.textureSize &&
+               layer == other.layer &&
+               shader == other.shader &&
+               z == other.z &&
+               tie == other.tie &&
+               mesh == other.mesh &&
+               atlasIndex == other.atlasIndex &&
+               drawKey == other.drawKey &&
+               entity == other.entity;
+    }
+
     static constexpr size_t ATTRIBUTE_COUNT = 8; // This always needs to match number of attributes
 
     static VkVertexInputBindingDescription getBindingDescription()

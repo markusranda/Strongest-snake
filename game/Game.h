@@ -100,7 +100,7 @@ struct Game
         ZoneScoped;
         Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
         Material material = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(entity)]];
-        InstanceData *instanceData = engine.instanceStorage.find(entity, renderable.drawkey);
+        InstanceData *instanceData = engine.instanceStorage.find(entity);
         assert(instanceData);
 
         instanceData->model = transform.model;
@@ -361,7 +361,7 @@ struct Game
                     material.color.a = health.current / health.max;
                     if (prevAlpha != material.color.a)
                     {
-                        InstanceData *instanceData = engine.instanceStorage.find(entity, renderable.drawkey);
+                        InstanceData *instanceData = engine.instanceStorage.find(entity);
                         assert(instanceData);
                         instanceData->color.a = material.color.a;
                     }
@@ -371,7 +371,7 @@ struct Game
                 }
 
                 engine.ecs.destroyEntity(entity, SpatialStorage::ChunkTile);
-                engine.instanceStorage.erase(entity, renderable.drawkey);
+                engine.instanceStorage.erase(entity);
                 break;
             }
             case EntityType::Treasure:
@@ -393,7 +393,7 @@ struct Game
                 }
 
                 engine.ecs.destroyEntity(entity, SpatialStorage::Chunk);
-                engine.instanceStorage.erase(entity, renderable.drawkey);
+                engine.instanceStorage.erase(entity);
                 break;
             }
             default:

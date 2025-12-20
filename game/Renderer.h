@@ -110,6 +110,7 @@ struct Renderer
             createSemaphores();
             createCommandBuffers();
             createParticleSystem();
+            createInstanceStorage();
             Logrador::info("Renderer is complete");
         }
         catch (const std::exception &e)
@@ -272,6 +273,11 @@ struct Renderer
     void createParticleSystem()
     {
         particleSystem.init(application.device, application.physicalDevice, application.msaaSamples, swapchain);
+    }
+
+    void createInstanceStorage()
+    {
+        instanceStorage.init();
     }
 
     // void buildTextInstances(float fps, glm::vec2 &playerCoords)

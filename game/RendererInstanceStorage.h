@@ -10,7 +10,10 @@
 
 #pragma once
 #include "InstanceData.h"
+#include "InstanceBlock.h"
+#include "WinInstanceBlockPool.h"
 #include "DrawCmd.h"
+#include "SnakeMath.h"
 #include "components/Entity.h"
 #include "components/Renderable.h"
 #include <cmath>
@@ -18,112 +21,142 @@
 #include <vector>
 #include <algorithm>
 
-// Must be power-of-two
-static const uint32_t INSTANCE_BLOCK_SIZE = 128;
-static_assert((INSTANCE_BLOCK_SIZE & (INSTANCE_BLOCK_SIZE - 1)) == 0, "INSTANCE_BLOCK_SIZE must be power of two");
-static const uint32_t INSTANCE_BLOCK_HALF = INSTANCE_BLOCK_SIZE / 2;
-
 struct InstanceDataEntry
 {
-    uint32_t blockIdx = UINT32_MAX;
+    BlockID blockId = UINT32_MAX;
     uint32_t localIdx = UINT32_MAX;
-};
-
-struct InstanceBlock
-{
-    uint16_t size = 0;
-    uint16_t capacity = INSTANCE_BLOCK_SIZE;
-    InstanceData _data[INSTANCE_BLOCK_SIZE];
-    uint64_t firstKey = 0;
-    uint64_t lastKey = 0;
-
-    InstanceData &operator[](size_t i)
-    {
-        return _data[i];
-    }
-
-    const InstanceData &operator[](size_t i) const
-    {
-        return _data[i];
-    }
-
-    void shiftLeftDelete(uint32_t pos)
-    {
-        assert(pos < size);
-        assert(size > 0);
-
-        std::memmove(&_data[pos], &_data[pos + 1], (size - pos - 1) * sizeof(InstanceData));
-        size--;
-    }
-
-    void shiftRight(uint32_t pos)
-    {
-        assert(size < capacity);
-        assert(pos <= size);
-
-        std::memmove(&_data[pos + 1], &_data[pos], (size - pos) * sizeof(InstanceData));
-    }
 };
 
 struct InstanceBlockArray
 {
     size_t size = 0;
     size_t capacity = 0;
-    InstanceBlock *_data = nullptr;
+    BlockID *_data = nullptr;
 
-    InstanceBlock &operator[](size_t i)
+    const BlockID &operator[](size_t i) const
     {
         return _data[i];
     }
 
-    const InstanceBlock &operator[](size_t i) const
+    BlockID &insert(size_t idx, BlockID blockId)
     {
-        return _data[i];
-    }
+        assert(idx <= size);
 
-    InstanceBlock &insert(size_t idx, InstanceBlock &block)
-    {
-        _data[idx] = block;
+        // --- Grow if needed ---
+        if (size == capacity)
+            grow();
+
+        // --- Insert ---
+        _data[idx] = blockId;
         size++;
 
         assert(size <= capacity);
         return _data[idx];
     }
 
-    void shiftLeftDelete(uint32_t pos)
+    BlockID &push(BlockID blockId)
     {
-        assert(pos < size);
-        assert(size > 0);
+        // --- Grow if needed ---
+        if (size == capacity)
+            grow();
 
-        std::memmove(&_data[pos], &_data[pos + 1], (size - pos - 1) * sizeof(InstanceBlock));
-        size--;
+        return _data[size++] = blockId;
     }
 
-    void shiftRight(uint32_t pos)
+    BlockID &shiftRightInsert(size_t idx, BlockID blockId)
     {
-        assert(size < capacity);
-        assert(pos <= size);
+        assert(idx <= size);
 
-        std::memmove(&_data[pos + 1], &_data[pos], (size - pos) * sizeof(InstanceBlock));
+        // --- Grow if needed ---
+        if (size == capacity)
+            grow();
+
+        std::memmove(&_data[idx + 1], &_data[idx], (size - idx) * sizeof(BlockID));
+        _data[idx] = blockId;
+        size++;
+
+        return _data[idx];
+    }
+
+    void shiftLeftRemove(size_t idx)
+    {
+        assert(size > 0);
+        assert(idx < size);
+
+        std::memmove(&_data[idx], &_data[idx + 1], (size - idx - 1) * sizeof(BlockID));
+        size--;
     }
 
     void grow()
     {
         size_t newCapacity = capacity + 1024;
-        void *newData = _aligned_malloc(newCapacity * sizeof(InstanceBlock), 16);
+        void *newData = malloc(newCapacity * sizeof(BlockID));
         if (!newData)
             throw std::bad_alloc();
 
         // copy existing elements
         if (_data && size > 0)
-        {
-            std::memcpy(newData, _data, size * sizeof(InstanceBlock));
-        }
+            std::memcpy(newData, _data, size * sizeof(BlockID));
 
         if (_data)
-            _aligned_free(_data);
+            free(_data);
 
-        _data = (InstanceBlock *)newData;
+        _data = (BlockID *)newData;
+        capacity = newCapacity;
+    }
+};
+
+struct EntityInstanceMap
+{
+    size_t capacity = 0;
+    size_t inserts = 0;
+    InstanceDataEntry *_data = nullptr;
+    static_assert(std::is_trivially_copyable_v<InstanceDataEntry>);
+
+    InstanceDataEntry &insert(uint32_t idx, InstanceDataEntry dataEntry)
+    {
+        if (idx >= capacity)
+            grow(idx);
+
+        _data[idx] = dataEntry;
+        inserts++;
+
+        return _data[idx];
+    }
+
+    InstanceDataEntry &get(uint32_t idx)
+    {
+        assert(idx < capacity);
+        return _data[idx];
+    }
+
+    void erase(size_t idx)
+    {
+        assert(idx < capacity);
+
+        std::memset(_data + idx, 0xFF, 1 * sizeof(InstanceDataEntry));
+        inserts--;
+    }
+
+    void grow(uint32_t newIdx)
+    {
+        const uint32_t MEM_CHUNK_SIZE = 0xFFFF;
+        size_t newCapacity = SnakeMath::roundUpMultiplePow2(newIdx, MEM_CHUNK_SIZE);
+        void *newData = malloc(newCapacity * sizeof(InstanceDataEntry));
+        if (!newData)
+            throw std::bad_alloc();
+
+        // Overwrite new memory
+        std::memset(newData, 0xFF, newCapacity);
+
+        // copy existing elements
+        if (_data)
+            std::memcpy(newData, _data, capacity * sizeof(InstanceDataEntry));
+
+        if (_data)
+            free(_data);
+
+        _data = (InstanceDataEntry *)newData;
         capacity = newCapacity;
     }
 };
@@ -131,25 +164,29 @@ struct InstanceBlockArray
 struct RendererInstanceStorage
 {
     InstanceBlockArray instanceBlocks;
+    EntityInstanceMap entityInstances;
+    WinInstanceBlockPool pool;
     std::vector<DrawCmd> drawCmds;
     uint32_t instanceCount = 0;
 
 private:
     void decrementDrawCmds(uint64_t drawKey)
     {
-        // Search for existing drawCmd
-        for (size_t i = 0; i < drawCmds.size(); i++)
+        for (size_t i = 0; i < drawCmds.size(); ++i)
         {
-            // Decrement instanceCount of targeted drawCmd
-            DrawCmd &drawCmd = drawCmds[i];
-            if (drawCmd.drawKey == drawKey)
+            if (drawCmds[i].drawKey == drawKey)
             {
-                drawCmds[i].instanceCount--;
+                assert(drawCmds[i].instanceCount > 0);
+                if (--drawCmds[i].instanceCount == 0)
+                {
+                    for (size_t j = i + 1; j < drawCmds.size(); ++j)
+                        drawCmds[j - 1] = drawCmds[j];
+
+                    drawCmds.pop_back();
+                }
                 return;
             }
         }
-
-        // We should never not find something
         assert(false);
     }
 
@@ -186,204 +223,110 @@ private:
                   { return a.drawKey < b.drawKey; });
     }
 
-    void blockInsert(InstanceData &instanceData, uint32_t blockIdx, uint32_t &localIdx)
-    {
-        ZoneScoped;
-        InstanceBlock &block = instanceBlocks[blockIdx];
-        assert(block.size < block.capacity);
-        assert(localIdx <= block.size);
-
-        block.shiftRight(localIdx);
-        block[localIdx] = instanceData;
-        block.size++;
-
-        instanceCount++;
-
-        incrementDrawCmds(instanceData);
-
-        // --- Update first keys ---
-        block.firstKey = block[0].drawKey;
-        block.lastKey = block[block.size - 1].drawKey;
-    }
-
-    uint32_t getBlockIndex(uint64_t drawKey)
-    {
-        ZoneScoped;
-
-        // No need to search if we only have one
-        if (instanceBlocks.size == 1)
-            return 0;
-
-        // [left, right)
-        size_t left = 0;
-        size_t right = instanceBlocks.size;
-
-        while (left < right)
-        {
-            size_t mid = (left + right) >> 1;
-            if (instanceBlocks[mid].firstKey < drawKey)
-                left = mid + 1; // GO RIGHT - Move left search bound upwards
-            else
-                right = mid; // GO LEFT - Move right search bound upwards
-        }
-
-        if (left < instanceBlocks.size && instanceBlocks[left].firstKey == drawKey)
-            return uint32_t(left);
-
-        return (left - 1 > 0) ? left - 1 : 0;
-    }
-
-    uint32_t getBlockLocalIndex(InstanceBlock &block, uint64_t newDrawKey)
-    {
-        size_t left = 0;
-        size_t right = block.size;
-
-        while (left < right)
-        {
-            size_t mid = (left + right) >> 1;
-            if (block[mid].drawKey < newDrawKey)
-                left = mid + 1;
-            else
-                right = mid;
-        }
-        return left;
-    }
-
-    InstanceDataEntry findEntry(Entity entity, uint64_t drawKey)
-    {
-        ZoneScoped;
-
-        uint32_t blockIdx = getBlockIndex(drawKey);
-        uint32_t localIdx = 0;
-        for (; blockIdx < instanceBlocks.size; blockIdx++)
-        {
-            InstanceBlock &block = instanceBlocks[blockIdx];
-            assert(block.size <= block.capacity);
-
-            // Reset before next block
-            localIdx = 0;
-            for (; localIdx < block.size; localIdx++)
-            {
-                if (entityIndex(block[localIdx].entity) == entityIndex(entity))
-                {
-                    return {blockIdx, localIdx};
-                }
-            }
-        }
-
-        // We should never not find something
-        assert(false);
-        return {};
-    }
-
 public:
+    void init()
+    {
+        pool.init(256ull * 1024 * 1024, 10ull * 1024 * 1024, 0, true);
+    }
+
     void push(InstanceData instanceData)
     {
-        ZoneScoped;
-
-        // --- Make sure we have room ---
-        if (instanceBlocks.size == instanceBlocks.capacity)
-            instanceBlocks.grow();
+        // --- Initialize empty instanceBlocks ---
         if (instanceBlocks.size == 0)
         {
-            InstanceBlock newBlock = InstanceBlock{};
-            newBlock.firstKey = instanceData.drawKey;
-            newBlock.lastKey = instanceData.drawKey;
-            instanceBlocks.insert(0, newBlock);
+            BlockID blockId = pool.alloc();
+            BlockID inserted = instanceBlocks.insert(0, blockId);
+            pool.ptr(blockId)->drawKey = instanceData.drawKey;
         }
 
-        // --- Find indices ---
-        uint32_t blockIdx = getBlockIndex(instanceData.drawKey);
-        uint32_t localIdx = getBlockLocalIndex(instanceBlocks[blockIdx], instanceData.drawKey);
-
-        // --- Do the splits ---
-        if (instanceBlocks[blockIdx].size == instanceBlocks[blockIdx].capacity)
+        // --- Find empty block for this drawKey ---
+        InstanceDataEntry entry = {};
+        bool added = false;
+        for (size_t i = 0; i < instanceBlocks.size; i++)
         {
-            InstanceBlock right = {};
-            InstanceBlock &left = instanceBlocks[blockIdx];
+            BlockID blockId = instanceBlocks[i];
+            InstanceBlock *block = pool.ptr(blockId);
+            assert(block);
 
-            right.size = INSTANCE_BLOCK_HALF;
-            left.size = INSTANCE_BLOCK_HALF;
+            if (block->size >= block->capacity || block->drawKey != instanceData.drawKey)
+                continue;
 
-            std::copy(left._data + INSTANCE_BLOCK_HALF,
-                      left._data + INSTANCE_BLOCK_SIZE,
-                      right._data);
-
-            // make room for new block AFTER left
-            if (instanceBlocks.size == instanceBlocks.capacity)
-                instanceBlocks.grow();
-
-            // --- Insert into array ---
-            instanceBlocks.shiftRight(blockIdx + 1);
-            InstanceBlock &storedRight = instanceBlocks.insert(blockIdx + 1, right);
-
-            // --- Decide if insert is left or right ---
-            if (localIdx >= INSTANCE_BLOCK_HALF)
-            {
-                blockIdx += 1;
-                localIdx -= INSTANCE_BLOCK_HALF;
-            }
-
-            // --- Update keys ---
-            left.firstKey = left._data[0].drawKey;
-            left.lastKey = left._data[left.size - 1].drawKey;
-            storedRight.firstKey = right._data[0].drawKey;
-            storedRight.lastKey = right._data[right.size - 1].drawKey;
+            size_t localIdx = block->push(instanceData);
+            added = true;
+            entry.blockId = blockId;
+            entry.localIdx = localIdx;
+            break;
         }
 
-        // --- Insert into block ---
-        blockInsert(instanceData, blockIdx, localIdx);
-    }
-
-    InstanceData *find(Entity entity, uint64_t drawKey)
-    {
-        ZoneScoped;
-
-        uint32_t blockIdx = getBlockIndex(drawKey);
-        uint32_t localIdx = 0;
-        for (; blockIdx < instanceBlocks.size; blockIdx++)
+        if (!added)
         {
-            InstanceBlock &block = instanceBlocks[blockIdx];
-            assert(block.size <= block.capacity);
+            // --- Add new block and append there ---
+            BlockID blockId = pool.alloc();
+            InstanceBlock *block = pool.ptr(blockId);
+            block->drawKey = instanceData.drawKey;
 
-            // Reset before next block
-            localIdx = 0;
-            for (; localIdx < block.size; localIdx++)
+            for (size_t i = 0; i < instanceBlocks.size; i++)
             {
-                if (entityIndex(block[localIdx].entity) == entityIndex(entity))
+                BlockID matchBlockId = instanceBlocks[i];
+                uint64_t matchKey = pool.ptr(matchBlockId)->drawKey;
+                if (matchKey >= block->drawKey)
                 {
-                    return &block[localIdx];
+                    BlockID inserted = instanceBlocks.shiftRightInsert(i, blockId);
+                    added = true;
+                    break;
                 }
             }
+
+            if (!added)
+            {
+                BlockID inserted = instanceBlocks.push(blockId);
+            }
+
+            // --- Finally append data ----
+            size_t localIdx = block->push(instanceData);
+            entry.blockId = blockId;
+            entry.localIdx = localIdx;
         }
 
-        return nullptr;
+        incrementDrawCmds(instanceData);
+        entityInstances.insert(entityIndex(instanceData.entity), entry);
+        instanceCount++;
+
+        assert(instanceCount == entityInstances.inserts);
     }
 
-    void erase(Entity entity, uint64_t drawKey)
+    InstanceData *find(Entity entity)
     {
-        ZoneScoped;
-        InstanceDataEntry entry = findEntry(entity, drawKey);
+        uint32_t entityIdx = entityIndex(entity);
+        InstanceDataEntry entry = entityInstances.get(entityIdx);
+        InstanceData *instance = &pool.ptr(entry.blockId)->_data[entry.localIdx];
+        assert(instance);
 
-        // Delete inside block
-        instanceBlocks[entry.blockIdx].shiftLeftDelete(entry.localIdx);
-        if (instanceBlocks[entry.blockIdx].size <= 0)
-        {
-            // Remove block
-            instanceBlocks.shiftLeftDelete(entry.blockIdx);
-        }
-        else
-        {
-            // Update block's keys
-            instanceBlocks[entry.blockIdx].firstKey = instanceBlocks[entry.blockIdx][0].drawKey;
-            instanceBlocks[entry.blockIdx].lastKey =
-                instanceBlocks[entry.blockIdx][instanceBlocks[entry.blockIdx].size - 1].drawKey;
-        }
-
-        instanceCount--;
-        decrementDrawCmds(drawKey);
+        return instance;
     }
 
+    void erase(Entity entity)
+    {
+        uint32_t entityIdx = entityIndex(entity);
+        InstanceDataEntry entry = entityInstances.get(entityIdx);
+
+        InstanceBlock *block = pool.ptr(entry.blockId);
+        assert(block);
+        InstanceData &instance = block->_data[entry.localIdx];
+        block->erase(entry.localIdx);
+        if (block->size == 0)
+        {
+            instanceBlocks.shiftLeftRemove(entry.blockId);
+        }
+
+        entityInstances.erase(entityIdx);
+        instanceCount--;
+        decrementDrawCmds(instance.drawKey);
+
+        assert(instanceCount == entityInstances.inserts);
+    }
+
+    // TODO: This method should maybe be faster, but I need a baseline for how fast it could be
     void uploadToGPUBuffer(char *out, size_t outCapacityBytes)
     {
         ZoneScoped;
@@ -392,10 +335,11 @@ public:
         size_t outBytes = 0;
         for (size_t b = 0; b < instanceBlocks.size; ++b)
         {
-            InstanceBlock &blk = instanceBlocks[b];
-            const size_t bytes = blk.size * instanceSize;
+            BlockID blockId = instanceBlocks[b];
+            InstanceBlock *blk = pool.ptr(blockId);
+            const size_t bytes = blk->size * instanceSize;
             assert(outBytes + bytes <= outCapacityBytes);
-            std::memcpy(out + outBytes, blk._data, bytes);
+            std::memcpy(out + outBytes, blk->_data, bytes);
             outBytes += bytes;
         }
     }
