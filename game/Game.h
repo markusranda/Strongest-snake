@@ -108,10 +108,15 @@ struct Game
         instanceData->textureSize = material.size;
     }
 
-    void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, glm::vec4 uvTransform)
+    void createInstanceData(Entity entity)
     {
         ZoneScoped;
+        Transform &transform = engine.ecs.transforms[engine.ecs.entityToTransform[entityIndex(entity)]];
+        Material &material = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(entity)]];
+        Mesh &mesh = engine.ecs.meshes[engine.ecs.entityToMesh[entityIndex(entity)]];
+        glm::vec4 uvTransform = engine.ecs.uvTransforms[engine.ecs.entityToUvTransforms[entityIndex(entity)]];
         Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
+
         InstanceData instance = {
             transform.model,
             material.color,
@@ -129,6 +134,11 @@ struct Game
         };
 
         engine.instanceStorage.push(instance);
+    }
+
+    void removeInstanceData(Entity entity)
+    {
+        engine.instanceStorage.erase(entity);
     }
 
     void createPlayer()
@@ -154,7 +164,8 @@ struct Game
                                                     uvTransform,
                                                     2.0f);
             player.entities[0] = entity;
-            createInstanceData(entity, transform, material, mesh, uvTransform);
+            createInstanceData(entity);
+            engine.ecs.activeEntities.push_back(entity);
         }
 
         // --- BODY SEGMENTS ---
@@ -176,8 +187,8 @@ struct Game
                                                         uvTransform,
                                                         2.0f);
                 player.entities[i] = entity;
-                Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
-                createInstanceData(entity, transform, material, mesh, uvTransform);
+                createInstanceData(entity);
+                engine.ecs.activeEntities.push_back(entity);
             }
         }
     }
@@ -211,8 +222,8 @@ struct Game
 
                 Entity &entity = engine.ecs.createEntity(t, mesh, material, layer, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f);
                 background = {entity};
-                Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
-                createInstanceData(background.entity, t, material, mesh, uvTransform);
+                createInstanceData(entity);
+                engine.ecs.activeEntities.push_back(entity);
             }
 
             createPlayer();

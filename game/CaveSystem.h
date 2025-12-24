@@ -88,8 +88,6 @@ struct CaveSystem
             1);
         Treasure treasure = {groundEntity};
         engine.ecs.addToStore(engine.ecs.treasures, engine.ecs.entityToTreasure, engine.ecs.treasureToEntity, treasureEntity, treasure);
-
-        createInstanceData(treasureEntity, transform, material, mesh, uvTransform);
     }
 
     inline void createGround(float xWorld, float yWorld)
@@ -116,9 +114,6 @@ struct CaveSystem
             createRandomTreasure(entity, transform);
         }
         engine.ecs.addToStore(engine.ecs.healths, engine.ecs.entityToHealth, engine.ecs.healthToEntity, entity, Health{100, 100});
-
-        // Update renderer
-        createInstanceData(entity, transform, material, mesh, uvTransform);
     }
 
     inline void createGraceArea()
