@@ -34,11 +34,22 @@ inline std::pair<int32_t, int32_t> unpackChunkCoords(uint64_t idx)
     return {x, y};
 }
 
-auto floor_div = [](int32_t v, int32_t s)
+inline int32_t floor_div(int32_t v, int32_t s)
 {
     // floors toward -inf even for negative v
     return (v >= 0) ? (v / s) : ((v - (s - 1)) / s);
 };
+
+inline glm::vec2 worldPosToTilePos(glm::vec2 chunkPos, glm::vec2 pos)
+{
+    glm::vec2 diff = pos - chunkPos;
+
+    // Aligns positions with size of tiles
+    // examples where TILE_WORLD_SIZE is 32:
+    //      x: 35, y: 35 => x: 32, y: 32
+    //      x: 65, y: 65 => x: 64, y: 64
+    return glm::floor(diff / (float)TILE_WORLD_SIZE) * (float)TILE_WORLD_SIZE;
+}
 
 inline int32_t worldPosToClosestChunk(float pos)
 {
@@ -48,4 +59,9 @@ inline int32_t worldPosToClosestChunk(float pos)
 inline int32_t localIndexToTileIndex(int32_t localTileX, int32_t localTileY)
 {
     return TILES_PER_ROW * localTileX + localTileY;
+}
+
+static inline int32_t worldToTileCoord(float w)
+{
+    return floor_div(w, TILE_WORLD_SIZE);
 }

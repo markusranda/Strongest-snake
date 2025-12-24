@@ -22,18 +22,82 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
+#include <glm/common.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <glm/gtx/rotate_vector.hpp>
+#include <glm/gtx/compatibility.hpp>
 #include <GLFW/glfw3.h>
 #include <unordered_map>
 #include <filesystem>
 #include <cstdlib>
 #include <iostream>
+#include <set>
 
 // PROFILING
 #include "tracy/Tracy.hpp"
 
+#undef min
+#undef max
+
 const int playerLength = 4;
+const size_t CHUNK_CACHE_CAPACITY = 32;
+
+struct U32Set
+{
+    size_t capacity = 0;
+    bool *_data = nullptr;
+
+    bool slotEmpty(uint32_t idx)
+    {
+        return _data[idx] == false;
+    }
+
+    void set(uint32_t idx)
+    {
+        if (idx >= capacity)
+            grow(idx);
+
+        _data[idx] = true;
+    }
+
+    bool get(uint32_t idx)
+    {
+        if (idx >= capacity)
+            return false;
+
+        return _data[idx];
+    }
+
+    void erase(uint32_t idx)
+    {
+        assert(idx < capacity);
+        assert(!slotEmpty(idx));
+
+        _data[idx] = false;
+    }
+
+    void grow(uint32_t newIdx)
+    {
+        const uint32_t MEM_CHUNK_SIZE = 0xFFFF;
+        size_t newCapacity = SnakeMath::roundUpMultiplePow2(newIdx, MEM_CHUNK_SIZE);
+        void *newData = malloc(newCapacity * sizeof(bool));
+        if (!newData)
+            throw std::bad_alloc();
+
+        // Overwrite new memory
+        std::memset(newData, false, newCapacity * sizeof(bool));
+
+        // copy existing elements
+        if (_data)
+            std::memcpy(newData, _data, capacity * sizeof(bool));
+
+        if (_data)
+            free(_data);
+
+        _data = (bool *)newData;
+        capacity = newCapacity;
+    }
+};
 
 struct Player
 {
@@ -64,9 +128,15 @@ struct Game
     Player player;
     Camera camera{1, 1};
     CaveSystem caveSystem;
+    uint64_t prevChunks[CHUNK_CACHE_CAPACITY];
+    size_t prevChunksSize = 0;
+    uint64_t curChunks[CHUNK_CACHE_CAPACITY];
+    size_t curChunksSize = 0;
+    U32Set entitiesToDeleteCache;
 
     // -- Player ---
-    const float drillDamage = 250.0f;
+    const float drillDamage = 25000.0f;
+    const float drillRadius = 32.0f;
     const float thrustPower = 1800.0f;
     const float friction = 4.0f; // friction coefficient
     const uint32_t snakeSize = 32;
@@ -297,8 +367,53 @@ struct Game
         ma_engine_uninit(&audioEngine);
     }
 
+    void addChunkEntities(uint64_t chunkIdx)
+    {
+        Chunk &chunk = engine.ecs.chunks.at(chunkIdx);
+        for (size_t i = 0; i < CHUNK_WORLD_SIZE; i++)
+        {
+            Entity &entity = chunk.tiles[i];
+            if (entityUnset(entity))
+                continue;
+            createInstanceData(entity);
+            engine.ecs.activeEntities.push_back(entity);
+        }
+
+        for (size_t i = 0; i < chunk.staticEntities.size(); i++)
+        {
+            Entity &entity = chunk.staticEntities[i];
+            createInstanceData(entity);
+            engine.ecs.activeEntities.push_back(entity);
+        }
+    }
+
+    void deleteChunkEntities(uint64_t chunkIdx)
+    {
+        Chunk &chunk = engine.ecs.chunks.at(chunkIdx);
+        for (size_t i = 0; i < CHUNK_WORLD_SIZE; i++)
+        {
+            Entity entity = chunk.tiles[i];
+            uint32_t entityIdx = entityIndex(entity);
+            if (entityUnset(entity))
+                continue;
+            removeInstanceData(entity);
+            entitiesToDeleteCache.set(entityIdx);
+        }
+
+        for (size_t i = 0; i < chunk.staticEntities.size(); i++)
+        {
+            Entity &entity = chunk.staticEntities[i];
+            uint32_t entityIdx = entityIndex(entity);
+            if (entityUnset(entity))
+                continue;
+
+            removeInstanceData(entity);
+            entitiesToDeleteCache.set(entityIdx);
+        }
+    }
+
     // --- Game logic ---
-    void updateWorldGen()
+    void handleChunkLifecycle()
     {
         ZoneScoped;
 
@@ -307,6 +422,7 @@ struct Game
         int32_t cx = worldPosToClosestChunk(head.position.x);
         int32_t cy = worldPosToClosestChunk(head.position.y);
 
+        curChunksSize = 0;
         for (int dx = -2; dx <= 2; dx++)
         {
             for (int dy = -2; dy <= 2; dy++)
@@ -315,49 +431,83 @@ struct Game
                 int32_t chunkWorldY = cy + dy * CHUNK_WORLD_SIZE;
                 int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
 
+                assert(curChunksSize < CHUNK_CACHE_CAPACITY && "You need to increase allocation pal");
+                curChunks[curChunksSize++] = chunkIdx;
+
                 if (engine.ecs.chunks.find(chunkIdx) == engine.ecs.chunks.end())
                 {
                     caveSystem.generateNewChunk(chunkIdx, chunkWorldX, chunkWorldY);
                 }
             }
         }
+
+        std::sort(curChunks,  curChunks  + curChunksSize);
+        std::sort(prevChunks, prevChunks + prevChunksSize);
+
+        size_t i = 0, j = 0;
+
+        // walk both sorted lists
+        while (i < prevChunksSize && j < curChunksSize)
+        {
+            uint64_t p = prevChunks[i];
+            uint64_t c = curChunks[j];
+
+            if (p < c)
+            {
+                deleteChunkEntities(p);
+                ++i;
+            }
+            else if (c < p)
+            {
+                addChunkEntities(c);
+                ++j;
+            }
+            else
+            {
+                // same chunk, keep it
+                ++i;
+                ++j;
+            }
+        }
+
+        // leftovers
+        while (i < prevChunksSize)
+        {
+            deleteChunkEntities(prevChunks[i++]);
+        }
+        while (j < curChunksSize)
+        {
+            addChunkEntities(curChunks[j++]);
+        }
+
+        // now prev becomes cur
+        std::memcpy(prevChunks, curChunks, curChunksSize * sizeof(curChunks[0]));
+        prevChunksSize = curChunksSize;
     }
 
-    void updateLifecycle()
+    void handleEntityLifecycle()
     {
-        ZoneScoped;
-
-        updateWorldGen();
-
-        // Clear first
-        engine.ecs.activeEntities.clear();
-
-        // Find all active
-        float halfW = (camera.screenW * 0.5f) / camera.zoom;
-        float halfH = (camera.screenH * 0.5f) / camera.zoom;
-        AABB cameraBox{
-            {camera.position.x - halfW, camera.position.y - halfH},
-            {camera.position.x + halfW, camera.position.y + halfW},
-        };
-        size_t playerIndexT = engine.ecs.entityToTransform[entityIndex(player.entities.front())];
-        Transform playerT = engine.ecs.transforms[playerIndexT];
-        engine.ecs.getAllRelevantEntities(playerT, engine.ecs.activeEntities);
-
+        // We can read it, but if we don't write it, then it aint' with us
         size_t writeIndex = 0;
         size_t readIndex = 0;
-        for (; readIndex < engine.ecs.activeEntities.size(); ++readIndex)
+        size_t length = engine.ecs.activeEntities.size();
+        for (; readIndex < length; ++readIndex)
         {
             Entity entity = engine.ecs.activeEntities[readIndex];
-            Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
             uint32_t entityIdx = entityIndex(entity);
-            uint32_t &entityTypeIndex = engine.ecs.entityToEntityTypes[entityIdx];
-            if (entityTypeIndex == UINT32_MAX)
+
+            // --- Check if this got unloaded by chunk rules ---
+            if (entitiesToDeleteCache.get(entityIdx))
             {
-                printf("Skipping %d\n", entityIdx);
-                engine.ecs.activeEntities[writeIndex++] = entity;
+                entitiesToDeleteCache.erase(entityIdx);
                 continue;
             }
 
+            Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
+            uint32_t &entityTypeIndex = engine.ecs.entityToEntityTypes[entityIdx];
+            assert(entityTypeIndex != UINT32_MAX);
+
+            // --- Handle entity types ---
             switch (engine.ecs.entityTypes[entityTypeIndex])
             {
             case EntityType::Ground:
@@ -415,9 +565,14 @@ struct Game
 
         if (writeIndex < readIndex)
             engine.ecs.activeEntities.resize(writeIndex);
+    }
 
-        // Add static
-        engine.ecs.activeEntities.push_back(background.entity);
+    void updateLifecycle()
+    {
+        ZoneScoped;
+
+        handleChunkLifecycle();
+        handleEntityLifecycle();
     }
 
     void updateCamera()
@@ -451,7 +606,7 @@ struct Game
     void updateTimers(double delta)
     {
         ZoneScoped;
-        particleTimer = max(particleTimer - delta, 0.0f);
+        particleTimer = std::max(particleTimer - delta, (double)0.0f);
     }
 
     void updateGame(double delta)
@@ -494,67 +649,220 @@ struct Game
         ma_sound_set_pitch(&engineIdleAudio, revs);
     }
 
-    void tryMove(Transform &head, Mesh &mesh, const glm::vec2 &targetPos, float dt)
+    Entity* getTileFromTileCoords(int32_t x, int32_t y)
+    {
+        int32_t tileX_world = x * 32;
+        int32_t tileY_world = y * 32;
+
+        // --- Chunk ---
+        int32_t chunkX_world = worldPosToClosestChunk(tileX_world);
+        int32_t chunkY_world = worldPosToClosestChunk(tileY_world);
+        int64_t chunkIdx = packChunkCoords(chunkX_world, chunkY_world);
+        assert(chunkIdx != UINT64_MAX);
+        assert(engine.ecs.chunks.find(chunkIdx) != engine.ecs.chunks.end());
+        Chunk &chunk = engine.ecs.chunks.at(chunkIdx);
+
+        // --- Chunk space ---
+        int32_t tileX_chunk = tileX_world - chunkX_world;
+        int32_t tileY_chunk = tileY_world - chunkY_world;
+
+        // --- Tile space ---
+        int32_t tileX_tile = tileX_chunk / TILE_WORLD_SIZE;
+        int32_t tileY_tile = tileY_chunk / TILE_WORLD_SIZE;
+        assert(tileX_tile >= 0 && tileX_tile < TILES_PER_ROW);
+        assert(tileY_tile >= 0 && tileY_tile < TILES_PER_ROW);
+        
+        // --- Tile index ---
+        int32_t tileIdx = localIndexToTileIndex(tileX_tile, tileY_tile);
+        assert(tileIdx >= 0 && tileIdx < TILES_PER_CHUNK);
+
+        return &chunk.tiles[tileIdx];
+    }
+
+    Entity* circleHitsSolidTiles(glm::vec2 center, float radius) {
+        glm::vec2 minP = center - glm::vec2(radius);
+        glm::vec2 maxP = center + glm::vec2(radius);
+
+        int32_t minTX = worldToTileCoord(minP.x);
+        int32_t maxTX = worldToTileCoord(maxP.x);
+        int32_t minTY = worldToTileCoord(minP.y);
+        int32_t maxTY = worldToTileCoord(maxP.y);
+
+        for (int32_t ty = minTY; ty <= maxTY; ++ty)
+        {
+            for (int32_t tx = minTX; tx <= maxTX; ++tx)
+            {
+                Entity *entity = getTileFromTileCoords(tx, ty);
+                assert(entity);
+                if (entityUnset(*entity))
+                    continue;
+
+                glm::vec2 bmin = glm::vec2((float)tx, (float)ty) * float(TILE_WORLD_SIZE);
+                glm::vec2 bmax = bmin + glm::vec2(TILE_WORLD_SIZE);
+
+                if (circleIntersectsAABB(center, radius, {bmin, bmax}))
+                {
+                    fprintf(stdout, "COLLIDED AT: (%d, %d)\n", tx, ty);
+                    return entity;
+                }
+            }
+        }
+
+        return nullptr;
+    }
+
+    struct TileHit
+    {
+        int32_t tx, ty;
+        float t;
+        Entity *entity;
+    };
+
+    struct TileHitList
+    {
+        Entity *visited[32];
+        TileHit hits[4];
+        uint32_t visitedCount = 0;
+        uint32_t count = 0;
+        float tFirst;
+
+        bool contains(Entity *entity) {
+            for (size_t i = 0; i < visitedCount; i++)
+                if (visited[i] == entity)
+                    return true;
+            return false;
+        }
+    };
+
+    bool sweepCircleHitsSolidTilesMulti(
+        const glm::vec2& startCenter,
+        const glm::vec2& endCenter,
+        float radius,
+        TileHitList& out)
+    {
+        assert(glm::all(glm::isfinite(startCenter)));
+        assert(glm::all(glm::isfinite(endCenter)));
+        out.tFirst = 1.0f;
+        out.count = 0;
+
+        // compute tile bounds to search (same as before)
+        glm::vec2 minP = glm::min(startCenter, endCenter) - glm::vec2(radius);
+        glm::vec2 maxP = glm::max(startCenter, endCenter) + glm::vec2(radius);
+
+        int32_t minTX = worldToTileCoord(minP.x);
+        int32_t maxTX = worldToTileCoord(maxP.x);
+        int32_t minTY = worldToTileCoord(minP.y);
+        int32_t maxTY = worldToTileCoord(maxP.y);
+
+        // ---- pass 1: find earliest t ----
+        bool found = false;
+        float bestT = 1.0f;
+
+        for (int32_t ty = minTY; ty <= maxTY; ++ty)
+            for (int32_t tx = minTX; tx <= maxTX; ++tx)
+            {
+                Entity *entity = getTileFromTileCoords(tx, ty);
+                if (entityUnset(*entity)) continue;
+
+                glm::vec2 bmin = glm::vec2((float)tx, (float)ty) * float(TILE_WORLD_SIZE);
+                glm::vec2 bmax = bmin + glm::vec2(TILE_WORLD_SIZE);
+
+                glm::vec2 emin = bmin - glm::vec2(radius);
+                glm::vec2 emax = bmax + glm::vec2(radius);
+
+                float tEnter;
+                if (segmentIntersectsAABB(startCenter, endCenter, emin, emax, tEnter))
+                {
+                    if (tEnter >= 0.0f && tEnter < bestT)
+                    {
+                        bestT = tEnter;
+                        found = true;
+                    }
+                }
+            }
+
+        if (!found) return false;
+
+        // ---- pass 2: gather all hits at same time ----
+        const float tEps = 1e-4f; // tune. bigger if your world scale is huge.
+        out.tFirst = bestT;
+
+        for (int32_t ty = minTY; ty <= maxTY; ++ty)
+            for (int32_t tx = minTX; tx <= maxTX; ++tx)
+            {
+                if (out.count == 4) break;
+
+                Entity *entity = getTileFromTileCoords(tx, ty);
+                if (entityUnset(*entity)) continue;
+
+                glm::vec2 bmin = glm::vec2((float)tx, (float)ty) * float(TILE_WORLD_SIZE);
+                glm::vec2 bmax = bmin + glm::vec2(TILE_WORLD_SIZE);
+
+                glm::vec2 emin = bmin - glm::vec2(radius);
+                glm::vec2 emax = bmax + glm::vec2(radius);
+
+                float tEnter;
+                if (segmentIntersectsAABB(startCenter, endCenter, emin, emax, tEnter))
+                {
+                    if (tEnter >= 0.0f && tEnter <= bestT + tEps && !out.contains(entity)) {
+                        out.hits[out.count++] = { tx, ty, tEnter, entity };
+                        out.visited[out.visitedCount++] = entity;
+                    }
+                }
+            }
+
+        return out.count > 0;
+    }
+
+
+    void movePlayer(Transform &head, Mesh &mesh, float dt)
     {
         ZoneScoped;
 
-        Transform newTransform = head;
-        newTransform.position = targetPos;
-        AABB newAABB = computeWorldAABB(mesh, newTransform);
+        // --- INIT ----
+        glm::vec2 start       = head.getCenter();
+        glm::vec2 end         = start + playerVelocity * dt;
+        drilling              = false;
 
-        drilling = false; // We reset drill state because we don't know if there'll be any drilling yet
 
-        for (Entity &entity : engine.ecs.activeEntities)
-        {
-            size_t collisionBoxIdx = engine.ecs.entityToCollisionBox[entityIndex(entity)];
-            if (collisionBoxIdx == UINT32_MAX)
-                continue;
-            AABB &collisionBox = engine.ecs.collisionBoxes[collisionBoxIdx];
-            EntityType &entityType = engine.ecs.entityTypes[engine.ecs.entityToEntityTypes[entityIndex(entity)]];
-            if (entityType == EntityType::Player)
-                continue;
+        // Limit how many tiles you can chew through in one move to avoid infinite loops.
+        bool collided = false;
+        bool blockicide = false;
+        int iter = 0;
+        TileHitList hitlist;
+        for (; iter < 8; ++iter) {
+            if (!sweepCircleHitsSolidTilesMulti(start, end, drillRadius, hitlist))
+                break;
+            
+            for (size_t i = 0; i < hitlist.count; i++) {
+                TileHit hit = hitlist.hits[i];
+                
+                // --- Handle tile collision ---
+                assert(hit.entity);
+                Health &h = engine.ecs.healths[engine.ecs.entityToHealth[entityIndex(*hit.entity)]];
+                size_t collisionBoxIndex = engine.ecs.entityToCollisionBox[entityIndex(*hit.entity)];
+                float damage = drillDamage * dt;
+                h.current -= damage;
 
-            float radius = head.getRadius();
-            if (circleIntersectsAABB(head.getCenter(), radius, collisionBox))
-            {
-                switch (entityType)
-                {
-                case EntityType::Ground:
-                {
-                    Health &h = engine.ecs.healths[engine.ecs.entityToHealth[entityIndex(entity)]];
-                    size_t collisionBoxIndex = engine.ecs.entityToCollisionBox[entityIndex(entity)];
-                    float penetration = 0.5f;
-                    float resistance = glm::clamp(penetration / 10.0f, 0.0f, 1.0f);
+                // --- Update state ---
+                drilling = true;
+                collided = true;
+                if (h.current <= 0) blockicide = true;
 
-                    // Reduce velocity
-                    playerVelocity *= 0.95;
-
-                    // Damage block
-                    float damage = drillDamage * dt;
-                    h.current -= damage;
-                    drilling = true;
-                    break;
-                }
-                default:
-                    break;
-                }
+                // --- Update start value ---
+                glm::vec2 diff = end - start;
+                glm::vec2 contact = start + diff * hit.t;
+                float len = glm::length(diff);
+                if (len <= 0.0001f) break; // We try to avoid dividing by zero here
+                glm::vec2 dir = diff / len;
+                const float eps = 0.001f * TILE_WORLD_SIZE;
+                start = contact + dir * eps;
+                assert(glm::all(glm::isfinite(start)));
             }
         }
 
-        if (drilling)
-        {
-            glm::vec2 drillTipLocal = MeshRegistry::getDrillTipLocal().pos; // not UV
-            glm::vec4 local = glm::vec4(drillTipLocal, 0.0f, 1.0f);
-            glm::vec4 world = head.model * local;
-
-            glm::vec2 drillTipWorld = glm::vec2(world.x, world.y);
-
-            if (particleTimer <= 0)
-            {
-                engine.particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(head.rotation), 8);
-                particleTimer = PARTICLE_SPAWN_INTERVAL;
-            }
-        }
+        // Continue as normally if we didn't encounter any collidables
+        if (!collided || blockicide) head.position = end - (head.size / 2.0f); // Remove us from center
     }
 
     void updateMovement(float dt, bool pressing)
@@ -583,9 +891,23 @@ struct Game
             playerVelocity = glm::normalize(playerVelocity) * playerMaxVelocity;
 
         // Check collision
-        glm::vec2 targetPos = headT.position + playerVelocity * dt;
-        tryMove(headT, headM, targetPos, dt);
-        headT.position += playerVelocity * dt;
+        movePlayer(headT, headM, dt);
+
+        // --- Handle drilling ---
+        if (drilling)
+        {
+            glm::vec2 drillTipLocal = MeshRegistry::getDrillTipLocal().pos; // not UV
+            glm::vec4 local = glm::vec4(drillTipLocal, 0.0f, 1.0f);
+            glm::vec4 world = headT.model * local;
+
+            glm::vec2 drillTipWorld = glm::vec2(world.x, world.y);
+
+            if (particleTimer <= 0)
+            {
+                engine.particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(headT.rotation), 8);
+                particleTimer = PARTICLE_SPAWN_INTERVAL;
+            }
+        }
 
         // All non head segments gets to make a move
         for (size_t i = 1; i < player.entities.size(); i++)

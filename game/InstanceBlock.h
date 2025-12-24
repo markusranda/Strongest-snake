@@ -46,7 +46,7 @@ struct InstanceBlock
         assert(size > 0);
         assert(idx < size);
 
-        if (size == 1)
+        if (size == 1 || size - 1 == idx)
         {
             size--;
             return nullptr;

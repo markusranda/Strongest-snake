@@ -70,7 +70,6 @@ struct EntityManager
 
     // Spatial storage of entities
     ankerl::unordered_dense::map<int64_t, Chunk> chunks;
-    std::vector<Entity> globalEntities;
 
     const uint32_t RESIZE_INCREMENT = 2048;
 
@@ -113,11 +112,6 @@ struct EntityManager
         // --- Add to spatial storage ---
         switch (spatialStorage)
         {
-        case SpatialStorage::Global:
-        {
-            globalEntities.push_back(entity);
-            break;
-        }
         case SpatialStorage::Chunk:
         {
             insertEntityInChunk(entity, transform);
@@ -169,11 +163,6 @@ struct EntityManager
         // --- Remove from spatial storage ---
         switch (spatialStorage)
         {
-        case SpatialStorage::Global:
-        {
-            deleteEntityFromGlobal(entityIdx);
-            break;
-        }
         case SpatialStorage::Chunk:
         {
             AABB &aabb = collisionBoxes[entityToCollisionBox[entityIdx]];
@@ -264,7 +253,6 @@ struct EntityManager
 
     void getAllRelevantEntities(const Transform &player, std::vector<Entity> &entities)
     {
-        entities.insert(entities.end(), globalEntities.begin(), globalEntities.end());
         getIntersectingEntitiesChunks(player, entities);
     }
 
@@ -319,22 +307,6 @@ struct EntityManager
             }
         }
         entities.insert(entities.end(), localBuf, localBuf + count);
-    }
-
-    void deleteEntityFromGlobal(uint32_t &entityIdx)
-    {
-        size_t foundAt = globalEntities.size();
-        for (size_t i = 0; i < globalEntities.size(); i++)
-        {
-            if (entityIndex(globalEntities[i]) == entityIdx)
-            {
-                foundAt = i;
-                break;
-            }
-        }
-        assert(foundAt != globalEntities.size() && "Entity not found in globalEntities");
-        globalEntities[foundAt] = globalEntities.back();
-        globalEntities.pop_back();
     }
 
     void deleteEntityFromChunk(uint32_t &entityIdx, const AABB &aabb)

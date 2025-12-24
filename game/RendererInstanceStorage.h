@@ -109,8 +109,19 @@ struct EntityInstanceMap
         if (idx >= capacity)
             grow(idx);
 
-        if (slotEmpty(idx))
-            inserts++;
+        assert(slotEmpty(idx));
+            
+        inserts++;
+        _data[idx] = dataEntry;
+
+        return _data[idx];
+    }
+
+    InstanceDataEntry &update(uint32_t idx, InstanceDataEntry dataEntry) {
+        if (idx >= capacity)
+            grow(idx);
+
+        assert(!slotEmpty(idx));
 
         _data[idx] = dataEntry;
 
@@ -230,12 +241,7 @@ public:
     {
         InstanceDataEntry entry = {};
         bool added = false;
-
-        // --- No duplicate entities in my house ---
-        uint32_t idx = entityIndex(instanceData.entity);
-        if (idx < entityInstances.capacity)
-            assert(entityInstances.slotEmpty(idx));
-
+        
         // --- Initialize empty sortedBlocks ---
         if (sortedBlocks.size == 0)
         {
@@ -297,9 +303,12 @@ public:
         assert(entry.localIdx != UINT32_MAX);
 
         incrementDrawCmds(instanceData);
-        entityInstances.set(entityIndex(instanceData.entity), entry);
-        instanceCount++;
 
+        // --- Update entityInstances ---
+        entityInstances.set(entityIndex(instanceData.entity), entry);
+
+        // --- Update instanceCount ---
+        instanceCount++;
         assert(instanceCount == entityInstances.inserts);
     }
 
@@ -315,6 +324,7 @@ public:
 
     void erase(Entity entity)
     {
+        assert(!entityUnset(entity));
         uint32_t entityIdx = entityIndex(entity);
         InstanceDataEntry entry = entityInstances.get(entityIdx);
 
@@ -350,7 +360,7 @@ public:
         if (swappedInstance)
         {
             assert(swappedInstance->entity != entity);
-            entityInstances.set(entityIndex(swappedInstance->entity), entry);
+            entityInstances.update(entityIndex(swappedInstance->entity), entry);
         }
         entityInstances.erase(entityIdx);
 

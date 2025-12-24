@@ -64,3 +64,56 @@ inline bool circleIntersectsAABB(glm::vec2 center, float radius, AABB box)
     float dy = center.y - cy;
     return (dx * dx + dy * dy) <= radius * radius;
 }
+
+inline bool segmentIntersectsAABB(
+    const glm::vec2& p0,
+    const glm::vec2& p1,
+    const glm::vec2& bmin,
+    const glm::vec2& bmax,
+    float& outTEnter)
+{
+    glm::vec2 d = p1 - p0;
+
+    float tMin = 0.0f;
+    float tMax = 1.0f;
+
+    // X and Y slabs
+    for (int axis = 0; axis < 2; ++axis)
+    {
+        float p  = (axis == 0) ? p0.x : p0.y;
+        float v  = (axis == 0) ? d.x  : d.y;
+        float mn = (axis == 0) ? bmin.x : bmin.y;
+        float mx = (axis == 0) ? bmax.x : bmax.y;
+
+        if (v == 0.0f)
+        {
+            // Segment is parallel to slab.
+            // Must already be inside or we miss completely.
+            if (p < mn || p > mx)
+                return false;
+        }
+        else
+        {
+            float invV = 1.0f / v;
+            float t1 = (mn - p) * invV;
+            float t2 = (mx - p) * invV;
+
+            if (t1 > t2)
+            {
+                float tmp = t1;
+                t1 = t2;
+                t2 = tmp;
+            }
+
+            // Narrow intersection interval
+            if (t1 > tMin) tMin = t1;
+            if (t2 < tMax) tMax = t2;
+
+            if (tMin > tMax)
+                return false;
+        }
+    }
+
+    outTEnter = tMin;
+    return true;
+}
