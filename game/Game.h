@@ -3,6 +3,7 @@
 #include "components/EntityType.h"
 #include "components/Material.h"
 #include "components/Transform.h"
+#include "components/Ground.h"
 #include "Renderer.h"
 #include "Window.h"
 #include "Vertex.h"
@@ -16,6 +17,7 @@
 #include "CaveSystem.h"
 #include "Chunk.h"
 #include "Atlas.h"
+#include "Mining.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../libs/miniaudio.h"
@@ -135,8 +137,9 @@ struct Game
     U32Set entitiesToDeleteCache;
 
     // -- Player ---
-    const float drillDamage = 25000.0f;
-    const float drillRadius = 32.0f;
+    const float drillDamage = 500.0f;
+    const float drillRadius = 16.0f;
+    DrillLevel drillLevel = DrillLevel::Copper;
     const float thrustPower = 1800.0f;
     const float friction = 4.0f; // friction coefficient
     const uint32_t snakeSize = 32;
@@ -168,24 +171,24 @@ struct Game
     void updateInstanceData(Entity &entity, Transform &transform)
     {
         ZoneScoped;
-        Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
-        Material material = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(entity)]];
+        Renderable *renderable = (Renderable*)engine.ecs.find(ComponentId::Renderable, entity);
+        Material *material = (Material*)engine.ecs.find(ComponentId::Material, entity);
         InstanceData *instanceData = engine.instanceStorage.find(entity);
         assert(instanceData);
 
         instanceData->model = transform.model;
         instanceData->worldSize = transform.size;
-        instanceData->textureSize = material.size;
+        instanceData->textureSize = (*material).size;
     }
 
     void createInstanceData(Entity entity)
     {
         ZoneScoped;
-        Transform &transform = engine.ecs.transforms[engine.ecs.entityToTransform[entityIndex(entity)]];
-        Material &material = engine.ecs.materials[engine.ecs.entityToMaterial[entityIndex(entity)]];
-        Mesh &mesh = engine.ecs.meshes[engine.ecs.entityToMesh[entityIndex(entity)]];
-        glm::vec4 uvTransform = engine.ecs.uvTransforms[engine.ecs.entityToUvTransforms[entityIndex(entity)]];
-        Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
+        Transform transform = *(Transform*)engine.ecs.find(ComponentId::Transform, entity);
+        Material material = *(Material*)engine.ecs.find(ComponentId::Material, entity);
+        Mesh mesh = *(Mesh*)engine.ecs.find(ComponentId::Mesh, entity);
+        glm::vec4 uvTransform = *(glm::vec4*)engine.ecs.find(ComponentId::UvTransform, entity);
+        Renderable renderable = *(Renderable*)engine.ecs.find(ComponentId::Renderable, entity);
 
         InstanceData instance = {
             transform.model,
@@ -357,8 +360,8 @@ struct Game
 
             engine.globalTime += delta;
 
-            Transform &head = engine.ecs.transforms[engine.ecs.entityToTransform[entityIndex(player.entities.front())]];
-            engine.draw(camera, fps, head.position, delta);
+            Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+            engine.draw(camera, fps, head->position, delta);
 
             updateFPSCounter(delta);
         }
@@ -418,9 +421,9 @@ struct Game
         ZoneScoped;
 
         // When player moves into a new chunk we should verify that there are in fact 3x3 loaded chunks around the player
-        Transform &head = engine.ecs.transforms[engine.ecs.entityToTransform[entityIndex(player.entities.front())]];
-        int32_t cx = worldPosToClosestChunk(head.position.x);
-        int32_t cy = worldPosToClosestChunk(head.position.y);
+        Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        int32_t cx = worldPosToClosestChunk(head->position.x);
+        int32_t cy = worldPosToClosestChunk(head->position.y);
 
         curChunksSize = 0;
         for (int dx = -2; dx <= 2; dx++)
@@ -503,28 +506,27 @@ struct Game
                 continue;
             }
 
-            Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
-            uint32_t &entityTypeIndex = engine.ecs.entityToEntityTypes[entityIdx];
-            assert(entityTypeIndex != UINT32_MAX);
+            Renderable *renderable = (Renderable*)engine.ecs.find(ComponentId::Renderable, entity);
 
             // --- Handle entity types ---
-            switch (engine.ecs.entityTypes[entityTypeIndex])
+            EntityType* entityType = (EntityType*)engine.ecs.find(ComponentId::EntityType, entity);
+            switch (*entityType)
             {
             case EntityType::Ground:
             {
-                Health &health = engine.ecs.healths[engine.ecs.entityToHealth[entityIdx]];
-                Material &material = engine.ecs.materials[engine.ecs.entityToMaterial[entityIdx]];
+                Health *health = (Health*)engine.ecs.find(ComponentId::Health, entity);
+                Material *material = (Material*)engine.ecs.find(ComponentId::Material, entity);
 
                 // Check if ground block has died
-                if (health.current > 0)
+                if (health->current > 0)
                 {
-                    float prevAlpha = material.color.a;
-                    material.color.a = health.current / health.max;
-                    if (prevAlpha != material.color.a)
+                    float prevAlpha = material->color.a;
+                    material->color.a = health->current / health->max;
+                    if (prevAlpha != material->color.a)
                     {
                         InstanceData *instanceData = engine.instanceStorage.find(entity);
                         assert(instanceData);
-                        instanceData->color.a = material.color.a;
+                        instanceData->color.a = material->color.a;
                     }
 
                     engine.ecs.activeEntities[writeIndex++] = entity;
@@ -535,24 +537,34 @@ struct Game
                 engine.instanceStorage.erase(entity);
                 break;
             }
-            case EntityType::Treasure:
+            case EntityType::OreBlock:
             {
-                uint32_t &treasureIndex = engine.ecs.entityToTreasure[entityIdx];
-                if (treasureIndex == UINT32_MAX)
-                {
-                    engine.ecs.activeEntities[writeIndex++] = entity;
-                    break;
-                }
-
-                Treasure &treasure = engine.ecs.treasures[treasureIndex];
+                GroundOre *groundOre = (GroundOre*)engine.ecs.find(ComponentId::GroundOre, entity);
 
                 // Dies if it has lost it's ground
-                if (treasure.groundRef.has_value() && engine.ecs.isAlive(treasure.groundRef.value()))
+                if (engine.ecs.isAlive(groundOre->parentRef))
                 {
                     engine.ecs.activeEntities[writeIndex++] = entity;
                     break;
                 }
 
+                // TODO: Store number of ores somewhere
+                engine.ecs.destroyEntity(entity, SpatialStorage::Chunk);
+                engine.instanceStorage.erase(entity);
+                break;
+            }
+            case EntityType::GroundCosmetic:
+            {
+                GroundCosmetic *groundCosmetic = (GroundCosmetic*)engine.ecs.find(ComponentId::GroundCosmetic, entity);
+
+                // Dies if it has lost it's ground
+                if (engine.ecs.isAlive(groundCosmetic->parentRef))
+                {
+                    engine.ecs.activeEntities[writeIndex++] = entity;
+                    break;
+                }
+
+                // TODO: Store number of ores somewhere
                 engine.ecs.destroyEntity(entity, SpatialStorage::Chunk);
                 engine.instanceStorage.erase(entity);
                 break;
@@ -580,27 +592,23 @@ struct Game
         ZoneScoped;
 
         Entity entity = background.entity;
-        size_t playerIndexT = engine.ecs.entityToTransform[entityIndex(player.entities.front())];
-        size_t backgroundIndexT = engine.ecs.entityToTransform[entityIndex(entity)];
-
-        Transform &playerTransform = engine.ecs.transforms[playerIndexT];
-        Transform &backgroundTransform = engine.ecs.transforms[backgroundIndexT];
-        Transform &backgroundTransformOld = backgroundTransform;
-        Mesh &mesh = engine.ecs.meshes[engine.ecs.entityToMesh[entityIndex(entity)]];
+        Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        Transform *backgroundTransform = (Transform*)engine.ecs.find(ComponentId::Transform, background.entity);
+        Mesh *mesh = (Mesh*)engine.ecs.find(ComponentId::Mesh, entity);
 
         // Camera center follows the player
-        camera.position = glm::round(playerTransform.position);
+        camera.position = glm::round(playerTransform->position);
 
         // Compute visible area size, factoring in zoom
         glm::vec2 viewSize = glm::vec2(camera.screenW, camera.screenH) * (1.0f / camera.zoom);
 
         // Background should cover the whole visible region and be centered on the camera
-        backgroundTransform.position = camera.position - viewSize * 0.5f;
-        backgroundTransform.size = viewSize;
-        backgroundTransform.commit();
+        backgroundTransform->position = camera.position - viewSize * 0.5f;
+        backgroundTransform->size = viewSize;
+        backgroundTransform->commit();
 
         // Update renderable stuff
-        updateInstanceData(background.entity, backgroundTransform);
+        updateInstanceData(background.entity, *backgroundTransform);
     }
 
     void updateTimers(double delta)
@@ -640,8 +648,8 @@ struct Game
             return;
         }
 
-        Transform &playerTransform = engine.ecs.transforms[entityIndex(player.entities.front())];
-        glm::vec2 forward = SnakeMath::getRotationVector2(playerTransform.rotation);
+        Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        glm::vec2 forward = SnakeMath::getRotationVector2(playerTransform->rotation);
         float velocity = glm::dot(playerVelocity, forward);
         float ratio = velocity / playerMaxVelocity;
         float revs = ((highRev - lowRev) * ratio) + lowRev;
@@ -826,8 +834,7 @@ struct Game
 
 
         // Limit how many tiles you can chew through in one move to avoid infinite loops.
-        bool collided = false;
-        bool blockicide = false;
+        bool removedAllObstacles = true;
         int iter = 0;
         TileHitList hitlist;
         for (; iter < 8; ++iter) {
@@ -837,17 +844,25 @@ struct Game
             for (size_t i = 0; i < hitlist.count; i++) {
                 TileHit hit = hitlist.hits[i];
                 
+                // --- Check if we are obstructed by ore ---
+                Ground *ground = (Ground*)engine.ecs.find(ComponentId::Ground, *hit.entity);
+                if (ground->groundOreRef.has_value()) {
+                    GroundOre *groundOre = (GroundOre*)engine.ecs.find(ComponentId::GroundOre, ground->groundOreRef.value());
+
+                    if ((uint32_t)groundOre->oreLevel > (uint32_t)drillLevel) {
+                        removedAllObstacles = false;
+                        continue;
+                    }
+                }
+
                 // --- Handle tile collision ---
-                assert(hit.entity);
-                Health &h = engine.ecs.healths[engine.ecs.entityToHealth[entityIndex(*hit.entity)]];
-                size_t collisionBoxIndex = engine.ecs.entityToCollisionBox[entityIndex(*hit.entity)];
+                Health *health = (Health*)engine.ecs.find(ComponentId::Health, *hit.entity);
                 float damage = drillDamage * dt;
-                h.current -= damage;
+                health->current -= damage;
 
                 // --- Update state ---
                 drilling = true;
-                collided = true;
-                if (h.current <= 0) blockicide = true;
+                if (health->current > 0) removedAllObstacles = false;
 
                 // --- Update start value ---
                 glm::vec2 diff = end - start;
@@ -861,23 +876,27 @@ struct Game
             }
         }
 
-        // Continue as normally if we didn't encounter any collidables
-        if (!collided || blockicide) head.position = end - (head.size / 2.0f); // Remove us from center
+        // If we removed all the blocking blocks - then we can keep velocity and move to end.
+        if (removedAllObstacles) {
+            head.position = end; // Move to end
+            head.position -= (head.size / 2.0f); // End is center, so we need to move back to top left corner.
+        } else {
+            playerVelocity.x = 0.0f;
+            playerVelocity.y = 0.0f;
+        }
     }
 
     void updateMovement(float dt, bool pressing)
     {
         ZoneScoped;
 
-        uint32_t headEntityId = entityIndex(player.entities.front());
-        auto headIndexT = engine.ecs.entityToTransform[headEntityId];
-        Transform &headT = engine.ecs.transforms[headIndexT];
-        Transform oldHeadT = headT;
-        Mesh &headM = engine.ecs.meshes[engine.ecs.entityToMesh[headEntityId]];
+        Transform *headT = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        Transform oldHeadT = *headT;
+        Mesh *headM = (Mesh*)engine.ecs.find(ComponentId::Mesh, player.entities.front());
         const Mesh &bodyM = MeshRegistry::quad; // NOTE This might not work in the future
 
         glm::vec2 acceleration = {0.0f, 0.0f};
-        glm::vec2 forward = SnakeMath::getRotationVector2(headT.rotation);
+        glm::vec2 forward = SnakeMath::getRotationVector2(headT->rotation);
         acceleration = forward * thrustPower;
 
         // --- Velocity integration ---
@@ -891,20 +910,19 @@ struct Game
             playerVelocity = glm::normalize(playerVelocity) * playerMaxVelocity;
 
         // Check collision
-        movePlayer(headT, headM, dt);
+        movePlayer(*headT, *headM, dt);
 
         // --- Handle drilling ---
         if (drilling)
         {
             glm::vec2 drillTipLocal = MeshRegistry::getDrillTipLocal().pos; // not UV
             glm::vec4 local = glm::vec4(drillTipLocal, 0.0f, 1.0f);
-            glm::vec4 world = headT.model * local;
-
+            glm::vec4 world = headT->model * local;
             glm::vec2 drillTipWorld = glm::vec2(world.x, world.y);
 
             if (particleTimer <= 0)
             {
-                engine.particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(headT.rotation), 8);
+                engine.particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(headT->rotation), 8);
                 particleTimer = PARTICLE_SPAWN_INTERVAL;
             }
         }
@@ -914,13 +932,10 @@ struct Game
         {
             auto entity1 = player.entities[i - 1];
             auto entity2 = player.entities[i];
-            auto tIndex1 = engine.ecs.entityToTransform[entityIndex(entity1)];
-            auto tIndex2 = engine.ecs.entityToTransform[entityIndex(entity2)];
-            Transform &t1 = engine.ecs.transforms[tIndex1];
-            Transform &t2 = engine.ecs.transforms[tIndex2];
-            Transform &t2Old = t2;
-            glm::vec2 prevPos = t1.position;
-            glm::vec2 &pos = t2.position;
+            Transform *t1 = (Transform*)engine.ecs.find(ComponentId::Transform, entity1);
+            Transform *t2 = (Transform*)engine.ecs.find(ComponentId::Transform, entity2);
+            glm::vec2 prevPos = t1->position;
+            glm::vec2 &pos = t2->position;
             glm::vec2 dir = prevPos - pos;
 
             float dist = glm::length(dir);
@@ -931,25 +946,24 @@ struct Game
             }
 
             // Optionally adjust rotation
-            t2.rotation = atan2(dir.y, dir.x);
-            t2.commit();
-            updateInstanceData(entity2, t2);
+            t2->rotation = atan2(dir.y, dir.x);
+            t2->commit();
+            updateInstanceData(entity2, *t2);
         }
 
         // Move head
-        headT.commit();
-        updateInstanceData(player.entities.front(), headT);
+        headT->commit();
+        updateInstanceData(player.entities.front(), *headT);
     }
 
     void rotateHeadLeft(float dt)
     {
         ZoneScoped;
 
-        auto tIndex = engine.ecs.entityToTransform[player.entities[2].id];
-        Transform &transform = engine.ecs.transforms[tIndex];
-        glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
+        Transform *transform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities[2]);
+        glm::vec2 forward = SnakeMath::getRotationVector2(transform->rotation);
         glm::vec2 leftDir = glm::vec2(forward.y, -forward.x);
-        glm::vec2 radiusCenter = transform.position + leftDir * rotationRadius;
+        glm::vec2 radiusCenter = transform->position + leftDir * rotationRadius;
 
         float rotationSpeed = 5.0f;            // tweak this
         float maxRotDistance = rotationRadius; // Increase to stop earlier
@@ -958,10 +972,9 @@ struct Game
         {
             // Move segment
             Entity entity = player.entities[i];
-            auto segmentIndex = engine.ecs.entityToTransform[entityIndex(entity)];
-            Transform &segment = engine.ecs.transforms[segmentIndex];
-            glm::vec2 localCenter = segment.position - radiusCenter;
-            glm::vec2 forward = SnakeMath::getRotationVector2(segment.rotation);
+            Transform *segment = (Transform*)engine.ecs.find(ComponentId::Transform, entity);
+            glm::vec2 localCenter = segment->position - radiusCenter;
+            glm::vec2 forward = SnakeMath::getRotationVector2(segment->rotation);
 
             // Rotate segment
             glm::vec2 tangent = glm::normalize(glm::vec2(localCenter.y, -localCenter.x));
@@ -973,13 +986,13 @@ struct Game
             if (deltaAngle < -SnakeMath::PI)
                 deltaAngle += 2.0f * SnakeMath::PI;
 
-            float dist = glm::length(segment.position - radiusCenter);
+            float dist = glm::length(segment->position - radiusCenter);
             if (dist < maxRotDistance)
                 continue;
 
-            segment.position = segment.position - dt * (localCenter);
-            segment.rotation += deltaAngle * dt * rotationSpeed;
-            segment.commit();
+            segment->position = segment->position - dt * (localCenter);
+            segment->rotation += deltaAngle * dt * rotationSpeed;
+            segment->commit();
             break;
         }
     }
@@ -988,20 +1001,18 @@ struct Game
     {
         ZoneScoped;
 
-        auto tIndex = engine.ecs.entityToTransform[player.entities[2].id];
-        Transform &transform = engine.ecs.transforms[tIndex];
-        glm::vec2 forward = SnakeMath::getRotationVector2(transform.rotation);
+        Transform *transform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities[2]);
+        glm::vec2 forward = SnakeMath::getRotationVector2(transform->rotation);
         glm::vec2 rightDir = glm::vec2(-forward.y, forward.x);
-        glm::vec2 radiusCenter = transform.position + rightDir * rotationRadius;
+        glm::vec2 radiusCenter = transform->position + rightDir * rotationRadius;
 
         for (size_t i = 0; i < 2; i++)
         {
             // Move segment
             Entity entity = player.entities[i];
-            auto segmentIndex = engine.ecs.entityToTransform[entityIndex(entity)];
-            Transform &segment = engine.ecs.transforms[segmentIndex];
-            glm::vec2 localCenter = segment.position - radiusCenter;
-            glm::vec2 forward = SnakeMath::getRotationVector2(segment.rotation);
+            Transform *segment = (Transform*)engine.ecs.find(ComponentId::Transform, entity);
+            glm::vec2 localCenter = segment->position - radiusCenter;
+            glm::vec2 forward = SnakeMath::getRotationVector2(segment->rotation);
 
             // Rotate segment
             glm::vec2 tangent = glm::normalize(glm::vec2(-localCenter.y, localCenter.x));
@@ -1013,13 +1024,13 @@ struct Game
             if (deltaAngle < -SnakeMath::PI)
                 deltaAngle += 2.0f * SnakeMath::PI;
 
-            float dist = glm::length(segment.position - radiusCenter);
+            float dist = glm::length(segment->position - radiusCenter);
             if (dist < maxRotDistance)
                 continue;
 
-            segment.position = segment.position - dt * (localCenter);
-            segment.rotation += deltaAngle * dt * rotationSpeed;
-            segment.commit();
+            segment->position = segment->position - dt * (localCenter);
+            segment->rotation += deltaAngle * dt * rotationSpeed;
+            segment->commit();
             break;
         }
     }

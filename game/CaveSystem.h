@@ -2,6 +2,7 @@
 #include "components/EntityType.h"
 #include "components/Material.h"
 #include "components/Health.h"
+#include "components/GroundOre.h"
 #include "EntityManager.h"
 #include "SnakeMath.h"
 #include "Atlas.h"
@@ -20,7 +21,7 @@ struct CaveSystem
     glm::vec2 size = {tileSize + 1.0f, tileSize + 1.0f}; // Added 1 pixel in both height and width to remove line artifacts
     Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
     static constexpr int TREASURE_COUNT = 10;
-    std::array<SpriteID, TREASURE_COUNT> ground_treasures = {
+    std::array<SpriteID, TREASURE_COUNT> GROUND_COSMETICS = {
         SpriteID::SPR_GEM_BLUE,
         SpriteID::SPR_GEM_RED,
         SpriteID::SPR_GEM_GREEN,
@@ -44,50 +45,81 @@ struct CaveSystem
     void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, glm::vec4 uvTransform)
     {
         ZoneScoped;
-        Renderable renderable = engine.ecs.renderables[engine.ecs.entityToRenderable[entityIndex(entity)]];
+        Renderable *renderable = (Renderable*)engine.ecs.find(ComponentId::Renderable, entity);
         InstanceData instance = {
             transform.model,
             material.color,
             uvTransform,
             transform.size,
             material.size,
-            renderable.renderLayer,
+            renderable->renderLayer,
             material.shaderType,
-            renderable.z,
-            renderable.tiebreak,
+            renderable->z,
+            renderable->tiebreak,
             mesh,
             material.atlasIndex,
-            renderable.drawkey,
+            renderable->drawkey,
             entity,
         };
 
         engine.instanceStorage.push(instance);
     }
-
-    void createRandomTreasure(Entity &groundEntity, Transform &t)
-    {
-        int idx = std::lround(SnakeMath::randomBetween(0, TREASURE_COUNT - 1));
-        uint32_t key = ground_treasures[idx];
-        createTreasure(groundEntity, t, key);
-    }
-
-    void createTreasure(Entity &groundEntity, Transform &transform, uint32_t key)
+    
+    Entity createGroundCosmetic(Entity &groundEntity, Transform &transform, uint32_t key)
     {
         Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
         AtlasRegion region = engine.atlasRegions[key];
         glm::vec4 uvTransform = getUvTransform(region);
         Mesh mesh = MeshRegistry::quad;
-        Entity treasureEntity = engine.ecs.createEntity(
+        Entity entity = engine.ecs.createEntity(
             transform,
             mesh,
             m,
             RenderLayer::World,
-            EntityType::Treasure,
+            EntityType::GroundCosmetic,
             SpatialStorage::Chunk,
             uvTransform,
             1);
-        Treasure treasure = {groundEntity};
-        engine.ecs.addToStore(engine.ecs.treasures, engine.ecs.entityToTreasure, engine.ecs.treasureToEntity, treasureEntity, treasure);
+        GroundCosmetic groundCosmetic = {groundEntity};
+        engine.ecs.push(ComponentId::GroundCosmetic, entity, &groundCosmetic);
+
+        return entity;
+    }
+
+    Entity createGroundOre(Entity &groundEntity, Transform &transform, OrePackage orePackage)
+    {
+        Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
+        AtlasRegion region = engine.atlasRegions[orePackage.spriteID];
+        glm::vec4 uvTransform = getUvTransform(region);
+        Mesh mesh = MeshRegistry::quad;
+        Entity entity = engine.ecs.createEntity(
+            transform,
+            mesh,
+            m,
+            RenderLayer::World,
+            EntityType::OreBlock,
+            SpatialStorage::Chunk,
+            uvTransform,
+            1);
+        GroundOre groundOre = { groundEntity, orePackage.level };
+        engine.ecs.push(ComponentId::GroundOre, entity, &groundOre);
+
+        return entity;
+    }
+
+    Entity createRandomGroundCosmetic(Entity &groundEntity, Transform &t)
+    {
+        int idx = std::lround(SnakeMath::randomBetween(0, TREASURE_COUNT - 1));
+        uint32_t key = GROUND_COSMETICS[idx];
+        return createGroundCosmetic(groundEntity, t, key);
+    }
+
+    Entity createRandomOreBlock(Entity &groundEntity, Transform &t)
+    {
+        // TODO: This should be based on something more interesting like "depth" or "biome"
+        int idx = std::lround(SnakeMath::randomBetween(0, ORE_BLOCK_COUNT - 1));
+        OrePackage orePackage = ORE_BLOCKS[idx];
+        return createGroundOre(groundEntity, t, orePackage);
     }
 
     inline void createGround(float xWorld, float yWorld)
@@ -99,6 +131,7 @@ struct CaveSystem
         AtlasRegion region = engine.atlasRegions[SpriteID::SPR_GROUND_MID_1];
         glm::vec4 uvTransform = getUvTransform(region);
         Mesh mesh = MeshRegistry::quad;
+        Ground ground = Ground{};
         Entity entity = engine.ecs.createEntity(
             transform,
             mesh,
@@ -109,11 +142,15 @@ struct CaveSystem
             uvTransform,
             0);
 
-        if (SnakeMath::chance(0.005))
-        {
-            createRandomTreasure(entity, transform);
+        if (SnakeMath::chance(0.005)) {
+            createRandomGroundCosmetic(entity, transform);
+        } else if (SnakeMath::chance(0.005)) {
+            ground.groundOreRef = createRandomOreBlock(entity, transform);
         }
-        engine.ecs.addToStore(engine.ecs.healths, engine.ecs.entityToHealth, engine.ecs.healthToEntity, entity, Health{100, 100});
+        
+        Health &health = Health{100, 100};
+        engine.ecs.push(ComponentId::Health, entity, &health);
+        engine.ecs.push(ComponentId::Ground, entity, &ground);
     }
 
     inline void createGraceArea()

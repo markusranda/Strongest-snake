@@ -6,6 +6,7 @@ enum class EntityType : uint8_t
     Player,
     Ground,
     Background,
-    Treasure,
+    GroundCosmetic,
+    OreBlock,
     COUNT
 };

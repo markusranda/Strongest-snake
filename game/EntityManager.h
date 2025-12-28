@@ -5,10 +5,12 @@
 #include "components/Mesh.h"
 #include "components/Entity.h"
 #include "components/Health.h"
-#include "components/Treasure.h"
+#include "components/Ground.h"
+#include "components/GroundCosmetic.h"
 #include "components/EntityType.h"
 #include "components/Renderable.h"
 #include "components/Material.h"
+#include "components/GroundOre.h"
 #include "Collision.h"
 #include "DrawCmd.h"
 #include "TextureComponent.h"
@@ -30,56 +32,209 @@ enum class SpatialStorage : uint32_t
     ChunkTile,
 };
 
+enum class ComponentId : uint16_t
+{
+    AABB,
+    Transform,
+    Mesh,
+    Renderable,
+    Material,
+    UvTransform,
+    EntityType,
+    Health,
+    Ground,
+    GroundCosmetic,
+    GroundOre,
+    COUNT,
+};
+
+struct ComponentStorage {
+    // --- Dense ---
+    uint8_t *denseBytes = nullptr;
+    uint32_t denseSize = 0;
+    uint32_t denseCapacity = 0;
+
+    // --- Entity -> Dense ---
+    uint32_t *entityToDense = nullptr;
+    uint32_t  entityToDenseCapacity = 0;
+
+    // --- Dense -> Entity ---
+    uint32_t *denseToEntity = nullptr;
+    
+    // --- Component ---
+    ComponentId componentId;
+    uint32_t componentSize;
+
+    static constexpr uint32_t SENTINEL = UINT32_MAX;
+    static constexpr uint32_t MEM_CHUNK_SIZE = 0x10000;
+
+    ComponentStorage(ComponentId componentId, uint32_t componentSize): componentId(componentId), componentSize(componentSize) {
+        growDense();
+        growEntityToDense(1024);
+    }
+
+    uint8_t *push(const void *src, uint32_t entityIdx)
+    {
+        // --- Dense ---
+        if (denseSize == denseCapacity) {
+            growDense();
+        }
+        uint32_t denseIdx = denseSize;
+        void *dst = denseBytes + size_t(denseIdx * componentSize);
+        memcpy(dst, src, componentSize);
+        denseToEntity[denseIdx] = entityIdx;
+        
+        // --- Entity -> Dense ---
+        if (entityIdx >= entityToDenseCapacity) {
+            growEntityToDense(entityIdx + 1);
+        }
+        entityToDense[entityIdx] = denseIdx;
+
+        denseSize++;
+        assert(denseSize <= denseCapacity);
+        assert(entityIdx < entityToDenseCapacity);
+
+        return (uint8_t *)dst;
+    }
+
+    // Returns nullptr if thing doesn't exist
+    uint8_t *find(uint32_t entityIdx) {
+        if (entityIdx >= entityToDenseCapacity) return nullptr;
+
+        uint32_t denseIdx = entityToDense[entityIdx];
+        if (denseIdx == SENTINEL) return nullptr;
+
+        assert(denseIdx < denseSize);
+        return denseBytes + size_t(denseIdx * componentSize);
+    }
+
+    void erase(uint32_t entityIdx)
+    {
+        assert(entityIdx < entityToDenseCapacity);
+        assert(denseSize > 0);
+
+        uint32_t denseIdx = entityToDense[entityIdx];
+        assert(denseIdx != SENTINEL);
+        assert(denseIdx < denseSize);
+
+        uint32_t lastDenseIdx  = --denseSize;
+        uint32_t lastEntityIdx = denseToEntity[lastDenseIdx];
+
+        // Mark removed
+        entityToDense[entityIdx] = SENTINEL;
+
+        if (denseIdx != lastDenseIdx) {
+            // Move last element into the hole
+            void* dst = denseBytes + size_t(denseIdx) * componentSize;
+            void* src = denseBytes + size_t(lastDenseIdx) * componentSize;
+            std::memcpy(dst, src, componentSize);
+
+            denseToEntity[denseIdx] = lastEntityIdx;
+            entityToDense[lastEntityIdx] = denseIdx;
+        }
+    }
+
+    // TODO: We could keep dense and denseToEntity in one block 
+    // TODO: Allocate so that things align with Cache line 
+    // TODO: Memset only the new bytes. 
+    void growDense() {
+        size_t need = size_t(denseSize) + 1;
+        size_t newCapacity = SnakeMath::roundUpMultiplePow2(need, MEM_CHUNK_SIZE);
+        void *newDenseBytes = malloc(newCapacity * componentSize);
+        if (!newDenseBytes)
+            throw std::bad_alloc();
+        void *newDenseToEntity = malloc(newCapacity * sizeof(uint32_t));
+        if (!newDenseToEntity)
+            throw std::bad_alloc();
+
+        // --- Initialize memory ---
+        std::memset(newDenseBytes, 0xFF, newCapacity * componentSize);
+        std::memset(newDenseToEntity, 0xFF, newCapacity * sizeof(uint32_t));
+
+        // --- Copy over data ---
+        if (denseBytes)
+            std::memcpy(newDenseBytes, denseBytes, denseSize * componentSize);
+        if (denseToEntity)
+            std::memcpy(newDenseToEntity, denseToEntity, denseSize * sizeof(uint32_t));
+
+        // --- Free ---
+        if (denseBytes)
+            free(denseBytes);
+        if (denseToEntity)
+            free(denseToEntity);
+
+        // --- Map ---
+        denseBytes = (uint8_t *)newDenseBytes;
+        denseToEntity = (uint32_t *)newDenseToEntity;
+        denseCapacity = newCapacity;
+
+        assert(denseCapacity > denseSize);
+    }
+
+    void growEntityToDense(uint32_t newIdx)
+    {
+        size_t newCapacity = SnakeMath::roundUpMultiplePow2(newIdx, MEM_CHUNK_SIZE);
+        void *newData = malloc(newCapacity * sizeof(uint32_t));
+        if (!newData)
+            throw std::bad_alloc();
+
+        // Overwrite new memory
+        // Notice: int _Val is OK because SENTINEL is 0xFFFFFFFF. (If SENTINEL ever changes, replace with a loop.)
+        std::memset(newData, SENTINEL, newCapacity * sizeof(uint32_t));
+
+        // copy existing elements
+        if (entityToDense)
+            std::memcpy(newData, entityToDense, entityToDenseCapacity * sizeof(uint32_t));
+
+        if (entityToDense)
+            free(entityToDense);
+
+        entityToDense = (uint32_t *)newData;
+        entityToDenseCapacity = newCapacity;
+    }
+};
+
 struct EntityManager
 {
+    // Entity generations
     std::vector<uint8_t> generations;  // generation per slot
     std::vector<uint32_t> freeIndices; // pool of free slots
 
-    // --- Dense ---
-    std::vector<Transform> transforms;
-    std::vector<Mesh> meshes;
-    std::vector<Renderable> renderables;
-    std::vector<Material> materials;
-    std::vector<AABB> collisionBoxes;
-    std::vector<glm::vec4> uvTransforms;
-    std::vector<EntityType> entityTypes;
-    std::vector<Entity> activeEntities;
-    std::vector<Health> healths;
-    std::vector<Treasure> treasures;
-
-    // --- Sparse ---
-    std::vector<uint32_t> entityToTransform;
-    std::vector<uint32_t> entityToMesh;
-    std::vector<uint32_t> entityToRenderable;
-    std::vector<uint32_t> entityToMaterial;
-    std::vector<uint32_t> entityToCollisionBox;
-    std::vector<uint32_t> entityToUvTransforms;
-    std::vector<uint32_t> entityToEntityTypes;
-    std::vector<uint32_t> entityToHealth;
-    std::vector<uint32_t> entityToTreasure;
-
-    std::vector<size_t> transformToEntity;
-    std::vector<size_t> meshToEntity;
-    std::vector<size_t> renderableToEntity;
-    std::vector<size_t> materialToEntity;
-    std::vector<size_t> collisionBoxToEntity;
-    std::vector<size_t> uvTransformsToEntity;
-    std::vector<size_t> entityTypesToEntity;
-    std::vector<size_t> healthToEntity;
-    std::vector<size_t> treasureToEntity;
-
+    // Each component's storage
+    ComponentStorage* components[(size_t)ComponentId::COUNT];
+    
     // Spatial storage of entities
     ankerl::unordered_dense::map<int64_t, Chunk> chunks;
-
-    const uint32_t RESIZE_INCREMENT = 2048;
-
+    
+    // All entites that are currently active
+    std::vector<Entity> activeEntities;
+    
     EntityManager()
     {
-        // --- Dense ---
-        transforms.reserve(RESIZE_INCREMENT);
-        meshes.reserve(RESIZE_INCREMENT);
-        renderables.reserve(RESIZE_INCREMENT);
-        freeIndices.reserve(RESIZE_INCREMENT);
+        components[(size_t)ComponentId::AABB] = new ComponentStorage(ComponentId::AABB, sizeof(AABB));
+        components[(size_t)ComponentId::EntityType] = new ComponentStorage(ComponentId::EntityType, sizeof(EntityType));
+        components[(size_t)ComponentId::Health] = new ComponentStorage(ComponentId::Health, sizeof(Health));
+        components[(size_t)ComponentId::Material] = new ComponentStorage(ComponentId::Material, sizeof(Material));
+        components[(size_t)ComponentId::Mesh] = new ComponentStorage(ComponentId::Mesh, sizeof(Mesh));
+        components[(size_t)ComponentId::Renderable] = new ComponentStorage(ComponentId::Renderable, sizeof(Renderable));
+        components[(size_t)ComponentId::Transform] = new ComponentStorage(ComponentId::Transform, sizeof(Transform));
+        components[(size_t)ComponentId::UvTransform] = new ComponentStorage(ComponentId::UvTransform, sizeof(glm::vec4));
+        components[(size_t)ComponentId::Ground] = new ComponentStorage(ComponentId::Ground, sizeof(Ground));
+        components[(size_t)ComponentId::GroundCosmetic] = new ComponentStorage(ComponentId::GroundCosmetic, sizeof(GroundCosmetic));
+        components[(size_t)ComponentId::GroundOre] = new ComponentStorage(ComponentId::GroundOre, sizeof(GroundOre));
+    }
+
+    void push(ComponentId componentId, Entity entity, const void* item) {
+        uint8_t *saved = components[(size_t)componentId]->push(item, entityIndex(entity));
+        assert(saved != nullptr);
+    }
+
+    uint8_t *find(ComponentId componentId, Entity entity) {
+        return components[(size_t)componentId]->find(entityIndex(entity));
+    }
+
+    void erase(ComponentId componentId, Entity entity) {
+        components[(size_t)componentId]->erase(entityIndex(entity));
     }
 
     Entity createEntity(
@@ -129,13 +284,13 @@ struct EntityManager
         renderable.packDrawKey(material.shaderType, mesh.vertexOffset);
         AABB aabb = computeWorldAABB(mesh, transform);
 
-        addToStore<Transform>(transforms, entityToTransform, transformToEntity, entity, transform);
-        addToStore<Mesh>(meshes, entityToMesh, meshToEntity, entity, mesh);
-        addToStore<Renderable>(renderables, entityToRenderable, renderableToEntity, entity, renderable);
-        addToStore<Material>(materials, entityToMaterial, materialToEntity, entity, material);
-        addToStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, entity, uvTransform);
-        addToStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, entity, entityType);
-        addToStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, entity, aabb);
+        push(ComponentId::Transform, entity, &transform);
+        push(ComponentId::Mesh, entity, &mesh);
+        push(ComponentId::Renderable, entity, &renderable);
+        push(ComponentId::Material, entity, &material);
+        push(ComponentId::UvTransform, entity, &uvTransform);
+        push(ComponentId::EntityType, entity, &entityType);
+        push(ComponentId::AABB, entity, &aabb);
 
         return entity;
     }
@@ -153,11 +308,11 @@ struct EntityManager
         // Safety: only recycle if it’s actually the right generation
         if (generations[entityIdx] == gen)
         {
-            if (++generations[entityIdx] == 0) // Handle wrapping
-                generations[entityIdx] = 1;
-            else
-                generations[entityIdx]++;     // bump generation
-            freeIndices.push_back(entityIdx); // recycle slot
+            uint8_t& g = generations[entityIdx];
+            g = uint8_t(g + 1);
+            if (g == 0) g = 1;
+            
+            freeIndices.push_back(entityIdx);
         }
 
         // --- Remove from spatial storage ---
@@ -165,34 +320,31 @@ struct EntityManager
         {
         case SpatialStorage::Chunk:
         {
-            AABB &aabb = collisionBoxes[entityToCollisionBox[entityIdx]];
-            deleteEntityFromChunk(entityIdx, aabb);
+            AABB *aabb = (AABB*)find(ComponentId::AABB, e);
+            deleteEntityFromChunk(entityIdx, *aabb);
             break;
         }
         case SpatialStorage::ChunkTile:
         {
-            AABB &aabb = collisionBoxes[entityToCollisionBox[entityIdx]];
-            deleteEntityFromChunkTile(aabb);
+            AABB *aabb = (AABB*)find(ComponentId::AABB, e);
+            deleteEntityFromChunkTile(*aabb);
             break;
         }
         }
 
         // --- Remove from stores ---
-        // TODO One day you need to figure out a more performant way to clean shit up
         {
             ZoneScopedN("Remove from stores");
 
-            removeFromStore<Transform>(transforms, entityToTransform, transformToEntity, e);
-            removeFromStore<Mesh>(meshes, entityToMesh, meshToEntity, e);
-            removeFromStore<Renderable>(renderables, entityToRenderable, renderableToEntity, e);
-            removeFromStore<Material>(materials, entityToMaterial, materialToEntity, e);
-            removeFromStore<glm::vec4>(uvTransforms, entityToUvTransforms, uvTransformsToEntity, e);
-            removeFromStore<EntityType>(entityTypes, entityToEntityTypes, entityTypesToEntity, e);
-            if (entityIdx < entityToHealth.size() && entityToHealth[entityIdx] != UINT32_MAX)
-                removeFromStore<Health>(healths, entityToHealth, healthToEntity, e);
-            if (entityIdx < entityToTreasure.size() && entityToTreasure[entityIdx] != UINT32_MAX)
-                removeFromStore<Treasure>(treasures, entityToTreasure, treasureToEntity, e);
-            removeFromStore<AABB>(collisionBoxes, entityToCollisionBox, collisionBoxToEntity, e);
+            erase(ComponentId::Transform, e);
+            erase(ComponentId::Mesh, e);
+            erase(ComponentId::Material, e);
+            erase(ComponentId::UvTransform, e);
+            erase(ComponentId::EntityType, e);
+            erase(ComponentId::AABB, e);
+            if (find(ComponentId::Health, e)) erase(ComponentId::Health, e);
+            if (find(ComponentId::GroundCosmetic, e)) erase(ComponentId::GroundCosmetic, e);
+            if (find(ComponentId::GroundOre, e)) erase(ComponentId::GroundOre, e);
         }
     }
 
@@ -249,64 +401,6 @@ struct EntityManager
         uint32_t index = entityIndex(e);
         uint8_t gen = entityGen(e);
         return generations[index] == gen;
-    }
-
-    void getAllRelevantEntities(const Transform &player, std::vector<Entity> &entities)
-    {
-        getIntersectingEntitiesChunks(player, entities);
-    }
-
-    void getIntersectingEntitiesChunks(const Transform &player, std::vector<Entity> &entities)
-    {
-        ZoneScoped;
-
-        Entity localBuf[9 * TILES_PER_CHUNK];
-        size_t count = 0;
-        int32_t cx = worldPosToClosestChunk(player.position.x);
-        int32_t cy = worldPosToClosestChunk(player.position.y);
-
-        for (int dx = -1; dx <= 1; dx++)
-        {
-            for (int dy = -1; dy <= 1; dy++)
-            {
-                int32_t chunkWorldX = cx + dx * CHUNK_WORLD_SIZE;
-                int32_t chunkWorldY = cy + dy * CHUNK_WORLD_SIZE;
-                int64_t chunkIdx = packChunkCoords(chunkWorldX, chunkWorldY);
-                auto it = chunks.find(chunkIdx);
-                assert(it != chunks.end());
-                entities.insert(entities.end(), it->second.staticEntities.begin(), it->second.staticEntities.end());
-
-                for (size_t i = 0; i < TILES_PER_CHUNK; i += 8)
-                {
-                    const Entity &e0 = it->second.tiles[i + 0];
-                    const Entity &e1 = it->second.tiles[i + 1];
-                    const Entity &e2 = it->second.tiles[i + 2];
-                    const Entity &e3 = it->second.tiles[i + 3];
-                    const Entity &e4 = it->second.tiles[i + 4];
-                    const Entity &e5 = it->second.tiles[i + 5];
-                    const Entity &e6 = it->second.tiles[i + 6];
-                    const Entity &e7 = it->second.tiles[i + 7];
-
-                    if (e0.id != UINT32_MAX)
-                        localBuf[count++] = e0;
-                    if (e1.id != UINT32_MAX)
-                        localBuf[count++] = e1;
-                    if (e2.id != UINT32_MAX)
-                        localBuf[count++] = e2;
-                    if (e3.id != UINT32_MAX)
-                        localBuf[count++] = e3;
-                    if (e4.id != UINT32_MAX)
-                        localBuf[count++] = e4;
-                    if (e5.id != UINT32_MAX)
-                        localBuf[count++] = e5;
-                    if (e6.id != UINT32_MAX)
-                        localBuf[count++] = e6;
-                    if (e7.id != UINT32_MAX)
-                        localBuf[count++] = e7;
-                }
-            }
-        }
-        entities.insert(entities.end(), localBuf, localBuf + count);
     }
 
     void deleteEntityFromChunk(uint32_t &entityIdx, const AABB &aabb)

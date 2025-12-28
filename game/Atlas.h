@@ -40,6 +40,9 @@ enum SpriteID : uint32_t
     SPR_GROUND_MID_17 = 2176,
     SPR_GROUND_MID_18 = 2304,
     SPR_GROUND_MID_19 = 2432,
+
+    SPR_ORE_BLOCK_COPPER = 131,
+    SPR_ORE_BLOCK_HEMATITE = 132,
 };
 
 struct AtlasRegion
