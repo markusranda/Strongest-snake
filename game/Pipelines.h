@@ -219,7 +219,6 @@ inline std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphi
     pipelines[static_cast<size_t>(ShaderType::Texture)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture.spv", textureSetLayout, swapChain, msaaSamples);
     pipelines[static_cast<size_t>(ShaderType::TextureScrolling)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture_scrolling.spv", textureSetLayout, swapChain, msaaSamples);
     pipelines[static_cast<size_t>(ShaderType::TextureParallax)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_texture_parallax.spv", textureSetLayout, swapChain, msaaSamples);
-    pipelines[static_cast<size_t>(ShaderType::Font)] = createGraphicsPipeline(device, "shaders/vert_texture_font.spv", "shaders/frag_texture_font.spv", textureSetLayout, swapChain, msaaSamples);
     pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_border.spv", textureSetLayout, swapChain, msaaSamples);
 
     return pipelines;

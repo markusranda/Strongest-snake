@@ -5,9 +5,9 @@ struct Mesh
 {
     uint32_t vertexOffset;
     uint32_t vertexCount;
-    char *name;
+    const char *name;
 
-    constexpr Mesh(uint32_t vOff = 0, uint32_t vCount = 0, char *name = "unnamed_mesh")
+    constexpr Mesh(uint32_t vOff = 0, uint32_t vCount = 0, const char *name = "unnamed_mesh")
         : vertexOffset(vOff), vertexCount(vCount), name(name) {}
 
     bool operator==(const Mesh &other) const

@@ -104,7 +104,8 @@ inline Texture LoadTexture(const std::string &filename,
     stbi_image_free(pixels);
 
     // --- Create GPU image
-    if (vkCreateImage(device, &createImageInfo(texWidth, texHeight), nullptr, &texture.image) != VK_SUCCESS)
+    VkImageCreateInfo gpuImageInfo = createImageInfo(texWidth, texHeight);
+    if (vkCreateImage(device, &gpuImageInfo, nullptr, &texture.image) != VK_SUCCESS)
         throw std::runtime_error("failed to create image!");
 
     VkMemoryRequirements memRequirements;
@@ -133,11 +134,13 @@ inline Texture LoadTexture(const std::string &filename,
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 
     // --- Image view
-    if (vkCreateImageView(device, &createViewInfo(texture), nullptr, &texture.view) != VK_SUCCESS)
+    VkImageViewCreateInfo imageViewCreateInfo = createViewInfo(texture);
+    if (vkCreateImageView(device, &imageViewCreateInfo, nullptr, &texture.view) != VK_SUCCESS)
         throw std::runtime_error("failed to create texture image view!");
 
     // --- Sampler
-    if (vkCreateSampler(device, &createSamplerInfo(), nullptr, &texture.sampler) != VK_SUCCESS)
+    VkSamplerCreateInfo samplerCreateInfo = createSamplerInfo();
+    if (vkCreateSampler(device, &samplerCreateInfo, nullptr, &texture.sampler) != VK_SUCCESS)
         throw std::runtime_error("failed to create texture sampler!");
 
     texture.width = texWidth;

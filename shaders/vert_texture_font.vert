@@ -1,22 +1,38 @@
 #version 450
 
 layout(push_constant) uniform Push {
-    mat4 viewProj;
+    vec4 boundsPx;   // x, y, w, h in pixels, origin = top-left
+    vec4 color;      // rgba
+    vec4 uvRect;     
+    vec2 viewportPx; // swapchain extent (width, height)
 } push;
-
-layout(location = 0) in vec2 inPos;
-layout(location = 1) in vec2 inUV;
-layout(location = 2) in mat4 instanceModel;
-layout(location = 6) in vec4 instanceColor;
-layout(location = 7) in vec4 instanceUV;
-layout(location = 8) in vec2 worldSize; // I needed vulkan to shut up
-layout(location = 9) in float textureLength; // I needed vulkan to shut up
 
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec2 fragUV;
 
 void main() {
-    gl_Position = instanceModel * vec4(inPos, 0.0, 1.0);
-    fragColor = instanceColor;
-    fragUV = instanceUV.xy + inUV * instanceUV.zw;
+    // Triangle list quad (6 verts)
+    const vec2 corners[6] = vec2[6](
+        vec2(0.0, 0.0),
+        vec2(1.0, 0.0),
+        vec2(0.0, 1.0),
+        vec2(0.0, 1.0),
+        vec2(1.0, 0.0),
+        vec2(1.0, 1.0)
+    );
+
+    vec2 corner = corners[gl_VertexIndex];
+
+    // Pixel position
+    vec2 pixelPos = push.boundsPx.xy + corner * push.boundsPx.zw;
+
+    // Pixel -> NDC (top-left origin)
+    vec2 ndc;
+    ndc.x = (pixelPos.x / push.viewportPx.x) * 2.0 - 1.0;
+    ndc.y = (pixelPos.y / push.viewportPx.y) * 2.0 - 1.0;
+
+    gl_Position = vec4(ndc, 0.0, 1.0);
+
+    fragColor = push.color;
+    fragUV = mix(push.uvRect.xy, push.uvRect.zw, corner);
 }

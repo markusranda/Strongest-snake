@@ -22,6 +22,7 @@
 #include "RendererSempahores.h"
 #include "RendererApplication.h"
 #include "RendererInstanceStorage.h"
+#include "RendererUISystem.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -49,6 +50,7 @@ struct Renderer
     Renderer(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
 
     EntityManager ecs;
+    RendererUISystem uiSystem;
     uint32_t width;
     uint32_t height;
     Window window;
@@ -110,6 +112,7 @@ struct Renderer
             createSemaphores();
             createCommandBuffers();
             createParticleSystem();
+            createUiSystem();
             createInstanceStorage();
             Logrador::info("Renderer is complete");
         }
@@ -273,6 +276,11 @@ struct Renderer
     void createParticleSystem()
     {
         particleSystem.init(application.device, application.physicalDevice, application.msaaSamples, swapchain);
+    }
+
+    void createUiSystem()
+    {
+        uiSystem.init(application, swapchain);
     }
 
     void createInstanceStorage()
@@ -462,6 +470,9 @@ struct Renderer
             vkCmdDraw(cmd, dc.vertexCount, dc.instanceCount, dc.firstVertex, instanceOffset);
             instanceOffset += dc.instanceCount;
         }
+
+        // Draw UI
+        uiSystem.draw(cmd, {swapchain.swapChainExtent.width, swapchain.swapChainExtent.height});
 
         // Draw particles
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, particleSystem.graphicsPipeline.pipeline);

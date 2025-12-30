@@ -348,54 +348,6 @@ struct EntityManager
         }
     }
 
-    template <typename A>
-    void addToStore(std::vector<A> &denseStorage, std::vector<uint32_t> &sparseToDense, std::vector<size_t> &denseToSparse, Entity &entity, A &item)
-    {
-        ZoneScoped;
-
-        size_t denseIndex = denseStorage.size();
-        uint32_t sparseIndex = entityIndex(entity);
-
-        // Do resize
-        if (sparseToDense.size() <= sparseIndex)
-        {
-            size_t newSize = ((sparseIndex / RESIZE_INCREMENT) + 1) * RESIZE_INCREMENT;
-            sparseToDense.resize(newSize, UINT32_MAX);
-        }
-        if (denseToSparse.size() <= denseIndex)
-        {
-            denseToSparse.resize(denseToSparse.size() + RESIZE_INCREMENT, UINT32_MAX);
-        }
-
-        // Add to stores
-        denseStorage.push_back(item);
-        sparseToDense[sparseIndex] = denseIndex;
-        denseToSparse[denseIndex] = sparseIndex;
-    }
-
-    template <typename A>
-    void removeFromStore(std::vector<A> &denseStorage, std::vector<uint32_t> &sparseToDense, std::vector<size_t> &denseToSparse, Entity &e)
-    {
-        ZoneScoped;
-
-        uint32_t denseIndex = sparseToDense[entityIndex(e)];
-        uint32_t lastIndex = denseStorage.size() - 1;
-
-        // We ony swap if current denseIndex isn't the last element
-        if (denseIndex != lastIndex)
-        {
-            // Overwrite current slot with last slot
-            denseStorage[denseIndex] = std::move(denseStorage[lastIndex]);
-            uint32_t movedEntity = denseToSparse[lastIndex];
-            denseToSparse[denseIndex] = movedEntity;
-            sparseToDense[movedEntity] = denseIndex;
-        }
-
-        denseStorage.pop_back();
-        denseToSparse.pop_back();
-        sparseToDense[entityIndex(e)] = UINT32_MAX;
-    }
-
     bool isAlive(Entity &e) const
     {
         uint32_t index = entityIndex(e);

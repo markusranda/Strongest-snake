@@ -111,7 +111,14 @@ struct Background
     Entity entity;
 };
 
+struct KeyState {
+    bool down;
+    bool pressed;   // went up → down this frame
+    bool released;  // went down → up this frame
+};
+
 inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset);
+inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
 struct Game
 {
@@ -135,6 +142,7 @@ struct Game
     uint64_t curChunks[CHUNK_CACHE_CAPACITY];
     size_t curChunksSize = 0;
     U32Set entitiesToDeleteCache;
+    KeyState keyStates[GLFW_KEY_LAST]; 
 
     // -- Player ---
     const float drillDamage = 500.0f;
@@ -280,6 +288,14 @@ struct Game
                 throw std::runtime_error("Failed to start audio engine");
             }
 
+            // --- Keystates ---
+            for (size_t i = 0; i < GLFW_KEY_LAST; i++)
+            {
+                keyStates[i].pressed = false;
+                keyStates[i].down = false;
+                keyStates[i].released = false;
+            }
+
             // --- Background ---
             {
                 AtlasIndex atlasIndex = AtlasIndex::Sprite;
@@ -293,7 +309,7 @@ struct Game
                 float z = 0.0f;
                 t.commit();
 
-                Entity &entity = engine.ecs.createEntity(t, mesh, material, layer, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f);
+                Entity entity = engine.ecs.createEntity(t, mesh, material, layer, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f);
                 background = {entity};
                 createInstanceData(entity);
                 engine.ecs.activeEntities.push_back(entity);
@@ -316,6 +332,7 @@ struct Game
             // --- Scrolling ---
             glfwSetWindowUserPointer(window.handle, this); // Connects this instance of struct to the windows somehow
             glfwSetScrollCallback(window.handle, scrollCallback);
+            glfwSetKeyCallback(window.handle, keyCallback);
         }
         catch (const std::exception &e)
         {
@@ -364,10 +381,21 @@ struct Game
             engine.draw(camera, fps, head->position, delta);
 
             updateFPSCounter(delta);
+
+            keysEnd();
         }
 
         ma_sound_uninit(&engineIdleAudio);
         ma_engine_uninit(&audioEngine);
+    }
+
+    void keysEnd() 
+    {
+        for (size_t i = 0; i < GLFW_KEY_LAST; i++)
+        {
+            keyStates[i].pressed = false;
+            keyStates[i].released = false;
+        }
     }
 
     void addChunkEntities(uint64_t chunkIdx)
@@ -548,7 +576,25 @@ struct Game
                     break;
                 }
 
-                // TODO: Store number of ores somewhere
+                bool found = false;
+                for (size_t i = 0; i < engine.uiSystem.inventoryItemsCount; i++)
+                {
+                    InventoryItem &item = engine.uiSystem.inventoryItems[i];
+                    if (item.id == groundOre->itemId)  {
+                        item.count++;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    InventoryItem item = {
+                        .id = groundOre->itemId,
+                        .count = 1,
+                    };
+                    engine.uiSystem.inventoryItems[engine.uiSystem.inventoryItemsCount++] = item;
+                }
+                
                 engine.ecs.destroyEntity(entity, SpatialStorage::Chunk);
                 engine.instanceStorage.erase(entity);
                 break;
@@ -629,6 +675,10 @@ struct Game
         bool forwardPressed = false;
         bool leftPressed = false;
         bool rightPressed = false;
+
+        if (keyStates[GLFW_KEY_I].pressed) {
+            engine.uiSystem.inventoryOpen = !engine.uiSystem.inventoryOpen;
+        }
 
         if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS)
             rotateHeadLeft(delta);
@@ -1051,7 +1101,31 @@ struct Game
             fpsTimeSum += delta;
         }
     }
+
 };
+
+inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) 
+{
+    ZoneScoped;
+
+    Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
+    if (!game)
+        return;
+
+    switch (action) {
+        case GLFW_PRESS:
+        game->keyStates[key].pressed = true;
+        game->keyStates[key].down = true;
+        game->keyStates[key].released = false;
+        break;
+
+        case GLFW_RELEASE:
+        game->keyStates[key].pressed = false;
+        game->keyStates[key].down = false;
+        game->keyStates[key].released = true;
+        break;
+    }
+}
 
 inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 {

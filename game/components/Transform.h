@@ -20,12 +20,12 @@ struct Transform
     {
         model = transformToModelMatrix();
     }
-    Transform(glm::vec2 position, glm::vec2 size, float rotation, char *name = "not defined")
+    Transform(glm::vec2 position, glm::vec2 size, float rotation, const char *name = "not defined")
         : position(position), size(size), rotation(rotation), name(name)
     {
         model = transformToModelMatrix();
     }
-    Transform(glm::vec2 position, glm::vec2 size, glm::vec2 pivotPoint, char *name = "not defined")
+    Transform(glm::vec2 position, glm::vec2 size, glm::vec2 pivotPoint, const char *name = "not defined")
         : position(position), size(size), pivotPoint(pivotPoint), name(name)
     {
         model = transformToModelMatrix();

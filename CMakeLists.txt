@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 4.1)
 
 project(strongest_snake LANGUAGES CXX)
 list(APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows/share")
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_definitions(-DUNICODE -D_UNICODE)
@@ -56,15 +56,17 @@ endif()
 
 # List all shader sources
 set(SHADER_SOURCES
-    ${CMAKE_SOURCE_DIR}/shaders/frag_flat.frag
-    ${CMAKE_SOURCE_DIR}/shaders/frag_border.frag
     ${CMAKE_SOURCE_DIR}/shaders/vert_texture.vert
     ${CMAKE_SOURCE_DIR}/shaders/vert_texture_font.vert
+    ${CMAKE_SOURCE_DIR}/shaders/vert_particle.vert
+    ${CMAKE_SOURCE_DIR}/shaders/vert_simple_ui.vert
+    ${CMAKE_SOURCE_DIR}/shaders/frag_simple_ui.frag
+    ${CMAKE_SOURCE_DIR}/shaders/frag_flat.frag
+    ${CMAKE_SOURCE_DIR}/shaders/frag_border.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture_font.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture_scrolling.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture_parallax.frag
-    ${CMAKE_SOURCE_DIR}/shaders/vert_particle.vert
     ${CMAKE_SOURCE_DIR}/shaders/frag_particle.frag
     ${CMAKE_SOURCE_DIR}/shaders/comp_particle.comp
 )

@@ -101,7 +101,7 @@ struct CaveSystem
             SpatialStorage::Chunk,
             uvTransform,
             1);
-        GroundOre groundOre = { groundEntity, orePackage.level };
+        GroundOre groundOre = { .itemId = orePackage.itemId, .parentRef = groundEntity, .oreLevel = orePackage.level  };
         engine.ecs.push(ComponentId::GroundOre, entity, &groundOre);
 
         return entity;
@@ -114,12 +114,12 @@ struct CaveSystem
         return createGroundCosmetic(groundEntity, t, key);
     }
 
-    Entity createRandomOreBlock(Entity &groundEntity, Transform &t)
+    Entity createRandomOreBlock(Entity &groundEntity, Transform &transform)
     {
         // TODO: This should be based on something more interesting like "depth" or "biome"
         int idx = std::lround(SnakeMath::randomBetween(0, ORE_BLOCK_COUNT - 1));
         OrePackage orePackage = ORE_BLOCKS[idx];
-        return createGroundOre(groundEntity, t, orePackage);
+        return createGroundOre(groundEntity, transform, orePackage);
     }
 
     inline void createGround(float xWorld, float yWorld)
@@ -148,7 +148,7 @@ struct CaveSystem
             ground.groundOreRef = createRandomOreBlock(entity, transform);
         }
         
-        Health &health = Health{100, 100};
+        Health health = Health{100, 100};
         engine.ecs.push(ComponentId::Health, entity, &health);
         engine.ecs.push(ComponentId::Ground, entity, &ground);
     }

@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include "Atlas.h"
+#include "Item.h"
 
 // --------------------------------
 // ORES
@@ -13,12 +14,13 @@ enum class OreLevel : uint32_t {
 struct OrePackage {
     SpriteID spriteID;
     OreLevel level;
+    ItemId itemId;
 };
 
 static constexpr uint32_t ORE_BLOCK_COUNT = 2;
 OrePackage ORE_BLOCKS[ORE_BLOCK_COUNT] = {
-    { SpriteID::SPR_ORE_BLOCK_COPPER, OreLevel::Copper},
-    { SpriteID::SPR_ORE_BLOCK_HEMATITE, OreLevel::Hematite},
+    { SpriteID::SPR_ORE_BLOCK_COPPER, OreLevel::Copper, ItemId::COPPER},
+    { SpriteID::SPR_ORE_BLOCK_HEMATITE, OreLevel::Hematite, ItemId::HEMATITE},
 };
 
 // --------------------------------

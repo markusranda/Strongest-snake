@@ -43,6 +43,7 @@ enum SpriteID : uint32_t
 
     SPR_ORE_BLOCK_COPPER = 131,
     SPR_ORE_BLOCK_HEMATITE = 132,
+    INVALID,
 };
 
 struct AtlasRegion
