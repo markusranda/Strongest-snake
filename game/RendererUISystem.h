@@ -679,19 +679,20 @@ struct RendererUISystem {
                 viewportPx.y,
             },
             COLOR_SURFACE_0, 
-            1,
+            2,
             nullptr,
             ShaderType::UISimpleRect
         );
 
         createShadowOverlay(viewportPx, root);
-
         if (inventoryOpen) createInventory(viewportPx, root);
 
         // --- Iterate (DFS) and render nodes ---
         const int allocations = 2*256;
         UINode* stack[allocations]; 
         int top = 0;
+
+        assert(top < allocations);
         stack[top++] = root;
         while (top > 0) {
             assert(allocations > top);
@@ -753,8 +754,8 @@ struct RendererUISystem {
                         };
                         vkCmdPushConstants(cmd, fontPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
                         vkCmdDraw(cmd, 6, 1, 0, 0);
-                        break;
                     }
+                    break;
                 }
                 case ShaderType::ShadowOverlay:
                 {
@@ -781,6 +782,7 @@ struct RendererUISystem {
                 childNode->offsets.y += node->offsets.y;
 
                 // Save node
+                assert(top < allocations);
                 stack[top++] = childNode;
             }
         }

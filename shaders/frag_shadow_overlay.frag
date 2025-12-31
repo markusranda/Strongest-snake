@@ -8,9 +8,13 @@ layout(push_constant) uniform Push {
     float radiusPx;   // pixels
 } push;
 
+float calculateDistPxCircle() {
+    return length(gl_FragCoord.xy - push.centerPx);
+}
+
 void main()
 {
-    float distPx = length(gl_FragCoord.xy - push.centerPx);
+    float distPx = calculateDistPxCircle();
     float alpha  = smoothstep(push.radiusPx, push.radiusPx + max(push.featherPx, 0.0001), distPx);
     outColor = vec4(0,0,0, alpha);
 }

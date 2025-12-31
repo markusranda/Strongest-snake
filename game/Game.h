@@ -649,8 +649,9 @@ struct Game
     {
         ZoneScoped;
 
-        camera.screenW = window.width;
-        camera.screenH = window.height;
+        // Update screen bounds
+        camera.screenW = engine.swapchain.swapChainExtent.width;
+        camera.screenH = engine.swapchain.swapChainExtent.height;
 
         Entity entity = background.entity;
         Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
