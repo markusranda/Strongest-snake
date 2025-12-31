@@ -27,6 +27,7 @@ struct ItemDef {
 template<size_t N>
 struct IdIndexedArray {
   std::array<ItemDef, N> data{};
+  uint32_t count = (uint32_t)N;
 
   constexpr ItemDef& operator[](ItemId id) {
     return data[(size_t)id];
@@ -51,4 +52,3 @@ constexpr auto makeDatabase() {
 }
 
 inline constexpr IdIndexedArray<(size_t)ItemId::COUNT> itemsDatabase = makeDatabase();
-inline constexpr uint16_t itemsDatabaseCount = (uint16_t)(sizeof(itemsDatabase) / sizeof(ItemDef));
