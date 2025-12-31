@@ -5,7 +5,6 @@
 enum SpriteID : uint32_t
 {
     SPR_GROUND_MID_0 = 0,
-    SPR_DRILL_HEAD = 1,
     SPR_SNAKE_SKIN = 2,
     SPR_GEM_BLUE = 3,
     SPR_GEM_RED = 4,
@@ -16,13 +15,13 @@ enum SpriteID : uint32_t
     SPR_GEMS_GREEN = 9,
     SPR_GEMS_PURPLE = 10,
     SPR_GEMS_ORANGE = 11,
-
+    
     SPR_GROUND_MID_1 = 128,
     SPR_SKULL = 129,
-
+    
     SPR_GROUND_MID_2 = 256,
     SPR_CAVE_BACKGROUND = 257,
-
+    
     SPR_GROUND_MID_3 = 384,
     SPR_GROUND_MID_4 = 512,
     SPR_GROUND_MID_5 = 640,
@@ -40,9 +39,14 @@ enum SpriteID : uint32_t
     SPR_GROUND_MID_17 = 2176,
     SPR_GROUND_MID_18 = 2304,
     SPR_GROUND_MID_19 = 2432,
-
+    
     SPR_ORE_BLOCK_COPPER = 131,
     SPR_ORE_BLOCK_HEMATITE = 132,
+    
+    SPR_SNK_SEG_DRILL = 1,
+    SPR_SNK_SEG_STORAGE = 387,    
+    SPR_SNK_SEG_SMELTER = 388,    
+    SPR_SNK_SEG_GRINDER = 389,    
     INVALID,
 };
 

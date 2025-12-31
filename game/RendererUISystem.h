@@ -40,6 +40,12 @@ struct ShadowOverlayPushConstant {
 };
 static_assert(sizeof(ShadowOverlayPushConstant) < 128); // If we go beyond 128, then we might get issues with push constant size limitations
 
+inline static int digits10(int x) {
+    assert(x >= 0);
+    int d = 1;
+    while (x >= 10) { x /= 10; ++d; }
+    return d;
+}
 
 struct UINode {
     glm::vec4 offsets;
@@ -51,6 +57,7 @@ struct UINode {
     ShaderType shaderType;
     const char* text;
     uint16_t textLen = 0;
+    glm::vec2 fontSize = FONT_ATLAS_CELL_SIZE;
 };
 
 struct InventoryItem {
@@ -130,30 +137,33 @@ static inline UINode* createUINode(
     int capacity, 
     UINode *parent,
     ShaderType shaderType,
-    const char* text = ""
+    const char* text = "",
+    glm::vec2 fontSize = ATLAS_CELL_SIZE
 ) {
-    UINode* n = ARENA_ALLOC(a, UINode);
-    if (!n) return nullptr;
+    UINode* node = ARENA_ALLOC(a, UINode);
+    if (!node) return nullptr;
 
-    n->offsets = offsets;
-    n->color = color;
-    n->count = 0;
-    n->capacity = capacity;
-    n->nodes = ARENA_ALLOC_N(a, UINode*, capacity);
-    n->text = text;
-    n->textLen = strlen(text);
-    n->parent = parent;
-    n->shaderType = shaderType;
-
+    node->offsets = offsets;
+    node->color = color;
+    node->count = 0;
+    node->capacity = capacity;
+    node->nodes = ARENA_ALLOC_N(a, UINode*, capacity);
+    node->text = text;
+    node->textLen = strlen(text);
+    node->parent = parent;
+    node->shaderType = shaderType;
+    node->fontSize = fontSize;
+    
     for (int i = 0; i < capacity; i++) 
-        n->nodes[i] = nullptr;
+        node->nodes[i] = nullptr;
+    
+    // Append if parent exists
+    if (node->parent) {
+        assert(parent->count < parent->capacity);
+        parent->nodes[parent->count++] = node;
+    }
 
-    return n;
-}
-
-static inline void appendUINode(UINode *parent, UINode *node) {
-    assert(parent->count < parent->capacity);
-    parent->nodes[parent->count++] = node;
+    return node;
 }
 
 static inline const char* intToCString(FrameArena& a, int value) {
@@ -178,7 +188,12 @@ struct RendererUISystem {
     bool inventoryOpen = false;
     InventoryItem inventoryItems[(size_t)ItemId::COUNT]; 
     int inventoryItemsCount = 0;
-
+    int crusherPanelCount = 0;
+    
+    // Containers
+    const float CONTAINER_MARGIN = 25.0f;
+    const float MODULE_HEIGHT = 150.0f;
+    
     // Player state
     glm::vec2 playerCenterScreen;
     Camera *cameraHandle;
@@ -550,56 +565,53 @@ struct RendererUISystem {
     // ------------------------------------------------------------------------
     // UI COMPONENTS
     // ------------------------------------------------------------------------
-    void createShadowOverlay(glm::vec2 &viewportPx, UINode *root) {
+    void createShadowOverlay(UINode *root) {
         UINode *shadowOverlay = createUINode(
             uiArena, 
-            { glm::vec2{0.0f, 0.0f}, viewportPx },
+            { glm::vec2{0.0f, 0.0f}, glm::vec2{root->offsets.z, root->offsets.w} },
             COLOR_BLACK,
             0,
             root,
             ShaderType::ShadowOverlay
         );
-        appendUINode(root, shadowOverlay);
     }
 
-    void createInventory(glm::vec2 &viewportPx, UINode *root) {
-        float xMin = viewportPx.x * 0.05;
-        float xMax = viewportPx.x * 0.95;
-        float yMin = viewportPx.y * 0.05;
-        float yMax = viewportPx.y * 0.95;
-        float containerWidth = xMax - xMin;
-        float containerHeight = yMax - yMin;
-        
+    void createItemsPanel(UINode* parent) {
         const float slotSize = 100.0f;
         const float minGap   = 5.0f;
+        const float margin   = 5.0f;
 
+        UINode *itemsPanel;
+        {
+            float xMin = CONTAINER_MARGIN;
+            float xMax = parent->offsets.z * 0.5 - (CONTAINER_MARGIN / 2);
+            float yMin = CONTAINER_MARGIN;
+            float yMax = parent->offsets.w - CONTAINER_MARGIN;
+            float width = xMax - xMin;
+            float height = yMax - yMin;
+            itemsPanel = createUINode(uiArena,
+                { xMin, yMin, width, height },
+                COLOR_SURFACE_800,
+                inventoryItemsCount,
+                parent,
+                ShaderType::UISimpleRect
+            );
+        }
+        
         // Need: gap + slot + gap
-        if (containerWidth < slotSize + 2.0f * minGap) return;
+        if (itemsPanel->offsets.z < slotSize + 2.0f * minGap) return;
 
         // cols*slot + (cols+1)*minGap <= contWidth
-        int cols = (int)floor((containerWidth - minGap) / (slotSize + minGap));
-        int rows = (int)floor((containerHeight - minGap) / (slotSize + minGap));
+        int cols = (int)floor((itemsPanel->offsets.z - minGap) / (slotSize + minGap));
+        int rows = (int)floor((itemsPanel->offsets.w - minGap) / (slotSize + minGap));
         if (cols < 1) return;
         if (rows < 1) return;
 
         // Perfect fill gap (guaranteed >= minGap)
-        float gap = (containerWidth - cols * slotSize) / (cols + 1);
+        float gap = (itemsPanel->offsets.z - cols * slotSize) / (cols + 1);
         if (gap < minGap) return;
 
-        UINode* inventory = createUINode(uiArena,
-            {
-                xMin,
-                yMin,
-                containerWidth,
-                containerHeight,
-            },
-            COLOR_SURFACE_900,
-            inventoryItemsCount,
-            root,
-            ShaderType::UISimpleRect
-        );
-        appendUINode(root, inventory);
-
+        // --- Create each item slot ---
         for (int idx = 0; idx < inventoryItemsCount; idx++)
         {
             InventoryItem item = inventoryItems[idx];
@@ -614,42 +626,153 @@ struct RendererUISystem {
             };
 
             // TODO: Implement scroll instead of giving up
-            if (offset.y + size.y > containerHeight) break;
+            if (offset.y + size.y > itemsPanel->offsets.w) break;
 
             UINode *slot = createUINode(
                 uiArena,
                 { offset, size },
-                COLOR_SURFACE_800,
+                COLOR_SURFACE_700,
                 2,
-                inventory,
+                itemsPanel,
                 ShaderType::UISimpleRect
             );
-            appendUINode(inventory, slot);
 
-            float margin = 5.0f;
-            UINode *itemCount = createUINode(
-                uiArena,
-                { margin, margin , FONT_ATLAS_CELL_SIZE.x * strlen(itemNames[(size_t)item.id]), FONT_ATLAS_CELL_SIZE.y },
-                COLOR_TEXT_PRIMARY,
-                1,
-                slot,
-                ShaderType::Font,
-                intToCString(uiArena, item.count)
-            );
-            appendUINode(slot, itemCount);
-
-            UINode *itemName = createUINode(
-                uiArena,
-                { margin, FONT_ATLAS_CELL_SIZE.y + margin, FONT_ATLAS_CELL_SIZE.x * strlen(itemNames[(size_t)item.id]), FONT_ATLAS_CELL_SIZE.y },
-                COLOR_TEXT_SECONDARY,
-                1,
-                slot,
-                ShaderType::Font,
-                itemNames[(size_t)item.id]
-            );
-            appendUINode(slot, itemName);
-
+            glm::vec2 fontSize = {10.0f, 18.0f};
+            createTextNode(intToCString(uiArena, item.count), margin, margin, COLOR_TEXT_PRIMARY, slot, fontSize);
+            createTextNode(itemNames[(size_t)item.id], margin, FONT_ATLAS_CELL_SIZE.y + margin, COLOR_TEXT_SECONDARY, slot, fontSize);
         }
+    }
+
+    UINode *createTextNode(const char* text, float x, float y, glm::vec4 color, UINode* parent, glm::vec2 fontSize) {
+        float width = FONT_ATLAS_CELL_SIZE.x * (float)strlen(text);
+        float height = FONT_ATLAS_CELL_SIZE.y;
+        UINode* n = createUINode(uiArena, { x, y, width, height }, color, 0, parent, ShaderType::Font, text, fontSize);
+        return n;
+    }
+
+    UINode* createButton(UINode* parent, glm::vec4 offsets, glm::vec4 color, const char* label, glm::vec4 labelColor, glm::vec2 fontSize) {
+        UINode* btn = createUINode(uiArena, offsets, color, 1, parent, ShaderType::UISimpleRect);
+
+        const float textW = (float)strlen(label) * fontSize.x;
+        const float textH = fontSize.y;
+        float lx = (btn->offsets.z - textW) * 0.5f;
+        float ly = (btn->offsets.w - textH) * 0.5f;
+
+        createTextNode(label, lx, ly, labelColor, btn, fontSize);
+
+        return btn;
+    }
+
+    void createCraftingModule(UINode *parent, int *count, const char *title) {
+        float yCursor = CONTAINER_MARGIN;
+        float xCursor = CONTAINER_MARGIN;
+        const float margin = 15.0f;
+
+        // --- TITLE --- 
+        {
+            glm::vec2 fontSize = FONT_ATLAS_CELL_SIZE;
+            UINode* btn = createTextNode(title, xCursor, yCursor, COLOR_TEXT_PRIMARY, parent, fontSize);
+            yCursor += btn->offsets.w + margin;
+        }
+
+        UINode *moduleContainer;
+        {
+            float xMin = xCursor;
+            float xMax = parent->offsets.z - CONTAINER_MARGIN;
+            float yMin = yCursor;
+            float width = xMax - xMin;
+            float height = MODULE_HEIGHT;
+            moduleContainer = createUINode(uiArena,
+                {xMin, yMin, width, height},
+                COLOR_SURFACE_700,
+                5,
+                parent,
+                ShaderType::UISimpleRect
+            );
+            yCursor += height;
+        }
+
+        // --- COUNT ---
+        {
+            glm::vec2 fontSize = FONT_ATLAS_CELL_SIZE;
+            float x = xCursor;
+            float y = (moduleContainer->offsets.w / 2.0f) - (fontSize.y / 2.0f);
+            UINode* btn = createTextNode(intToCString(uiArena, *count), x, y, COLOR_TEXT_PRIMARY, moduleContainer, fontSize);
+            xCursor += btn->offsets.z + margin;
+        }
+
+        // --- MINUS ---
+        {
+            float xMin = xCursor;
+            float yMin = (moduleContainer->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
+            float width = 60.0f;
+            float height = FONT_ATLAS_CELL_SIZE.y;
+            createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "-", COLOR_TEXT_PRIMARY, {12.0f, 18.0f});
+            xCursor += width + margin;
+        }
+
+        // --- PLUS ---
+        {
+            float xMin = xCursor;
+            float yMin = (moduleContainer->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
+            float width = 60.0f;
+            float height = FONT_ATLAS_CELL_SIZE.y;
+            createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "+", COLOR_TEXT_PRIMARY, {12.0f, 18.0f});
+            xCursor += width + margin;
+        }
+
+        // --- CRAFT ---
+        {
+            float xMin = xCursor;
+            float yMin = (moduleContainer->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
+            float width = 160.0f;
+            float height = FONT_ATLAS_CELL_SIZE.y;
+            createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "CRAFT", COLOR_TEXT_PRIMARY, {12.0f, 18.0f});
+            xCursor += width + margin;
+        }
+    }
+
+    void createCraftingPanel(UINode *parent) {        
+        UINode *craftingPanel;
+        {
+            float xMin = parent->offsets.z * 0.50 + (CONTAINER_MARGIN / 2);
+            float xMax = parent->offsets.z - CONTAINER_MARGIN;
+            float yMin = CONTAINER_MARGIN;
+            float yMax = parent->offsets.w - CONTAINER_MARGIN;
+            float width = xMax - xMin;
+            float height = yMax - yMin;
+            craftingPanel = createUINode(uiArena,
+                {xMin, yMin, width, height},
+                COLOR_SURFACE_800,
+                2,
+                parent,
+                ShaderType::UISimpleRect
+            );
+        }
+
+        createCraftingModule(craftingPanel, &crusherPanelCount, "CRUSHER");
+    }
+
+    void createInventory(UINode *root) {
+        UINode* inventory;
+        {
+            float xMin = CONTAINER_MARGIN;
+            float xMax = root->offsets.z - CONTAINER_MARGIN;
+            float yMin = CONTAINER_MARGIN;
+            float yMax = root->offsets.w - CONTAINER_MARGIN;
+            float width = xMax - xMin;
+            float height = yMax - yMin;
+            inventory = createUINode(uiArena,
+                { xMin, yMin, width, height, },
+                COLOR_SURFACE_900,
+                2,
+                root,
+                ShaderType::UISimpleRect
+            );
+        }
+
+        createItemsPanel(inventory);
+        createCraftingPanel(inventory);
     }
 
     void init(RendererApplication &application, RendererSwapchain &swapchain) {
@@ -684,8 +807,8 @@ struct RendererUISystem {
             ShaderType::UISimpleRect
         );
 
-        createShadowOverlay(viewportPx, root);
-        if (inventoryOpen) createInventory(viewportPx, root);
+        createShadowOverlay(root);
+        if (inventoryOpen) createInventory(root);
 
         // --- Iterate (DFS) and render nodes ---
         const int allocations = 2*256;
@@ -735,15 +858,10 @@ struct RendererUISystem {
                         glm::vec4 uvRect = {uvMin, uvMax};
                         
                         // --- Bounds ---
-                        assert(node->parent);
-                        float scale = 0.7f;
-                        float glyphW = FONT_ATLAS_CELL_SIZE.x * scale;
-                        float glyphH = FONT_ATLAS_CELL_SIZE.y * scale;
                         glm::vec4 bounds = {
-                            node->offsets.x + i * glyphW,
+                            node->offsets.x + i * node->fontSize.x,
                             node->offsets.y,
-                            glyphW,
-                            glyphH
+                            node->fontSize,
                         };
 
                         UINodePushConstant push = {

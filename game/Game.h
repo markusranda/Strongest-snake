@@ -101,9 +101,22 @@ struct U32Set
     }
 };
 
+enum class SnakeSegmentType : uint16_t {
+    Drill,
+    Storage,
+    Smelter,
+    Grinder,
+    COUNT
+};
+
+struct SnakeSegment {
+    SnakeSegmentType type;
+    Entity entity;
+};
+
 struct Player
 {
-    std::array<Entity, playerLength> entities;
+    std::array<SnakeSegment, playerLength> entities;
 };
 
 struct Background
@@ -232,7 +245,7 @@ struct Game
 
         // --- HEAD ---
         {
-            AtlasRegion region = engine.atlasRegions[SpriteID::SPR_DRILL_HEAD];
+            AtlasRegion region = engine.atlasRegions[SpriteID::SPR_SNK_SEG_DRILL];
             glm::vec4 uvTransform = getUvTransform(region);
             Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite, {32.0f, 32.0f}};
             Transform transform = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
@@ -245,19 +258,29 @@ struct Game
                                                     spatialStorage,
                                                     uvTransform,
                                                     2.0f);
-            player.entities[0] = entity;
+            player.entities[0] = { .type = SnakeSegmentType::Drill, .entity = entity };
             createInstanceData(entity);
             engine.ecs.activeEntities.push_back(entity);
         }
 
         // --- BODY SEGMENTS ---
         {
-            AtlasRegion region = engine.atlasRegions[SpriteID::SPR_SNAKE_SKIN];
-            glm::vec4 uvTransform = getUvTransform(region);
             Mesh mesh = MeshRegistry::quad;
             Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
-            for (size_t i = 1; i < playerLength; i++)
+            SnakeSegmentType snakeTypes[3] = {
+                SnakeSegmentType::Grinder, 
+                SnakeSegmentType::Smelter, 
+                SnakeSegmentType::Storage,
+            };
+            AtlasRegion regions[3] = {
+                engine.atlasRegions[SpriteID::SPR_SNK_SEG_GRINDER], 
+                engine.atlasRegions[SpriteID::SPR_SNK_SEG_SMELTER], 
+                engine.atlasRegions[SpriteID::SPR_SNK_SEG_STORAGE],
+            };
+            for (size_t i = 0; i < playerLength - 1; i++)
             {
+                AtlasRegion region = regions[i];
+                glm::vec4 uvTransform = getUvTransform(region);
                 posCursor -= glm::vec2{snakeSize, 0.0f};
                 Transform transform = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
                 Entity entity = engine.ecs.createEntity(transform,
@@ -268,7 +291,7 @@ struct Game
                                                         spatialStorage,
                                                         uvTransform,
                                                         2.0f);
-                player.entities[i] = entity;
+                player.entities[i + 1] = { .type = snakeTypes[i], .entity = entity };
                 createInstanceData(entity);
                 engine.ecs.activeEntities.push_back(entity);
             }
@@ -455,7 +478,7 @@ struct Game
         ZoneScoped;
 
         // When player moves into a new chunk we should verify that there are in fact 3x3 loaded chunks around the player
-        Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
         int32_t cx = worldPosToClosestChunk(head->position.x);
         int32_t cy = worldPosToClosestChunk(head->position.y);
 
@@ -641,7 +664,7 @@ struct Game
 
     void updateUISystem() {
         // Let UI system know the current position of the player
-        Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
         engine.uiSystem.playerCenterScreen = WorldToScreenPx(camera, head->getCenter());
     }
 
@@ -654,7 +677,7 @@ struct Game
         camera.screenH = engine.swapchain.swapChainExtent.height;
 
         Entity entity = background.entity;
-        Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
         Transform *backgroundTransform = (Transform*)engine.ecs.find(ComponentId::Transform, background.entity);
         Mesh *mesh = (Mesh*)engine.ecs.find(ComponentId::Mesh, entity);
 
@@ -714,7 +737,7 @@ struct Game
             return;
         }
 
-        Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
         glm::vec2 forward = SnakeMath::getRotationVector2(playerTransform->rotation);
         float velocity = glm::dot(playerVelocity, forward);
         float ratio = velocity / playerMaxVelocity;
@@ -956,9 +979,9 @@ struct Game
     {
         ZoneScoped;
 
-        Transform *headT = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        Transform *headT = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
         Transform oldHeadT = *headT;
-        Mesh *headM = (Mesh*)engine.ecs.find(ComponentId::Mesh, player.entities.front());
+        Mesh *headM = (Mesh*)engine.ecs.find(ComponentId::Mesh, player.entities.front().entity);
         const Mesh &bodyM = MeshRegistry::quad; // NOTE This might not work in the future
 
         glm::vec2 acceleration = {0.0f, 0.0f};
@@ -996,8 +1019,8 @@ struct Game
         // All non head segments gets to make a move
         for (size_t i = 1; i < player.entities.size(); i++)
         {
-            auto entity1 = player.entities[i - 1];
-            auto entity2 = player.entities[i];
+            auto entity1 = player.entities[i - 1].entity;
+            auto entity2 = player.entities[i].entity;
             Transform *t1 = (Transform*)engine.ecs.find(ComponentId::Transform, entity1);
             Transform *t2 = (Transform*)engine.ecs.find(ComponentId::Transform, entity2);
             glm::vec2 prevPos = t1->position;
@@ -1019,14 +1042,14 @@ struct Game
 
         // Move head
         headT->commit();
-        updateInstanceData(player.entities.front(), *headT);
+        updateInstanceData(player.entities.front().entity, *headT);
     }
 
     void rotateHeadLeft(float dt)
     {
         ZoneScoped;
 
-        Transform *transform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities[2]);
+        Transform *transform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities[2].entity);
         glm::vec2 forward = SnakeMath::getRotationVector2(transform->rotation);
         glm::vec2 leftDir = glm::vec2(forward.y, -forward.x);
         glm::vec2 radiusCenter = transform->position + leftDir * rotationRadius;
@@ -1037,7 +1060,7 @@ struct Game
         for (size_t i = 0; i < 2; i++)
         {
             // Move segment
-            Entity entity = player.entities[i];
+            Entity entity = player.entities[i].entity;
             Transform *segment = (Transform*)engine.ecs.find(ComponentId::Transform, entity);
             glm::vec2 localCenter = segment->position - radiusCenter;
             glm::vec2 forward = SnakeMath::getRotationVector2(segment->rotation);
@@ -1067,7 +1090,7 @@ struct Game
     {
         ZoneScoped;
 
-        Transform *transform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities[2]);
+        Transform *transform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities[2].entity);
         glm::vec2 forward = SnakeMath::getRotationVector2(transform->rotation);
         glm::vec2 rightDir = glm::vec2(-forward.y, forward.x);
         glm::vec2 radiusCenter = transform->position + rightDir * rotationRadius;
@@ -1075,7 +1098,7 @@ struct Game
         for (size_t i = 0; i < 2; i++)
         {
             // Move segment
-            Entity entity = player.entities[i];
+            Entity entity = player.entities[i].entity;
             Transform *segment = (Transform*)engine.ecs.find(ComponentId::Transform, entity);
             glm::vec2 localCenter = segment->position - radiusCenter;
             glm::vec2 forward = SnakeMath::getRotationVector2(segment->rotation);
