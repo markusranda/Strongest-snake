@@ -18,7 +18,7 @@ struct CaveSystem
 {
     const float tileSize = 32.0f;
     uint32_t lastMapIndex = 19;
-    glm::vec2 size = {tileSize + 1.0f, tileSize + 1.0f}; // Added 1 pixel in both height and width to remove line artifacts
+    glm::vec2 size = {tileSize, tileSize};
     Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
     static constexpr int TREASURE_COUNT = 10;
     std::array<SpriteID, TREASURE_COUNT> GROUND_COSMETICS = {
