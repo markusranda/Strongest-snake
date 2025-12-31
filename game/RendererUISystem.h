@@ -615,6 +615,7 @@ struct RendererUISystem {
         for (int idx = 0; idx < inventoryItemsCount; idx++)
         {
             InventoryItem item = inventoryItems[idx];
+            ItemDef itemDef = itemsDatabase[item.id];
 
             int col = idx % cols;
             int row = idx / cols;
@@ -639,7 +640,7 @@ struct RendererUISystem {
 
             glm::vec2 fontSize = {10.0f, 18.0f};
             createTextNode(intToCString(uiArena, item.count), margin, margin, COLOR_TEXT_PRIMARY, slot, fontSize);
-            createTextNode(itemNames[(size_t)item.id], margin, FONT_ATLAS_CELL_SIZE.y + margin, COLOR_TEXT_SECONDARY, slot, fontSize);
+            createTextNode(itemDef.name, margin, FONT_ATLAS_CELL_SIZE.y + margin, COLOR_TEXT_SECONDARY, slot, fontSize);
         }
     }
 
@@ -783,9 +784,9 @@ struct RendererUISystem {
         uiArena.init(4 * 1024 * 1024); // 4 MB to start; bump as needed
 
         // UNCOMMENT FOR DEBUG
-        // inventoryItems[inventoryItemsCount++] = { .id = ItemId::COPPER, .count = 206 };
-        // inventoryItems[inventoryItemsCount++] = { .id = ItemId::HEMATITE, .count = 206 };
-        // inventoryOpen = true;
+        inventoryItems[inventoryItemsCount++] = { .id = ItemId::COPPER, .count = 206 };
+        inventoryItems[inventoryItemsCount++] = { .id = ItemId::HEMATITE, .count = 206 };
+        inventoryOpen = true;
     }
 
     void draw(VkCommandBuffer cmd, glm::vec2 viewportPx) {
