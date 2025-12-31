@@ -119,6 +119,7 @@ struct KeyState {
 
 inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset);
 inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+static inline glm::vec2 WorldToScreenPx(const Camera& cam, const glm::vec2& world);
 
 struct Game
 {
@@ -342,6 +343,9 @@ struct Game
         {
             throw std::runtime_error(std::string("Unknown exception thrown in Game::init"));
         }
+
+        // Attach camera handle to uiSystem
+        engine.uiSystem.cameraHandle = &camera;
     }
 
     void
@@ -377,12 +381,14 @@ struct Game
 
             engine.globalTime += delta;
 
-            Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
-            engine.draw(camera, fps, head->position, delta);
+            updateUISystem();
 
             updateFPSCounter(delta);
-
+            
             keysEnd();
+
+            // --- RENDER ---
+            engine.draw(camera, delta);
         }
 
         ma_sound_uninit(&engineIdleAudio);
@@ -633,9 +639,18 @@ struct Game
         handleEntityLifecycle();
     }
 
+    void updateUISystem() {
+        // Let UI system know the current position of the player
+        Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
+        engine.uiSystem.playerCenterScreen = WorldToScreenPx(camera, head->getCenter());
+    }
+
     void updateCamera()
     {
         ZoneScoped;
+
+        camera.screenW = window.width;
+        camera.screenH = window.height;
 
         Entity entity = background.entity;
         Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front());
@@ -1139,4 +1154,18 @@ inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
     // Apply zoom scaling
     game->camera.zoom *= (1.0f + (float)yoffset * 0.1f);
     game->camera.zoom = glm::clamp(game->camera.zoom, 0.05f, 4.0f);
+}
+
+static inline glm::vec2 WorldToScreenPx(const Camera& cam, const glm::vec2& world)
+{
+    glm::vec4 clip = cam.getViewProj() * glm::vec4(world, 0.0f, 1.0f);
+    glm::vec2 ndc = glm::vec2(clip) / clip.w; // [-1,1]
+
+    float u = ndc.x * 0.5f + 0.5f;
+    float v = ndc.y * 0.5f + 0.5f;
+
+    float xPx = u * float(cam.screenW);
+    float yPx = (1.0f - v) * float(cam.screenH); // flip Y for gl_FragCoord
+    return {xPx, yPx};
+
 }

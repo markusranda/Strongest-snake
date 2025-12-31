@@ -60,7 +60,9 @@ set(SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/shaders/vert_texture_font.vert
     ${CMAKE_SOURCE_DIR}/shaders/vert_particle.vert
     ${CMAKE_SOURCE_DIR}/shaders/vert_simple_ui.vert
+    ${CMAKE_SOURCE_DIR}/shaders/vert_shadow_overlay.vert
     ${CMAKE_SOURCE_DIR}/shaders/frag_simple_ui.frag
+    ${CMAKE_SOURCE_DIR}/shaders/frag_shadow_overlay.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_flat.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_border.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture.frag

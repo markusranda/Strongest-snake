@@ -619,7 +619,7 @@ struct Renderer
         currentFrame = 0;
     }
 
-    void draw(Camera &camera, float fps, glm::vec2 playerCoords, float delta)
+    void draw(Camera &camera, float delta)
     {
         ZoneScoped;
 

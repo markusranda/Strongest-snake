@@ -4,6 +4,8 @@
 #include "RendererApplication.h"
 #include "Atlas.h"
 #include "Item.h"
+#include "ShaderType.h"
+#include "Camera.h"
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
@@ -21,6 +23,8 @@ constexpr static glm::vec4 COLOR_SECONDARY       = glm::vec4(0.95f, 0.55f, 0.20f
 constexpr static glm::vec4 COLOR_TEXT_PRIMARY    = glm::vec4(0.90f, 0.90f, 0.90f, 1.0f);
 constexpr static glm::vec4 COLOR_TEXT_SECONDARY  = glm::vec4(0.60f, 0.60f, 0.60f, 1.0f);
 
+constexpr static glm::vec4 COLOR_BLACK           = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
 struct UINodePushConstant {
     glm::vec4 boundsPx;   // x, y, w, h in pixels, origin = top-left
     glm::vec4 color;      
@@ -29,6 +33,14 @@ struct UINodePushConstant {
 };
 static_assert(sizeof(UINodePushConstant) < 128); // If we go beyond 128, then we might get issues with push constant size limitations
 
+struct ShadowOverlayPushConstant {
+    glm::vec2 centerPx;
+    float radiusPx;
+    float featherPx;
+};
+static_assert(sizeof(ShadowOverlayPushConstant) < 128); // If we go beyond 128, then we might get issues with push constant size limitations
+
+
 struct UINode {
     glm::vec4 offsets;
     glm::vec4 color;
@@ -36,6 +48,7 @@ struct UINode {
     UINode* parent;
     int count;
     int capacity;
+    ShaderType shaderType;
     const char* text;
     uint16_t textLen = 0;
 };
@@ -110,7 +123,15 @@ struct FrameArena {
 #define ARENA_ALLOC_N(arena, Type, Count) \
     (Type*)((arena).alloc(sizeof(Type) * (size_t)(Count), alignof(Type)))
 
-static inline UINode* createUINode(FrameArena& a, glm::vec4 offsets, glm::vec4 color, int capacity, UINode *parent, const char* text = "") {
+static inline UINode* createUINode(
+    FrameArena& a, 
+    glm::vec4 offsets, 
+    glm::vec4 color, 
+    int capacity, 
+    UINode *parent,
+    ShaderType shaderType,
+    const char* text = ""
+) {
     UINode* n = ARENA_ALLOC(a, UINode);
     if (!n) return nullptr;
 
@@ -122,6 +143,7 @@ static inline UINode* createUINode(FrameArena& a, glm::vec4 offsets, glm::vec4 c
     n->text = text;
     n->textLen = strlen(text);
     n->parent = parent;
+    n->shaderType = shaderType;
 
     for (int i = 0; i < capacity; i++) 
         n->nodes[i] = nullptr;
@@ -130,7 +152,7 @@ static inline UINode* createUINode(FrameArena& a, glm::vec4 offsets, glm::vec4 c
 }
 
 static inline void appendUINode(UINode *parent, UINode *node) {
-    assert(parent->count <= parent->capacity);
+    assert(parent->count < parent->capacity);
     parent->nodes[parent->count++] = node;
 }
 
@@ -148,12 +170,18 @@ struct RendererUISystem {
     DrawCmd* drawCmds;
     Pipeline rectPipeline;
     Pipeline fontPipeline;
+    Pipeline shadowOverlayPipeline;
     VkDescriptorSet fontAtlasSet;
     FrameArena uiArena;
 
+    // Inventory state
     bool inventoryOpen = false;
     InventoryItem inventoryItems[(size_t)ItemId::COUNT]; 
     int inventoryItemsCount = 0;
+
+    // Player state
+    glm::vec2 playerCenterScreen;
+    Camera *cameraHandle;
 
     // ------------------------------------------------------------------------
     // VULKAN
@@ -455,9 +483,85 @@ struct RendererUISystem {
         fontPipeline = Pipeline{vkPipeline, pipelineLayout};
     }
 
+    void createShadowOverlayPipeline(RendererApplication &application, RendererSwapchain &swapchain)
+    {
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 0;
+
+        VkDescriptorSetLayout descriptorSetLayout;
+        if (vkCreateDescriptorSetLayout(application.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create graphics descriptor set layout");
+        }
+
+        // --- Shaders ---
+        std::vector<char> vertShaderCode = readFile("shaders/vert_shadow_overlay.spv");
+        std::vector<char> fragShaderCode = readFile("shaders/frag_shadow_overlay.spv");
+        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode, application.device);
+        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode, application.device);
+
+        // --- Stages ----
+        VkPipelineShaderStageCreateInfo vertStage = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = vertShaderModule,
+            .pName = "main",
+        };
+        VkPipelineShaderStageCreateInfo fragStage{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = fragShaderModule,
+            .pName = "main",
+        };
+        VkPipelineShaderStageCreateInfo stages[] = {vertStage, fragStage};
+
+        // --- Push constants ---
+        VkPushConstantRange pushRange = {
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset = 0,
+            .size = sizeof(ShadowOverlayPushConstant),
+        };
+        
+        // --- Pipeline layout ---
+        VkPipelineLayout pipelineLayout;
+        VkPipelineLayoutCreateInfo layout = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .setLayoutCount = 1,
+            .pSetLayouts = &descriptorSetLayout,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &pushRange,
+        };
+        if (vkCreatePipelineLayout(application.device, &layout, nullptr, &pipelineLayout) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create graphics pipeline layout");
+        }
+
+        // --- Pipeline ---
+        VkPipeline vkPipeline = createGraphicsPipeline(application, swapchain, stages, pipelineLayout);
+
+        // --- Cleanup ---
+        vkDestroyShaderModule(application.device, vertShaderModule, nullptr);
+        vkDestroyShaderModule(application.device, fragShaderModule, nullptr);
+
+        shadowOverlayPipeline = Pipeline{vkPipeline, pipelineLayout};
+    }
+
     // ------------------------------------------------------------------------
     // UI COMPONENTS
     // ------------------------------------------------------------------------
+    void createShadowOverlay(glm::vec2 &viewportPx, UINode *root) {
+        UINode *shadowOverlay = createUINode(
+            uiArena, 
+            { glm::vec2{0.0f, 0.0f}, viewportPx },
+            COLOR_BLACK,
+            0,
+            root,
+            ShaderType::ShadowOverlay
+        );
+        appendUINode(root, shadowOverlay);
+    }
+
     void createInventory(glm::vec2 &viewportPx, UINode *root) {
         float xMin = viewportPx.x * 0.05;
         float xMax = viewportPx.x * 0.95;
@@ -491,7 +595,8 @@ struct RendererUISystem {
             },
             COLOR_SURFACE_900,
             inventoryItemsCount,
-            root
+            root,
+            ShaderType::UISimpleRect
         );
         appendUINode(root, inventory);
 
@@ -516,7 +621,8 @@ struct RendererUISystem {
                 { offset, size },
                 COLOR_SURFACE_800,
                 2,
-                inventory
+                inventory,
+                ShaderType::UISimpleRect
             );
             appendUINode(inventory, slot);
 
@@ -527,6 +633,7 @@ struct RendererUISystem {
                 COLOR_TEXT_PRIMARY,
                 1,
                 slot,
+                ShaderType::Font,
                 intToCString(uiArena, item.count)
             );
             appendUINode(slot, itemCount);
@@ -537,6 +644,7 @@ struct RendererUISystem {
                 COLOR_TEXT_SECONDARY,
                 1,
                 slot,
+                ShaderType::Font,
                 itemNames[(size_t)item.id]
             );
             appendUINode(slot, itemName);
@@ -547,6 +655,7 @@ struct RendererUISystem {
     void init(RendererApplication &application, RendererSwapchain &swapchain) {
         createRectPipeline(application, swapchain);
         createFontPipeline(application, swapchain);
+        createShadowOverlayPipeline(application, swapchain);
 
         uiArena.init(4 * 1024 * 1024); // 4 MB to start; bump as needed
 
@@ -571,8 +680,11 @@ struct RendererUISystem {
             },
             COLOR_SURFACE_0, 
             1,
-            nullptr
+            nullptr,
+            ShaderType::UISimpleRect
         );
+
+        createShadowOverlay(viewportPx, root);
 
         if (inventoryOpen) createInventory(viewportPx, root);
 
@@ -586,10 +698,25 @@ struct RendererUISystem {
             UINode* node = stack[--top];
             
             // --- Draw UINode ---
-            if (node->textLen > 0 ) {
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.pipeline);
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.layout, 0, 1, &fontAtlasSet, 0, nullptr);
+            switch(node->shaderType) {
+                case ShaderType::UISimpleRect:
+                {
+                    UINodePushConstant push = {
+                        .boundsPx = node->offsets,
+                        .color = node->color,
+                        .viewportPx = viewportPx,
+                    };
+                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rectPipeline.pipeline);
+                    vkCmdPushConstants(cmd, rectPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
+                    vkCmdDraw(cmd, 6, 1, 0, 0);
+                    break;
+                }
+                case ShaderType::Font:
+                {
+                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.pipeline);
+                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.layout, 0, 1, &fontAtlasSet, 0, nullptr);
 
+                    assert(node->textLen > 0);
                     for(int i = 0; i < node->textLen; i++) {
                         char glyph = node->text[i];
                         assert(glyph <= U'Z' && "We only support ASCI up to Z");
@@ -626,16 +753,24 @@ struct RendererUISystem {
                         };
                         vkCmdPushConstants(cmd, fontPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
                         vkCmdDraw(cmd, 6, 1, 0, 0);
+                        break;
                     }
-            } else {
-                UINodePushConstant push = {
-                    .boundsPx = node->offsets,
-                    .color = node->color,
-                    .viewportPx = viewportPx,
-                };
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rectPipeline.pipeline);
-                vkCmdPushConstants(cmd, rectPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
-                vkCmdDraw(cmd, 6, 1, 0, 0);
+                }
+                case ShaderType::ShadowOverlay:
+                {
+                    ShadowOverlayPushConstant push = {
+                        .centerPx = playerCenterScreen,
+                        .radiusPx = 300.0f * cameraHandle->zoom,
+                        .featherPx = 80.0f * cameraHandle->zoom,
+                    };
+                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowOverlayPipeline.pipeline);
+                    vkCmdPushConstants(cmd, shadowOverlayPipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ShadowOverlayPushConstant), &push);
+                    vkCmdDraw(cmd, 3, 1, 0, 0);
+                    break;
+                }
+                default: {
+                    assert(false && "We should never not have a shaderType");
+                }
             }
 
             // push children in reverse so child[0] is visited first
