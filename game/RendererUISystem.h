@@ -158,7 +158,7 @@ struct RendererUISystem {
     // ------------------------------------------------------------------------
     // VULKAN
     // ------------------------------------------------------------------------
-    VkGraphicsPipelineCreateInfo createGraphicsPipelineCreateInfo(
+    VkPipeline createGraphicsPipeline(
         RendererApplication &application,
         RendererSwapchain &swapchain,
         VkPipelineShaderStageCreateInfo *stages,
@@ -242,7 +242,8 @@ struct RendererUISystem {
             .pDynamicStates = dynamicStates.data(),
         };
 
-        return {
+        // --- CreateInfo ---
+        VkGraphicsPipelineCreateInfo createInfo = {
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
             .pNext = &renderingCreateInfo,
             .stageCount = 2,
@@ -259,6 +260,15 @@ struct RendererUISystem {
             .subpass = 0,
             .basePipelineHandle = VK_NULL_HANDLE,
         };
+
+        // --- Pipeline ---
+        VkPipeline vkPipeline;
+        if (vkCreateGraphicsPipelines(application.device, VK_NULL_HANDLE, 1, &createInfo, nullptr, &vkPipeline) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create font pipeline");
+        }
+
+        return vkPipeline;
     }
 
     void createRectPipeline(RendererApplication &application, RendererSwapchain &swapchain)
@@ -316,13 +326,9 @@ struct RendererUISystem {
         }
 
         // --- Pipeline ---
-        VkPipeline vkPipeline;
-        VkGraphicsPipelineCreateInfo createInfo = createGraphicsPipelineCreateInfo(application, swapchain, stages, pipelineLayout);
-        if (vkCreateGraphicsPipelines(application.device, VK_NULL_HANDLE, 1, &createInfo, nullptr, &vkPipeline) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create font pipeline");
-        }
+        VkPipeline vkPipeline = createGraphicsPipeline(application, swapchain, stages, pipelineLayout);
 
+        // --- Cleanup ---
         vkDestroyShaderModule(application.device, vertShaderModule, nullptr);
         vkDestroyShaderModule(application.device, fragShaderModule, nullptr);
 
@@ -440,13 +446,9 @@ struct RendererUISystem {
         }
         
         // --- Pipeline ---
-        VkPipeline vkPipeline;
-        VkGraphicsPipelineCreateInfo createInfo = createGraphicsPipelineCreateInfo(application, swapchain, stages, pipelineLayout);
-        if (vkCreateGraphicsPipelines(application.device, VK_NULL_HANDLE, 1, &createInfo, nullptr, &vkPipeline) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create font pipeline");
-        }
+        VkPipeline vkPipeline = createGraphicsPipeline(application, swapchain, stages, pipelineLayout);
 
+        // --- Cleanup ---
         vkDestroyShaderModule(application.device, vertShaderModule, nullptr);
         vkDestroyShaderModule(application.device, fragShaderModule, nullptr);
 
@@ -522,7 +524,7 @@ struct RendererUISystem {
             UINode *itemCount = createUINode(
                 uiArena,
                 { margin, margin , FONT_ATLAS_CELL_SIZE.x * strlen(itemNames[(size_t)item.id]), FONT_ATLAS_CELL_SIZE.y },
-                COLOR_SURFACE_800,
+                COLOR_TEXT_PRIMARY,
                 1,
                 slot,
                 intToCString(uiArena, item.count)
@@ -532,7 +534,7 @@ struct RendererUISystem {
             UINode *itemName = createUINode(
                 uiArena,
                 { margin, FONT_ATLAS_CELL_SIZE.y + margin, FONT_ATLAS_CELL_SIZE.x * strlen(itemNames[(size_t)item.id]), FONT_ATLAS_CELL_SIZE.y },
-                COLOR_SURFACE_800,
+                COLOR_TEXT_SECONDARY,
                 1,
                 slot,
                 itemNames[(size_t)item.id]
