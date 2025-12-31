@@ -549,6 +549,11 @@ struct RendererUISystem {
         createFontPipeline(application, swapchain);
 
         uiArena.init(4 * 1024 * 1024); // 4 MB to start; bump as needed
+
+        // UNCOMMENT FOR DEBUG
+        // inventoryItems[inventoryItemsCount++] = { .id = ItemId::COPPER, .count = 206 };
+        // inventoryItems[inventoryItemsCount++] = { .id = ItemId::HEMATITE, .count = 206 };
+        // inventoryOpen = true;
     }
 
     void draw(VkCommandBuffer cmd, glm::vec2 viewportPx) {

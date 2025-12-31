@@ -9,6 +9,6 @@ layout(location = 0) out vec4 outColor;
 
 void main()
 {
-    vec4 texel = texture(fontAtlas, fragUV);
-    outColor = texel * fragColor;
+    float coverage = texture(fontAtlas, fragUV).a;
+    outColor = vec4(fragColor.rgb, fragColor.a * coverage);
 }
