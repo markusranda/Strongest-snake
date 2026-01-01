@@ -44,7 +44,7 @@ constexpr static glm::vec4 COLOR_BLACK                   = glm::vec4(0.0f, 0.0f,
 constexpr static glm::vec4 COLOR_TRANSPARANT             = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
 
 // ---------------------------------------------------
-// Types
+// TYPES
 // ---------------------------------------------------
 
 struct UINodePushConstant {
@@ -108,6 +108,11 @@ struct UINode {
     glm::vec2 fontSize = FONT_ATLAS_CELL_SIZE;
     InventoryItem *item = nullptr;
     OnClickCtx click;
+};
+
+struct Word {
+    char *text;
+    uint16_t count = 0;
 };
 
 // ---------------------------------------------------
@@ -948,26 +953,52 @@ struct RendererUISystem {
     // Draw functions
     // ------------------------------------------------------------------------
     
+    void drawGlyph(VkCommandBuffer &cmd, UINode *node, const glm::vec2 &viewportPx, const char glyph, float &xCursor, float yCursor) {
+        // --- uvRect ---
+        glm::vec2 uvMin = {
+            ((int)glyph * FONT_ATLAS_CELL_SIZE.x) / FONT_ATLAS_SIZE.x,
+            0.0f
+        };
+        glm::vec2 uvSize = {
+            FONT_ATLAS_CELL_SIZE.x / FONT_ATLAS_SIZE.x,
+            FONT_ATLAS_CELL_SIZE.y / FONT_ATLAS_SIZE.y,
+        };
+        glm::vec2 uvMax = uvMin + uvSize;
+        glm::vec4 uvRect = {uvMin, uvMax};
+        
+        // --- Bounds ---
+        glm::vec4 bounds = { xCursor, yCursor, node->fontSize };
+
+        // --- Draw ---
+        UINodePushConstant push = {
+            .boundsPx = bounds,
+            .color = node->color,
+            .uvRect = uvRect,
+            .viewportPx = viewportPx,
+        };
+        vkCmdPushConstants(cmd, fontPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
+        vkCmdDraw(cmd, 6, 1, 0, 0);
+
+        // --- Advance cursor ---
+        xCursor += node->fontSize.x;
+    } 
+
     void drawText(VkCommandBuffer &cmd, UINode *node, const glm::vec2 &viewportPx) {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.layout, 0, 1, &fontAtlasSet, 0, nullptr);
-
-        struct Word {
-            char *text;
-            uint16_t count = 0;
-        };
 
         // Find all the words
         Word *words = ARENA_ALLOC_N(uiArena, Word, 10);
         size_t wordCount = 1;
         {
             assert(words);
+            const size_t MAX_COLS = 32;
             size_t rowCount = 0;
             size_t colCount = 0;
 
             // Initialize the first word
             words[0] = {
-                .text = ARENA_ALLOC_N(uiArena, char, 32),
+                .text = ARENA_ALLOC_N(uiArena, char, MAX_COLS),
                 .count = 0,
             };
 
@@ -981,13 +1012,14 @@ struct RendererUISystem {
                     rowCount++;
                     colCount = 0;
                     words[rowCount] = {
-                        .text = ARENA_ALLOC_N(uiArena, char, 32),
+                        .text = ARENA_ALLOC_N(uiArena, char, MAX_COLS),
                         .count = 0,
                     };
                     wordCount++;
                     continue;
                 }
 
+                assert(colCount < MAX_COLS);
                 word->text[colCount++] = glyph;
                 word->count++;
             }
@@ -997,84 +1029,50 @@ struct RendererUISystem {
         const float textMargin = 5.0f;
         const float parentLeft  = node->parent->offsets.x;
         const float parentRight = node->parent->offsets.x + node->parent->offsets.z;
+        const float parentWidth = parentRight - parentLeft;
         const float rowHeight = node->fontSize.y + textMargin;
         assert(rowHeight > 0);
         const int availableRows = node->parent->offsets.w / rowHeight;
         float xCursor = node->offsets.x;
         float yCursor = node->offsets.y;
-        int currentRow = 1;
+        int currentRow = 0;
         for (size_t i = 0; i < wordCount; i++)
         {
-            // Iterate each word
-            // if a word can be contained in a fresh row - draw it
-            // if a word can't be contained in a fresh row - ellipsis
-            // if a word can be contained by continuing on the same row - draw it
-            // if there's no more rows - return
             Word word = words[i];
-            const float textWidthPx = word.count * node->fontSize.x;
             assert(word.count > 0);
-
-            const bool canBeRenderedOnFreshLine = textWidthPx < parentRight;
+            const float textWidthPx = word.count * node->fontSize.x;
+            const bool canBeRenderedOnFreshLine = textWidthPx < parentWidth;
             const bool canBeRenderedOnContinuedLine = xCursor + textWidthPx < parentRight;
             const bool notFreshLine = xCursor != node->offsets.x;
 
-            // TODO: Implement some kind of ellipsis functionality where we draw as much as possible.
+            // TODO: Consider adding breaking when we still have available rows.
             if (!canBeRenderedOnFreshLine) {
-                fprintf(stdout, "Skipped %s\n", word.text);
-                continue;
+                const float availableCols = parentWidth / node->fontSize.x;
+                for (int i = availableCols; i > availableCols - 3; i--) {
+                    word.text[i] = '.';
+                }
+                word.count = availableCols;
             }
 
             // Advance to next row
             if (!canBeRenderedOnContinuedLine) {
-                if (currentRow >= availableRows) return;
-
                 xCursor = node->offsets.x;
                 yCursor += rowHeight;
                 currentRow++;
-            } 
-            
-            if (canBeRenderedOnContinuedLine && notFreshLine) {
-                // Insert space behind
-                for(int i = word.count; i > 0; i--) {
-                    word.text[i] = word.text[i - 1];
-                }
-
-                word.text[0] = ' ';
-                word.text[++word.count] = '\0';
             }
 
-            // Draw
+            if (currentRow >= availableRows) return;
+            
+            // Draw space
+            if (canBeRenderedOnContinuedLine && notFreshLine) {
+                drawGlyph(cmd, node, viewportPx, ' ', xCursor, yCursor);
+            }
+
+            // Draw glyph
             for(int i = 0; i < word.count; i++) {
                 char glyph = word.text[i];
                 assert(glyph <= U'Z' && "We only support ASCI up to Z");
-
-                // --- uvRect ---
-                glm::vec2 uvMin = {
-                    ((int)glyph * FONT_ATLAS_CELL_SIZE.x) / FONT_ATLAS_SIZE.x,
-                    0.0f
-                };
-                glm::vec2 uvSize = {
-                    FONT_ATLAS_CELL_SIZE.x / FONT_ATLAS_SIZE.x,
-                    FONT_ATLAS_CELL_SIZE.y / FONT_ATLAS_SIZE.y,
-                };
-                glm::vec2 uvMax = uvMin + uvSize;
-                glm::vec4 uvRect = {uvMin, uvMax};
-                
-                // --- Bounds ---
-                glm::vec4 bounds = { xCursor, yCursor, node->fontSize };
-
-                // --- Draw ---
-                UINodePushConstant push = {
-                    .boundsPx = bounds,
-                    .color = node->color,
-                    .uvRect = uvRect,
-                    .viewportPx = viewportPx,
-                };
-                vkCmdPushConstants(cmd, fontPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
-                vkCmdDraw(cmd, 6, 1, 0, 0);
-
-                // --- Advance cursor ---
-                xCursor += node->fontSize.x;
+                drawGlyph(cmd, node, viewportPx, glyph, xCursor, yCursor);
             }
         }
     }
