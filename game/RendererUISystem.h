@@ -66,10 +66,22 @@ struct InventoryItem {
     int count;
 };
 
-// struct CraftJobContext {
-//     RendererUISystem *uiSystem;
-//     CraftingJob job;
-// };
+enum class CraftingJobType : uint16_t {
+    Crush,
+    Smelt,
+    COUNT
+};
+
+struct CraftingJob {
+    CraftingJobType type;
+    ItemId itemId;
+    int *iterations;
+};
+
+struct CraftJobContext {
+    RendererUISystem *uiSystem;
+    CraftingJob job;
+};
 
 struct AdjustIntContext {
     int* target;
@@ -204,6 +216,7 @@ static inline UINode *createUINodeRaw(
 
 }
 
+// Basic
 static inline UINode* createUINode(
     FrameArena& a, 
     glm::vec4 offsets, 
@@ -215,6 +228,7 @@ static inline UINode* createUINode(
     return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, {});
 }
 
+// Item
 static inline UINode* createUINode(
     FrameArena& a, 
     glm::vec4 offsets, 
@@ -228,6 +242,7 @@ static inline UINode* createUINode(
     return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, click);
 }
 
+// Button
 static inline UINode* createUINode(
     FrameArena& a, 
     glm::vec4 offsets, 
@@ -240,6 +255,7 @@ static inline UINode* createUINode(
     return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, click);
 }
 
+// Text
 static inline UINode* createUINode(
     FrameArena& a, 
     glm::vec4 offsets, 
@@ -264,7 +280,6 @@ static inline const char* intToCString(FrameArena& a, int value) {
 // ---------------------------------------------------
 
 struct RendererUISystem {
-    DrawCmd* drawCmds;
     Pipeline rectPipeline;
     Pipeline fontPipeline;
     Pipeline shadowOverlayPipeline;
@@ -278,6 +293,10 @@ struct RendererUISystem {
     int inventoryItemsCount = 0;
     int crusherPanelCount = 0;
     InventoryItem selectedItem;
+
+    // Crafting system
+    CraftingJob craftingJobs[256];
+    int craftingJobsCount = 0;
     
     // Containers
     const float CONTAINER_MARGIN = 25.0f;
@@ -652,6 +671,19 @@ struct RendererUISystem {
     }
 
     // ------------------------------------------------------------------------
+    // JOB SYSTEM
+    // ------------------------------------------------------------------------
+
+    void appendCraftingJob(CraftingJob job) {
+        craftingJobs[craftingJobsCount++] = job;
+    }
+
+    void removeCraftingJob(size_t i) {
+        craftingJobs[craftingJobsCount - 1] = craftingJobs[i];
+        craftingJobsCount--;
+    }
+
+    // ------------------------------------------------------------------------
     // UI COMPONENTS
     // ------------------------------------------------------------------------
     
@@ -770,7 +802,7 @@ struct RendererUISystem {
         return btn;
     }
 
-    void createCraftingModule(UINode *parent, int *count, const char *title) {
+    void createCraftingModule(UINode *parent, int *count, const char *title, CraftingJobType craftingJobType) {
         float yCursor = CONTAINER_MARGIN;
         float xCursor = CONTAINER_MARGIN;
         const float margin = 15.0f;
@@ -843,7 +875,10 @@ struct RendererUISystem {
             float yMin = (moduleContainer->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
             float width = 160.0f;
             float height = FONT_ATLAS_CELL_SIZE.y;
-            OnClickCtx click = {}; // TODO: Implement craft action
+            CraftJobContext *ctx = ARENA_ALLOC(uiArena, CraftJobContext);
+            ctx->uiSystem = this;
+            ctx->job = { .type = craftingJobType, .itemId = selectedItem.id, .iterations = count };
+            OnClickCtx click = { .fn = OnClickCraft, .data = ctx};
             createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "CRAFT", COLOR_TEXT_PRIMARY, {12.0f, 18.0f}, click);
             xCursor += width + margin;
         }
@@ -867,7 +902,7 @@ struct RendererUISystem {
             );
         }
 
-        createCraftingModule(craftingPanel, &crusherPanelCount, "CRUSHER");
+        createCraftingModule(craftingPanel, &crusherPanelCount, "CRUSHER", CraftingJobType::Crush);
     }
 
     void createInventory(UINode *root) {
@@ -891,6 +926,116 @@ struct RendererUISystem {
         createItemsPanel(inventory);
         createCraftingPanel(inventory);
     }
+
+    // ------------------------------------------------------------------------
+    // MAIN FUNCTIONS
+    // ------------------------------------------------------------------------
+
+    void init(RendererApplication &application, RendererSwapchain &swapchain) {
+        createRectPipeline(application, swapchain);
+        createFontPipeline(application, swapchain);
+        createShadowOverlayPipeline(application, swapchain);
+
+        uiArena.init(4 * 1024 * 1024); // 4 MB to start; bump as needed
+
+        // UNCOMMENT FOR DEBUG
+        inventoryItems[inventoryItemsCount++] = { .id = ItemId::COPPER, .count = 206 };
+        inventoryItems[inventoryItemsCount++] = { .id = ItemId::HEMATITE, .count = 206 };
+        inventoryOpen = true;
+    }
+
+    void addItem(ItemId itemId, int count) {
+        bool found = false;
+        for (size_t i = 0; i < inventoryItemsCount; i++)
+        {
+            InventoryItem &item = inventoryItems[i];
+            if (item.id == itemId)  {
+                item.count++;
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            InventoryItem item = {
+                .id = itemId,
+                .count = 1,
+            };
+            inventoryItems[inventoryItemsCount++] = item;
+        }
+    }
+
+    bool removeItem(ItemId itemId, int count) {
+        size_t id = -1;
+        for (size_t i = 0; i < inventoryItemsCount; i++)
+        {
+            if (inventoryItems[i].id == itemId)  {
+                id = i;
+                break;
+            }
+        }
+
+        if (id < 0) return false;
+
+        if (--inventoryItems[id].count < 1) {
+
+        }
+
+        return true;
+    }
+
+    InventoryItem *findItem(ItemId itemId) {
+        for (size_t i = 0; i < inventoryItemsCount; i++)
+        {
+            if (inventoryItems[i].id == itemId)  {
+                return &inventoryItems[i];
+            }
+        }
+
+        return nullptr;
+    };
+
+    void advanceJobs() {
+        for (size_t i = 0; i < craftingJobsCount; i++)
+        {
+            CraftingJob &job = craftingJobs[i];
+            // Advance the progress of this by some amount
+            // For now maybe just crush one ore, or smelt one ingot each call.
+            switch (job.type) {
+                case CraftingJobType::Crush:
+                {                    
+                    InventoryItem *ore = findItem(job.itemId);
+                    assert(ore && ore->count > 0 && itemsDatabase[ore->id].category == ItemCategory::ORE);
+                    assert(*job.iterations > 0);
+
+                    // Find crushed version of ore
+                    ItemId crushedOreId = crushMap[ore->id];
+
+                    // decrement ore.count
+                    ore->count--;
+                    
+                    // increment crushed_ore.count
+                    addItem(crushedOreId, 1);
+
+                    // Job complete if no more iterations
+                    *job.iterations -= 1;
+                    if (*job.iterations < 1) {
+                        removeCraftingJob(i);
+                    }
+
+                    break;
+                }
+                case CraftingJobType::Smelt:
+                {   
+                    // Not implemented
+                    break;
+                }
+                default:
+                    // There shouldn't be any mystical jobs.
+                    assert(false); 
+            }
+        }
+    };
 
     void tryClick(glm::vec4 pos) {
         const int allocations = 2*256;
@@ -930,19 +1075,6 @@ struct RendererUISystem {
                 stack[top++] = childNode;
             }        
         }
-    }
-
-    void init(RendererApplication &application, RendererSwapchain &swapchain) {
-        createRectPipeline(application, swapchain);
-        createFontPipeline(application, swapchain);
-        createShadowOverlayPipeline(application, swapchain);
-
-        uiArena.init(4 * 1024 * 1024); // 4 MB to start; bump as needed
-
-        // UNCOMMENT FOR DEBUG
-        inventoryItems[inventoryItemsCount++] = { .id = ItemId::COPPER, .count = 206 };
-        inventoryItems[inventoryItemsCount++] = { .id = ItemId::HEMATITE, .count = 206 };
-        inventoryOpen = true;
     }
 
     void draw(VkCommandBuffer cmd, glm::vec2 viewportPx) {
@@ -1088,9 +1220,13 @@ inline static void OnClickIncrementBtn(UINode*, void *userData) {
     *ctx->target = newValue;
 }
 
-// inline static void OnClickCraft(UINode*, void *userData) {
-//     auto* ctx = (CraftJobContext*)userData;
-//     assert(ctx);
+inline static void OnClickCraft(UINode*, void *userData) {
+    auto* ctx = (CraftJobContext*)userData;
+    assert(ctx);
 
-//     ctx->uiSystem->appendJob(ctx->job);
-// }
+    // Reset selectedItem
+    ctx->uiSystem->selectedItem = { .id = ItemId::COUNT};
+    // Add new job
+    ctx->uiSystem->appendCraftingJob(ctx->job);
+    fprintf(stdout, "appended new job for item: %d\n", ctx->job.itemId);
+}

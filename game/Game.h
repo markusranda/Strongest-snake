@@ -185,9 +185,11 @@ struct Game
     ma_engine audioEngine;
     ma_sound engineIdleAudio;
 
-    // Timing
+    // Timers
     double particleTimer = 0.0f;
+    double jobsTimer = 0.0f;
     const double PARTICLE_SPAWN_INTERVAL = 0.2f;
+    const double JOB_INTERVAL = 1.0f;
 
     Game(Window &w) : window(w), engine(w.width, w.height, w), caveSystem(engine) {}
 
@@ -607,24 +609,8 @@ struct Game
                     break;
                 }
 
-                bool found = false;
-                for (size_t i = 0; i < engine.uiSystem.inventoryItemsCount; i++)
-                {
-                    InventoryItem &item = engine.uiSystem.inventoryItems[i];
-                    if (item.id == groundOre->itemId)  {
-                        item.count++;
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found) {
-                    InventoryItem item = {
-                        .id = groundOre->itemId,
-                        .count = 1,
-                    };
-                    engine.uiSystem.inventoryItems[engine.uiSystem.inventoryItemsCount++] = item;
-                }
+                // Update inventory
+                engine.uiSystem.addItem(groundOre->itemId, 1);
                 
                 engine.ecs.destroyEntity(entity, SpatialStorage::Chunk);
                 engine.instanceStorage.erase(entity);
@@ -668,6 +654,12 @@ struct Game
         // Let UI system know the current position of the player
         Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
         engine.uiSystem.playerCenterScreen = WorldToScreenPx(camera, head->getCenter());
+
+        // Update jobs
+        if (jobsTimer <= 0) {
+            engine.uiSystem.advanceJobs();
+            jobsTimer = JOB_INTERVAL;
+        }
     }
 
     void updateCamera()
@@ -702,6 +694,7 @@ struct Game
     {
         ZoneScoped;
         particleTimer = std::max(particleTimer - delta, (double)0.0f);
+        jobsTimer = std::max(jobsTimer - delta, (double)0.0f);
     }
 
     void updateGame(double delta)
