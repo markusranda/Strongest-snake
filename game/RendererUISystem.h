@@ -41,6 +41,7 @@ constexpr static glm::vec4 COLOR_TEXT_PRIMARY_INVERTED   = glm::vec4(0.05f, 0.05
 constexpr static glm::vec4 COLOR_TEXT_SECONDARY_INVERTED = glm::vec4(0.10f, 0.10f, 0.10f, 1.0f);
 constexpr static glm::vec4 COLOR_FOCUS                   = glm::vec4(0.30f, 0.65f, 1.00f, 1.0f);
 constexpr static glm::vec4 COLOR_BLACK                   = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+constexpr static glm::vec4 COLOR_TRANSPARANT             = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
 
 // ---------------------------------------------------
 // Types
@@ -764,7 +765,14 @@ struct RendererUISystem {
                 primaryColor = COLOR_TEXT_PRIMARY_INVERTED;
                 secondaryColor = COLOR_TEXT_SECONDARY_INVERTED;
             }
+            glm::vec2 fontSize = {10.0f, 18.0f};
 
+            glm::vec4 slotNameOffsets = {
+                0,
+                fontSize.y + margin,
+                size.x - fontSize.x,
+                size.y - fontSize.y,
+            };
             UINode *slot = createUINode(
                 uiArena,
                 { offset, size },
@@ -775,10 +783,19 @@ struct RendererUISystem {
                 itemCopy,
                 OnClickCtx{ .fn = &OnClickItem, .data=this }
             );
+            UINode *slotNameContainer = createUINode(
+                uiArena,
+                slotNameOffsets,
+                COLOR_TRANSPARANT,
+                1,
+                slot,
+                ShaderType::UISimpleRect,
+                itemCopy,
+                OnClickCtx{ .fn = &OnClickItem, .data=this }
+            );
 
-            glm::vec2 fontSize = {10.0f, 18.0f};
             createTextNode(intToCString(uiArena, item.count), margin, margin, primaryColor, slot, fontSize);
-            createTextNode(itemDef.name, margin, FONT_ATLAS_CELL_SIZE.y + margin, secondaryColor, slot, fontSize);
+            createTextNode(itemDef.name, margin, margin, secondaryColor, slotNameContainer, fontSize);
         }
     }
 
@@ -928,6 +945,141 @@ struct RendererUISystem {
     }
 
     // ------------------------------------------------------------------------
+    // Draw functions
+    // ------------------------------------------------------------------------
+    
+    void drawText(VkCommandBuffer &cmd, UINode *node, const glm::vec2 &viewportPx) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.layout, 0, 1, &fontAtlasSet, 0, nullptr);
+
+        struct Word {
+            char *text;
+            uint16_t count = 0;
+        };
+
+        // Find all the words
+        Word *words = ARENA_ALLOC_N(uiArena, Word, 10);
+        size_t wordCount = 1;
+        {
+            assert(words);
+            size_t rowCount = 0;
+            size_t colCount = 0;
+
+            // Initialize the first word
+            words[0] = {
+                .text = ARENA_ALLOC_N(uiArena, char, 32),
+                .count = 0,
+            };
+
+            for(int i = 0; i < node->textLen; i++) {
+                Word *word = &words[rowCount];
+                char glyph = node->text[i];
+                assert(glyph <= U'Z' && "We only support ASCI up to Z");
+
+                if (glyph == U' ') {
+                    word->text[colCount++] = '\0';
+                    rowCount++;
+                    colCount = 0;
+                    words[rowCount] = {
+                        .text = ARENA_ALLOC_N(uiArena, char, 32),
+                        .count = 0,
+                    };
+                    wordCount++;
+                    continue;
+                }
+
+                word->text[colCount++] = glyph;
+                word->count++;
+            }
+            words[rowCount].text[colCount++] = '\0';
+        }
+
+        const float textMargin = 5.0f;
+        const float parentLeft  = node->parent->offsets.x;
+        const float parentRight = node->parent->offsets.x + node->parent->offsets.z;
+        const float rowHeight = node->fontSize.y + textMargin;
+        assert(rowHeight > 0);
+        const int availableRows = node->parent->offsets.w / rowHeight;
+        float xCursor = node->offsets.x;
+        float yCursor = node->offsets.y;
+        int currentRow = 1;
+        for (size_t i = 0; i < wordCount; i++)
+        {
+            // Iterate each word
+            // if a word can be contained in a fresh row - draw it
+            // if a word can't be contained in a fresh row - ellipsis
+            // if a word can be contained by continuing on the same row - draw it
+            // if there's no more rows - return
+            Word word = words[i];
+            const float textWidthPx = word.count * node->fontSize.x;
+            assert(word.count > 0);
+
+            const bool canBeRenderedOnFreshLine = textWidthPx < parentRight;
+            const bool canBeRenderedOnContinuedLine = xCursor + textWidthPx < parentRight;
+            const bool notFreshLine = xCursor != node->offsets.x;
+
+            // TODO: Implement some kind of ellipsis functionality where we draw as much as possible.
+            if (!canBeRenderedOnFreshLine) {
+                fprintf(stdout, "Skipped %s\n", word.text);
+                continue;
+            }
+
+            // Advance to next row
+            if (!canBeRenderedOnContinuedLine) {
+                if (currentRow >= availableRows) return;
+
+                xCursor = node->offsets.x;
+                yCursor += rowHeight;
+                currentRow++;
+            } 
+            
+            if (canBeRenderedOnContinuedLine && notFreshLine) {
+                // Insert space behind
+                for(int i = word.count; i > 0; i--) {
+                    word.text[i] = word.text[i - 1];
+                }
+
+                word.text[0] = ' ';
+                word.text[++word.count] = '\0';
+            }
+
+            // Draw
+            for(int i = 0; i < word.count; i++) {
+                char glyph = word.text[i];
+                assert(glyph <= U'Z' && "We only support ASCI up to Z");
+
+                // --- uvRect ---
+                glm::vec2 uvMin = {
+                    ((int)glyph * FONT_ATLAS_CELL_SIZE.x) / FONT_ATLAS_SIZE.x,
+                    0.0f
+                };
+                glm::vec2 uvSize = {
+                    FONT_ATLAS_CELL_SIZE.x / FONT_ATLAS_SIZE.x,
+                    FONT_ATLAS_CELL_SIZE.y / FONT_ATLAS_SIZE.y,
+                };
+                glm::vec2 uvMax = uvMin + uvSize;
+                glm::vec4 uvRect = {uvMin, uvMax};
+                
+                // --- Bounds ---
+                glm::vec4 bounds = { xCursor, yCursor, node->fontSize };
+
+                // --- Draw ---
+                UINodePushConstant push = {
+                    .boundsPx = bounds,
+                    .color = node->color,
+                    .uvRect = uvRect,
+                    .viewportPx = viewportPx,
+                };
+                vkCmdPushConstants(cmd, fontPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
+                vkCmdDraw(cmd, 6, 1, 0, 0);
+
+                // --- Advance cursor ---
+                xCursor += node->fontSize.x;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
     // MAIN FUNCTIONS
     // ------------------------------------------------------------------------
 
@@ -941,6 +1093,7 @@ struct RendererUISystem {
         // UNCOMMENT FOR DEBUG
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::COPPER, .count = 206 };
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::HEMATITE, .count = 206 };
+        inventoryItems[inventoryItemsCount++] = { .id = ItemId::CRUSHED_COPPER, .count = 15 };
         inventoryOpen = true;
     }
 
@@ -1077,7 +1230,7 @@ struct RendererUISystem {
         }
     }
 
-    void draw(VkCommandBuffer cmd, glm::vec2 viewportPx) {
+    void draw(VkCommandBuffer &cmd, const glm::vec2 &viewportPx) {
         ZoneScoped;
 
         uiArena.reset();
@@ -1126,42 +1279,7 @@ struct RendererUISystem {
                 }
                 case ShaderType::Font:
                 {
-                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.pipeline);
-                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fontPipeline.layout, 0, 1, &fontAtlasSet, 0, nullptr);
-
-                    assert(node->textLen > 0);
-                    for(int i = 0; i < node->textLen; i++) {
-                        char glyph = node->text[i];
-                        assert(glyph <= U'Z' && "We only support ASCI up to Z");
-
-                        // --- uvRect ---
-                        glm::vec2 uvMin = {
-                            ((int)glyph * FONT_ATLAS_CELL_SIZE.x) / FONT_ATLAS_SIZE.x,
-                            0.0f
-                        };
-                        glm::vec2 uvSize = {
-                            FONT_ATLAS_CELL_SIZE.x / FONT_ATLAS_SIZE.x,
-                            FONT_ATLAS_CELL_SIZE.y / FONT_ATLAS_SIZE.y,
-                        };
-                        glm::vec2 uvMax = uvMin + uvSize;
-                        glm::vec4 uvRect = {uvMin, uvMax};
-                        
-                        // --- Bounds ---
-                        glm::vec4 bounds = {
-                            node->offsets.x + i * node->fontSize.x,
-                            node->offsets.y,
-                            node->fontSize,
-                        };
-
-                        UINodePushConstant push = {
-                            .boundsPx = bounds,
-                            .color = node->color,
-                            .uvRect = uvRect,
-                            .viewportPx = viewportPx,
-                        };
-                        vkCmdPushConstants(cmd, fontPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
-                        vkCmdDraw(cmd, 6, 1, 0, 0);
-                    }
+                    drawText(cmd, node, viewportPx);
                     break;
                 }
                 case ShaderType::ShadowOverlay:
