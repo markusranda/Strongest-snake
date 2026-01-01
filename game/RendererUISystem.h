@@ -6,6 +6,7 @@
 #include "Item.h"
 #include "ShaderType.h"
 #include "Camera.h"
+#include "Collision.h"
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
@@ -14,16 +15,36 @@
 #include <cstring>
 #include <cassert>
 
-constexpr static glm::vec4 COLOR_SURFACE_0       = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-constexpr static glm::vec4 COLOR_SURFACE_900     = glm::vec4(0.10f, 0.11f, 0.12f, 0.95f);
-constexpr static glm::vec4 COLOR_SURFACE_800     = glm::vec4(0.16f, 0.17f, 0.18f, 0.95f);
-constexpr static glm::vec4 COLOR_SURFACE_700     = glm::vec4(0.10f, 0.11f, 0.12f, 0.95f);
-constexpr static glm::vec4 COLOR_PRIMARY         = glm::vec4(0.20f, 0.55f, 0.90f, 1.0f);
-constexpr static glm::vec4 COLOR_SECONDARY       = glm::vec4(0.95f, 0.55f, 0.20f, 1.0f);
-constexpr static glm::vec4 COLOR_TEXT_PRIMARY    = glm::vec4(0.90f, 0.90f, 0.90f, 1.0f);
-constexpr static glm::vec4 COLOR_TEXT_SECONDARY  = glm::vec4(0.60f, 0.60f, 0.60f, 1.0f);
+// ---------------------------------------------------
+// FORWARD DECLERATIONS
+// ---------------------------------------------------
 
-constexpr static glm::vec4 COLOR_BLACK           = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+struct UINode;
+struct RendererUISystem;
+inline static void OnClickItem(UINode* node, void *userData);
+inline static void OnClickIncrementBtn(UINode* node, void *userData);
+inline static void OnClickCraft(UINode*, void *userData);
+
+// ---------------------------------------------------
+// COLORS
+// ---------------------------------------------------
+
+constexpr static glm::vec4 COLOR_SURFACE_0               = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+constexpr static glm::vec4 COLOR_SURFACE_900             = glm::vec4(0.10f, 0.11f, 0.12f, 0.95f);
+constexpr static glm::vec4 COLOR_SURFACE_800             = glm::vec4(0.16f, 0.17f, 0.18f, 0.95f);
+constexpr static glm::vec4 COLOR_SURFACE_700             = glm::vec4(0.10f, 0.11f, 0.12f, 0.95f);
+constexpr static glm::vec4 COLOR_PRIMARY                 = glm::vec4(0.20f, 0.55f, 0.90f, 1.0f);
+constexpr static glm::vec4 COLOR_SECONDARY               = glm::vec4(0.95f, 0.55f, 0.20f, 1.0f);
+constexpr static glm::vec4 COLOR_TEXT_PRIMARY            = glm::vec4(0.90f, 0.90f, 0.90f, 1.0f);
+constexpr static glm::vec4 COLOR_TEXT_SECONDARY          = glm::vec4(0.60f, 0.60f, 0.60f, 1.0f);
+constexpr static glm::vec4 COLOR_TEXT_PRIMARY_INVERTED   = glm::vec4(0.05f, 0.05f, 0.05f, 1.0f);
+constexpr static glm::vec4 COLOR_TEXT_SECONDARY_INVERTED = glm::vec4(0.10f, 0.10f, 0.10f, 1.0f);
+constexpr static glm::vec4 COLOR_FOCUS                   = glm::vec4(0.30f, 0.65f, 1.00f, 1.0f);
+constexpr static glm::vec4 COLOR_BLACK                   = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+// ---------------------------------------------------
+// Types
+// ---------------------------------------------------
 
 struct UINodePushConstant {
     glm::vec4 boundsPx;   // x, y, w, h in pixels, origin = top-left
@@ -40,12 +61,26 @@ struct ShadowOverlayPushConstant {
 };
 static_assert(sizeof(ShadowOverlayPushConstant) < 128); // If we go beyond 128, then we might get issues with push constant size limitations
 
-inline static int digits10(int x) {
-    assert(x >= 0);
-    int d = 1;
-    while (x >= 10) { x /= 10; ++d; }
-    return d;
-}
+struct InventoryItem {
+    ItemId id;
+    int count;
+};
+
+// struct CraftJobContext {
+//     RendererUISystem *uiSystem;
+//     CraftingJob job;
+// };
+
+struct AdjustIntContext {
+    int* target;
+    int delta;
+};
+
+using OnClickCallback = void (*)(UINode*, void*);
+struct OnClickCtx {
+    OnClickCallback fn = nullptr;
+    void* data = nullptr;
+};
 
 struct UINode {
     glm::vec4 offsets;
@@ -58,12 +93,10 @@ struct UINode {
     const char* text;
     uint16_t textLen = 0;
     glm::vec2 fontSize = FONT_ATLAS_CELL_SIZE;
+    InventoryItem *item = nullptr;
+    OnClickCtx click;
 };
 
-struct InventoryItem {
-    ItemId id;
-    int count;
-};
 // ---------------------------------------------------
 
 
@@ -130,15 +163,17 @@ struct FrameArena {
 #define ARENA_ALLOC_N(arena, Type, Count) \
     (Type*)((arena).alloc(sizeof(Type) * (size_t)(Count), alignof(Type)))
 
-static inline UINode* createUINode(
+static inline UINode *createUINodeRaw(
     FrameArena& a, 
     glm::vec4 offsets, 
     glm::vec4 color, 
     int capacity, 
     UINode *parent,
     ShaderType shaderType,
-    const char* text = "",
-    glm::vec2 fontSize = ATLAS_CELL_SIZE
+    const char* text,
+    glm::vec2 fontSize,
+    InventoryItem *item,
+    OnClickCtx click
 ) {
     UINode* node = ARENA_ALLOC(a, UINode);
     if (!node) return nullptr;
@@ -153,6 +188,8 @@ static inline UINode* createUINode(
     node->parent = parent;
     node->shaderType = shaderType;
     node->fontSize = fontSize;
+    node->item = item;
+    node->click = click;
     
     for (int i = 0; i < capacity; i++) 
         node->nodes[i] = nullptr;
@@ -164,6 +201,56 @@ static inline UINode* createUINode(
     }
 
     return node;
+
+}
+
+static inline UINode* createUINode(
+    FrameArena& a, 
+    glm::vec4 offsets, 
+    glm::vec4 color, 
+    int capacity, 
+    UINode *parent,
+    ShaderType shaderType
+) {
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, {});
+}
+
+static inline UINode* createUINode(
+    FrameArena& a, 
+    glm::vec4 offsets, 
+    glm::vec4 color, 
+    int capacity, 
+    UINode *parent,
+    ShaderType shaderType,
+    InventoryItem *item,
+    OnClickCtx click
+) {
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, click);
+}
+
+static inline UINode* createUINode(
+    FrameArena& a, 
+    glm::vec4 offsets, 
+    glm::vec4 color, 
+    int capacity, 
+    UINode *parent,
+    ShaderType shaderType,
+    OnClickCtx click
+) {
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, click);
+}
+
+static inline UINode* createUINode(
+    FrameArena& a, 
+    glm::vec4 offsets, 
+    glm::vec4 color, 
+    int capacity, 
+    UINode *parent,
+    ShaderType shaderType,
+    const char* text,
+    glm::vec2 fontSize = ATLAS_CELL_SIZE
+) {
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, text, fontSize, nullptr, {});
 }
 
 static inline const char* intToCString(FrameArena& a, int value) {
@@ -183,12 +270,14 @@ struct RendererUISystem {
     Pipeline shadowOverlayPipeline;
     VkDescriptorSet fontAtlasSet;
     FrameArena uiArena;
+    UINode *root = nullptr; // Notice: Never store this pointer.
 
     // Inventory state
     bool inventoryOpen = false;
     InventoryItem inventoryItems[(size_t)ItemId::COUNT]; 
     int inventoryItemsCount = 0;
     int crusherPanelCount = 0;
+    InventoryItem selectedItem;
     
     // Containers
     const float CONTAINER_MARGIN = 25.0f;
@@ -565,6 +654,7 @@ struct RendererUISystem {
     // ------------------------------------------------------------------------
     // UI COMPONENTS
     // ------------------------------------------------------------------------
+    
     void createShadowOverlay(UINode *root) {
         UINode *shadowOverlay = createUINode(
             uiArena, 
@@ -629,18 +719,34 @@ struct RendererUISystem {
             // TODO: Implement scroll instead of giving up
             if (offset.y + size.y > itemsPanel->offsets.w) break;
 
+            InventoryItem *itemCopy = ARENA_ALLOC(uiArena, InventoryItem);            
+            itemCopy->count = item.count;
+            itemCopy->id = item.id;
+            
+            // --- Color ---
+            glm::vec4 bgColor = COLOR_SURFACE_700;
+            glm::vec4 primaryColor = COLOR_TEXT_PRIMARY;
+            glm::vec4 secondaryColor = COLOR_TEXT_SECONDARY;
+            if (item.id == selectedItem.id) {
+                bgColor = COLOR_FOCUS;
+                primaryColor = COLOR_TEXT_PRIMARY_INVERTED;
+                secondaryColor = COLOR_TEXT_SECONDARY_INVERTED;
+            }
+
             UINode *slot = createUINode(
                 uiArena,
                 { offset, size },
-                COLOR_SURFACE_700,
+                bgColor,
                 2,
                 itemsPanel,
-                ShaderType::UISimpleRect
+                ShaderType::UISimpleRect,
+                itemCopy,
+                OnClickCtx{ .fn = &OnClickItem, .data=this }
             );
 
             glm::vec2 fontSize = {10.0f, 18.0f};
-            createTextNode(intToCString(uiArena, item.count), margin, margin, COLOR_TEXT_PRIMARY, slot, fontSize);
-            createTextNode(itemDef.name, margin, FONT_ATLAS_CELL_SIZE.y + margin, COLOR_TEXT_SECONDARY, slot, fontSize);
+            createTextNode(intToCString(uiArena, item.count), margin, margin, primaryColor, slot, fontSize);
+            createTextNode(itemDef.name, margin, FONT_ATLAS_CELL_SIZE.y + margin, secondaryColor, slot, fontSize);
         }
     }
 
@@ -651,8 +757,8 @@ struct RendererUISystem {
         return n;
     }
 
-    UINode* createButton(UINode* parent, glm::vec4 offsets, glm::vec4 color, const char* label, glm::vec4 labelColor, glm::vec2 fontSize) {
-        UINode* btn = createUINode(uiArena, offsets, color, 1, parent, ShaderType::UISimpleRect);
+    UINode* createButton(UINode* parent, glm::vec4 offsets, glm::vec4 color, const char* label, glm::vec4 labelColor, glm::vec2 fontSize, OnClickCtx click) {
+        UINode* btn = createUINode(uiArena, offsets, color, 1, parent, ShaderType::UISimpleRect, click);
 
         const float textW = (float)strlen(label) * fontSize.x;
         const float textH = fontSize.y;
@@ -676,6 +782,7 @@ struct RendererUISystem {
             yCursor += btn->offsets.w + margin;
         }
 
+        // --- CONTAINER --- 
         UINode *moduleContainer;
         {
             float xMin = xCursor;
@@ -708,7 +815,11 @@ struct RendererUISystem {
             float yMin = (moduleContainer->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
             float width = 60.0f;
             float height = FONT_ATLAS_CELL_SIZE.y;
-            createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "-", COLOR_TEXT_PRIMARY, {12.0f, 18.0f});
+            AdjustIntContext *fnCtx = ARENA_ALLOC(uiArena, AdjustIntContext);
+            *fnCtx = {.target = count, .delta = -1};
+            OnClickCtx click = { .fn = &OnClickIncrementBtn, .data = fnCtx };
+
+            createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "-", COLOR_TEXT_PRIMARY, {12.0f, 18.0f}, click);
             xCursor += width + margin;
         }
 
@@ -718,7 +829,11 @@ struct RendererUISystem {
             float yMin = (moduleContainer->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
             float width = 60.0f;
             float height = FONT_ATLAS_CELL_SIZE.y;
-            createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "+", COLOR_TEXT_PRIMARY, {12.0f, 18.0f});
+            AdjustIntContext *fnCtx = ARENA_ALLOC(uiArena, AdjustIntContext);
+            *fnCtx = {.target = count, .delta = 1};
+            OnClickCtx click = { .fn = &OnClickIncrementBtn, .data = fnCtx };
+
+            createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "+", COLOR_TEXT_PRIMARY, {12.0f, 18.0f}, click);
             xCursor += width + margin;
         }
 
@@ -728,7 +843,8 @@ struct RendererUISystem {
             float yMin = (moduleContainer->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
             float width = 160.0f;
             float height = FONT_ATLAS_CELL_SIZE.y;
-            createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "CRAFT", COLOR_TEXT_PRIMARY, {12.0f, 18.0f});
+            OnClickCtx click = {}; // TODO: Implement craft action
+            createButton(moduleContainer, { xMin, yMin, width, height }, COLOR_SURFACE_800, "CRAFT", COLOR_TEXT_PRIMARY, {12.0f, 18.0f}, click);
             xCursor += width + margin;
         }
     }
@@ -776,6 +892,46 @@ struct RendererUISystem {
         createCraftingPanel(inventory);
     }
 
+    void tryClick(glm::vec4 pos) {
+        const int allocations = 2*256;
+        UINode* stack[allocations]; 
+        int top = 0;
+
+        if (!root) return;
+        assert(top < allocations);
+        stack[top++] = root;
+        while (top > 0) {
+            assert(allocations > top);
+            UINode* node = stack[--top];
+
+            // TODO: Only continue towards nodes that intersect with click. We can discard whole branches like this.
+            if (node->click.fn) {
+                AABB a = AABB{
+                    .min = glm::vec2{node->offsets.x, node->offsets.y},
+                    .max = glm::vec2{node->offsets.x + node->offsets.z, node->offsets.y + node->offsets.w},
+                };
+                AABB b = AABB{
+                    .min = glm::vec2{pos.x, pos.y},
+                    .max = glm::vec2{pos.z, pos.w},
+                };
+
+                if (rectIntersects(a, b)) {
+                    node->click.fn(node, node->click.data);
+                    return;
+                }
+            }
+
+            // push children in reverse so child[0] is visited first
+            for (int i = node->count - 1; i >= 0; --i) {
+                UINode *childNode = node->nodes[i];
+
+                // Save node
+                assert(top < allocations);
+                stack[top++] = childNode;
+            }        
+        }
+    }
+
     void init(RendererApplication &application, RendererSwapchain &swapchain) {
         createRectPipeline(application, swapchain);
         createFontPipeline(application, swapchain);
@@ -795,7 +951,7 @@ struct RendererUISystem {
         uiArena.reset();
 
         // --- Create Nodes ---
-        UINode* root = createUINode(uiArena, 
+        root = createUINode(uiArena, 
             {
                 0,
                 0,
@@ -907,3 +1063,34 @@ struct RendererUISystem {
         }
     }
 };
+
+// ------------------------------------------------------------------------
+// CALLBACKS
+// ------------------------------------------------------------------------
+
+inline static void OnClickItem(UINode* node, void *userData ) {
+    auto* uiSystem = (RendererUISystem*)userData;
+    assert(uiSystem);
+    uiSystem->selectedItem = *node->item;
+    fprintf(stdout, "ITEM: %d\n", node->item->id);
+}
+
+inline static void OnClickIncrementBtn(UINode*, void *userData) {
+    auto* ctx = (AdjustIntContext*)userData;
+    assert(ctx);
+
+    // Try update
+    int newValue = *ctx->target + ctx->delta; 
+    if (newValue < 0 || newValue == INT32_MAX) return;
+    fprintf(stdout, "new count: %d\n", newValue);
+    
+    // Do update
+    *ctx->target = newValue;
+}
+
+// inline static void OnClickCraft(UINode*, void *userData) {
+//     auto* ctx = (CraftJobContext*)userData;
+//     assert(ctx);
+
+//     ctx->uiSystem->appendJob(ctx->job);
+// }

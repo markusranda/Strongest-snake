@@ -132,6 +132,7 @@ struct KeyState {
 
 inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset);
 inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+inline void clickCallback(GLFWwindow* window, int button, int action, int mods);
 static inline glm::vec2 WorldToScreenPx(const Camera& cam, const glm::vec2& world);
 
 struct Game
@@ -353,10 +354,11 @@ struct Game
             ma_sound_set_looping(&engineIdleAudio, MA_TRUE);
             ma_sound_start(&engineIdleAudio);
 
-            // --- Scrolling ---
+            // --- USER INPUT ---
             glfwSetWindowUserPointer(window.handle, this); // Connects this instance of struct to the windows somehow
             glfwSetScrollCallback(window.handle, scrollCallback);
             glfwSetKeyCallback(window.handle, keyCallback);
+            glfwSetMouseButtonCallback(window.handle, clickCallback); 
         }
         catch (const std::exception &e)
         {
@@ -1143,21 +1145,22 @@ struct Game
 
 };
 
+
 inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) 
 {
     ZoneScoped;
-
+    
     Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
     if (!game)
-        return;
-
+    return;
+    
     switch (action) {
         case GLFW_PRESS:
         game->keyStates[key].pressed = true;
         game->keyStates[key].down = true;
         game->keyStates[key].released = false;
         break;
-
+        
         case GLFW_RELEASE:
         game->keyStates[key].pressed = false;
         game->keyStates[key].down = false;
@@ -1169,15 +1172,29 @@ inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
 inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 {
     ZoneScoped;
-
+    
     // TODO Add scrollMax before release or maybe max when DEBUG isn't present
+    Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
+    if (!game)
+    return;
+    
+    // Apply zoom scaling
+    game->camera.zoom *= (1.0f + (float)yoffset * 0.1f);
+    game->camera.zoom = glm::clamp(game->camera.zoom, 0.05f, 4.0f);
+}
+
+inline void clickCallback(GLFWwindow* window, int button, int action, int mods) {
     Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
     if (!game)
         return;
 
-    // Apply zoom scaling
-    game->camera.zoom *= (1.0f + (float)yoffset * 0.1f);
-    game->camera.zoom = glm::clamp(game->camera.zoom, 0.05f, 4.0f);
+    // We only care about left click on the down
+    if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return;
+
+    double mouseX, mouseY;
+    glfwGetCursorPos(window, &mouseX, &mouseY);
+    float clickSizeHalf = 2.0f;
+    game->engine.uiSystem.tryClick({ mouseX - clickSizeHalf, mouseY - clickSizeHalf, mouseX + clickSizeHalf, mouseY + clickSizeHalf });
 }
 
 static inline glm::vec2 WorldToScreenPx(const Camera& cam, const glm::vec2& world)
