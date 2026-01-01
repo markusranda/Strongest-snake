@@ -16,7 +16,6 @@
 #include "Pipelines.h"
 #include "Atlas.h"
 #include "ParticleSystem.h"
-#include "Text.h"
 #include "RendererSwapchain.h"
 #include "RendererBarriers.h"
 #include "RendererSempahores.h"

@@ -19,8 +19,8 @@ struct OrePackage {
 
 static constexpr uint32_t ORE_BLOCK_COUNT = 2;
 OrePackage ORE_BLOCKS[ORE_BLOCK_COUNT] = {
-    { SpriteID::SPR_ORE_BLOCK_COPPER, OreLevel::Copper, ItemId::COPPER},
-    { SpriteID::SPR_ORE_BLOCK_HEMATITE, OreLevel::Hematite, ItemId::HEMATITE},
+    { SpriteID::SPR_ORE_BLOCK_COPPER, OreLevel::Copper, ItemId::COPPER_ORE},
+    { SpriteID::SPR_ORE_BLOCK_HEMATITE, OreLevel::Hematite, ItemId::HEMATITE_ORE},
 };
 
 // --------------------------------
