@@ -17,7 +17,7 @@ enum class ItemId : uint16_t {
   CRUSHED_HEMATITE,
   INGOT_COPPER,
   INGOT_IRON,
-  COUNT,
+  COUNT, // Serves as both count and invalid id 
 };
 
 struct ItemDef {
