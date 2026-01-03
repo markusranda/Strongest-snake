@@ -279,7 +279,7 @@ struct Renderer
 
     void createUiSystem()
     {
-        uiSystem.init(application, swapchain);
+        uiSystem.init(application, swapchain, atlasRegions);
     }
 
     void createInstanceStorage()

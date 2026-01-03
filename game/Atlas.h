@@ -51,7 +51,13 @@ enum SpriteID : uint32_t
     
     SPR_ORE_BLOCK_COPPER = 131,
     SPR_ORE_BLOCK_HEMATITE = 132,
-    
+
+    SPR_ORE_CRUSHED_COPPER = 259,
+    SPR_ORE_CRUSHED_IRON = 260,
+
+    SPR_ORE_INGOT_COPPER = 643,
+    SPR_ORE_INGOT_IRON = 644,
+
     // --- Snek ---
     SPR_SNK_SEG_DRILL = 1,
     SPR_SNK_SEG_STORAGE = 387,    

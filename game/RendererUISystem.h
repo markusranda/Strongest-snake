@@ -134,6 +134,7 @@ struct UINode {
     InventoryItem *item = nullptr;
     RecipeId recipeId = RecipeId::INVALID;
     OnClickCtx click;
+    AtlasRegion region;
 };
 
 struct Word {
@@ -219,7 +220,8 @@ static inline UINode *createUINodeRaw(
     glm::vec2 fontSize,
     InventoryItem *item,
     RecipeId recipeId,
-    OnClickCtx click
+    OnClickCtx click,
+    AtlasRegion region
 ) {
     UINode* node = ARENA_ALLOC(a, UINode);
     if (!node) return nullptr;
@@ -237,6 +239,7 @@ static inline UINode *createUINodeRaw(
     node->item = item;
     node->recipeId = recipeId;
     node->click = click;
+    node->region = region;
     
     for (int i = 0; i < capacity; i++) 
         node->nodes[i] = nullptr;
@@ -260,7 +263,7 @@ static inline UINode* createUINode(
     UINode *parent,
     ShaderType shaderType
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID, {});
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID, {}, AtlasRegion());
 }
 
 // Item
@@ -274,7 +277,7 @@ static inline UINode* createUINode(
     InventoryItem *item,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, RecipeId::INVALID,click);
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, RecipeId::INVALID,click, AtlasRegion());
 }
 
 // Button
@@ -287,7 +290,7 @@ static inline UINode* createUINode(
     ShaderType shaderType,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID,click);
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID,click, AtlasRegion());
 }
 
 // Recipe
@@ -301,7 +304,7 @@ static inline UINode* createUINode(
     RecipeId recipeId,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, recipeId, click);
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, recipeId, click, AtlasRegion());
 }
 
 // Text
@@ -315,7 +318,20 @@ static inline UINode* createUINode(
     const char* text,
     glm::vec2 fontSize = ATLAS_CELL_SIZE
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, text, fontSize, nullptr, RecipeId::INVALID, {});
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, text, fontSize, nullptr, RecipeId::INVALID, {}, AtlasRegion());
+}
+
+// Texture
+static inline UINode* createUINode(
+    FrameArena& a, 
+    glm::vec4 offsets, 
+    glm::vec4 color, 
+    int capacity, 
+    UINode *parent,
+    ShaderType shaderType,
+    AtlasRegion &region
+) {
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID, {}, region);
 }
 
 static inline const char* intToCString(FrameArena& a, int value) {
@@ -329,10 +345,13 @@ static inline const char* intToCString(FrameArena& a, int value) {
 // ---------------------------------------------------
 
 struct RendererUISystem {
+    Pipeline texturePipeline;
     Pipeline rectPipeline;
     Pipeline fontPipeline;
     Pipeline shadowOverlayPipeline;
     VkDescriptorSet fontAtlasSet;
+    VkDescriptorSet textureAtlasSet;
+    AtlasRegion *atlasRegions = nullptr;
     FrameArena uiArena;
     UINode *root = nullptr; // Notice: Never store this pointer.
 
@@ -464,10 +483,131 @@ struct RendererUISystem {
         VkPipeline vkPipeline;
         if (vkCreateGraphicsPipelines(application.device, VK_NULL_HANDLE, 1, &createInfo, nullptr, &vkPipeline) != VK_SUCCESS)
         {
-            throw std::runtime_error("failed to create font pipeline");
+            throw std::runtime_error("failed to create texture pipeline");
         }
 
         return vkPipeline;
+    }
+
+    void createTexturePipeline(RendererApplication &application, RendererSwapchain &swapchain)
+    {
+        // --- Descriptor pool ---
+        VkDescriptorPool descriptorPool;
+        VkDescriptorPoolSize poolSize{};
+        poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        poolSize.descriptorCount = 1;
+
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &poolSize;
+        poolInfo.maxSets = 1;
+
+        if (vkCreateDescriptorPool(application.device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
+            throw std::runtime_error("failed to create descriptor pool!");
+
+
+        // --- Descriptor sets ---
+        VkDescriptorSetLayoutBinding atlasBinding = {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = nullptr,
+        };
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1,
+            .pBindings = &atlasBinding,
+        };
+
+        VkDescriptorSetLayout descriptorSetLayout;
+        if (vkCreateDescriptorSetLayout(application.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
+            throw std::runtime_error("failed to create texture descriptor set layout");
+
+        VkDescriptorSetAllocateInfo allocInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = descriptorPool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &descriptorSetLayout,
+        };
+
+        VkResult res = vkAllocateDescriptorSets(application.device, &allocInfo, &textureAtlasSet);
+        if (res != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to allocate texture atlas descriptor set");
+        }
+
+        // --- Font sampler ---
+        VkDescriptorImageInfo imageInfo = {
+            .sampler = application.atlasTexture.sampler,
+            .imageView = application.atlasTexture.view,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+
+        VkWriteDescriptorSet write = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = textureAtlasSet,
+            .dstBinding = 0, // must match layout(binding = 0)
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &imageInfo,
+        };
+
+        vkUpdateDescriptorSets(application.device, 1, &write, 0, nullptr);
+
+        // --- Shaders ---
+        std::vector<char> vertShaderCode = readFile("shaders/vert_texture_font.spv");
+        std::vector<char> fragShaderCode = readFile("shaders/frag_texture_ui.spv");
+        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode, application.device);
+        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode, application.device);
+
+        // --- Stages ----
+        VkPipelineShaderStageCreateInfo vertStage = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = vertShaderModule,
+            .pName = "main",
+        };
+        VkPipelineShaderStageCreateInfo fragStage{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = fragShaderModule,
+            .pName = "main",
+        };
+        VkPipelineShaderStageCreateInfo stages[2] = {vertStage, fragStage};
+
+        // --- Push constants ---
+        VkPushConstantRange pushRange = {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset = 0,
+            .size = sizeof(UINodePushConstant),
+        };
+
+        // --- Pipeline Layout ---
+        VkPipelineLayout pipelineLayout;
+        VkPipelineLayoutCreateInfo layout = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .setLayoutCount = 1,
+            .pSetLayouts = &descriptorSetLayout,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &pushRange,
+        };
+        if (vkCreatePipelineLayout(application.device, &layout, nullptr, &pipelineLayout) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create graphics pipeline layout");
+        }
+        
+        // --- Pipeline ---
+        VkPipeline vkPipeline = createGraphicsPipeline(application, swapchain, stages, pipelineLayout);
+
+        // --- Cleanup ---
+        vkDestroyShaderModule(application.device, vertShaderModule, nullptr);
+        vkDestroyShaderModule(application.device, fragShaderModule, nullptr);
+
+        texturePipeline = Pipeline{vkPipeline, pipelineLayout};
     }
 
     void createRectPipeline(RendererApplication &application, RendererSwapchain &swapchain)
@@ -775,12 +915,10 @@ struct RendererUISystem {
             
             // --- Color ---
             glm::vec4 bgColor = COLOR_SURFACE_700;
-            glm::vec4 primaryColor = COLOR_TEXT_PRIMARY;
-            glm::vec4 secondaryColor = COLOR_TEXT_SECONDARY;
+            glm::vec4 textColor = COLOR_TEXT_PRIMARY;
             if (selectedInventoryItem && item.id == selectedInventoryItem->id) {
                 bgColor = COLOR_FOCUS;
-                primaryColor = COLOR_TEXT_PRIMARY_INVERTED;
-                secondaryColor = COLOR_TEXT_SECONDARY_INVERTED;
+                textColor = COLOR_TEXT_PRIMARY_INVERTED;
             }
             glm::vec2 fontSize = {10.0f, 18.0f};
 
@@ -794,12 +932,25 @@ struct RendererUISystem {
                 uiArena,
                 { offset, size },
                 bgColor,
-                2,
+                3,
                 parent,
                 ShaderType::UISimpleRect,
                 itemCopy,
                 OnClickCtx{ .fn = &OnClickItem, .data=this }
             );
+            
+            // Count
+            createTextNode(intToCString(uiArena, item.count), margin, margin, textColor, slot, fontSize);
+            
+            // Texture
+            glm::vec4 bounds = slot->offsets;
+            bounds.x = (4.0f * margin);
+            bounds.y = (4.0f * margin);
+            bounds.z -= (5.0f * margin);
+            bounds.w -= (5.0f * margin);
+            createTextureNode(itemsDatabase[item.id].sprite, bounds, slot);
+
+            // Name
             UINode *slotNameContainer = createUINode(
                 uiArena,
                 slotNameOffsets,
@@ -810,9 +961,7 @@ struct RendererUISystem {
                 itemCopy,
                 OnClickCtx{ .fn = &OnClickItem, .data=this }
             );
-
-            createTextNode(intToCString(uiArena, item.count), margin, margin, primaryColor, slot, fontSize);
-            createTextNode(itemDef.name, margin, margin, secondaryColor, slotNameContainer, fontSize);
+            createTextNode(itemDef.name, margin, margin, textColor, slotNameContainer, fontSize);
         }
     }
 
@@ -833,6 +982,13 @@ struct RendererUISystem {
         createTextNode(label, lx, ly, labelColor, btn, fontSize);
 
         return btn;
+    }
+
+    UINode *createTextureNode(SpriteID sprite, glm::vec4 bounds, UINode *parent) {
+        AtlasRegion region = atlasRegions[(size_t)sprite];
+        glm::vec4 color = {0.0f, 0.0f, 0.0f, 1.0f};
+        
+        return createUINode(uiArena, bounds, color, 1, parent, ShaderType::TextureUI, region);
     }
 
     void createCraftingModule(UINode *parent, const CraftingJob &craftingJob, const IdIndexedArray<ItemId, ItemId, (size_t)ItemId::COUNT> outputMap) {
@@ -1038,7 +1194,7 @@ struct RendererUISystem {
         float yCursor = margin;
 
         // Slot
-        createTextNode("---IMAGE---", xCursor, parent->offsets.w * 0.5f - fontSize.y * 0.5f, COLOR_TEXT_PRIMARY, parent, fontSize);
+        createTextureNode(itemsDatabase[recipe.itemId].sprite, glm::vec4{ margin, margin, 60.0f, 60.0f }, parent);
         xCursor += strlen("---IMAGE---") * fontSize.x + margin;
 
         // Ingredients
@@ -1069,13 +1225,13 @@ struct RendererUISystem {
             yCursor += fontSize.y + margin;
         }
     }
-
+ 
     void createCraftingProgress(UINode *parent) {
         const glm::vec2 fontSize = glm::vec2{10.0f, 18.0f} * 4.0f;
         CraftingJob &craftingJob = craftingJobs[(size_t)CraftingJobType::Craft];
         int percentage = 0;
         if (craftingJob.amountStartedAt > 0) {
-            percentage = ((float)craftingJob.amount / (float)craftingJob.amountStartedAt) * 100;
+            percentage = (float(craftingJob.amountStartedAt - craftingJob.amount) / (float)craftingJob.amountStartedAt) * 100;
         }
         
         // LENGTHS
@@ -1259,42 +1415,30 @@ struct RendererUISystem {
                 primaryColor = COLOR_TEXT_PRIMARY_INVERTED;
                 secondaryColor = COLOR_TEXT_SECONDARY_INVERTED;
             }
-            glm::vec2 fontSize = {10.0f, 18.0f};
 
-            glm::vec4 slotNameOffsets = {
-                0,
-                fontSize.y + margin,
-                size.x - fontSize.x,
-                size.y - fontSize.y,
-            };
-
+            // Click callback
             ClickRecipeContext *ctxData = ARENA_ALLOC(uiArena, ClickRecipeContext);
             ctxData->uiSystem = this;
             ctxData->recipeId = recipe.id;
-            
             OnClickCtx clickCtx = OnClickCtx{ .fn = &OnClickRecipe, .data=ctxData};
+
             UINode *slot = createUINode(
                 uiArena,
                 { offset, size },
                 bgColor,
-                2,
+                1,
                 parent,
                 ShaderType::UISimpleRect,
                 recipe.id,
                 clickCtx
             );
-            UINode *slotNameContainer = createUINode(
-                uiArena,
-                slotNameOffsets,
-                COLOR_TRANSPARANT,
-                1,
-                slot,
-                ShaderType::UISimpleRect,
-                recipe.id,
-                clickCtx
-            );
 
-            createTextNode(itemsDatabase[recipe.itemId].name, margin, margin, secondaryColor, slotNameContainer, fontSize);
+            glm::vec4 bounds = slot->offsets;
+            bounds.x = margin;
+            bounds.y = margin;
+            bounds.z -= ( 2.0f * margin);
+            bounds.w -= ( 2.0f * margin);
+            createTextureNode(itemsDatabase[recipe.itemId].sprite, bounds, slot);
         }
     }
 
@@ -1592,10 +1736,13 @@ struct RendererUISystem {
     // MAIN FUNCTIONS
     // ------------------------------------------------------------------------
 
-    void init(RendererApplication &application, RendererSwapchain &swapchain) {
+    void init(RendererApplication &application, RendererSwapchain &swapchain, AtlasRegion *atlasRegions) {
+        this->atlasRegions = atlasRegions;
+        
         createRectPipeline(application, swapchain);
         createFontPipeline(application, swapchain);
         createShadowOverlayPipeline(application, swapchain);
+        createTexturePipeline(application, swapchain);
 
         uiArena.init(4 * 1024 * 1024); // 4 MB to start; bump as needed
 
@@ -1863,6 +2010,34 @@ struct RendererUISystem {
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowOverlayPipeline.pipeline);
                     vkCmdPushConstants(cmd, shadowOverlayPipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ShadowOverlayPushConstant), &push);
                     vkCmdDraw(cmd, 3, 1, 0, 0);
+                    break;
+                }
+                case ShaderType::TextureUI:
+                {
+                    // --- uvRect ---
+                    AtlasRegion region = node->region;
+                    glm::vec2 uvMin = {
+                        (region.x * ATLAS_CELL_SIZE.x) / ATLAS_SIZE.x,
+                        (region.y * ATLAS_CELL_SIZE.y) / ATLAS_SIZE.y,
+                    };
+                    glm::vec2 uvSize = {
+                        ATLAS_CELL_SIZE.x / ATLAS_SIZE.x,
+                        ATLAS_CELL_SIZE.y / ATLAS_SIZE.y,
+                    };
+                    glm::vec2 uvMax = uvMin + uvSize;
+                    glm::vec4 uvRect = {uvMin, uvMax};
+                    
+                    // --- Draw ---
+                    UINodePushConstant push = {
+                        .boundsPx = node->offsets,
+                        .color = node->color,
+                        .uvRect = uvRect,
+                        .viewportPx = viewportPx,
+                    };
+                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, texturePipeline.pipeline);
+                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, texturePipeline.layout, 0, 1, &textureAtlasSet, 0, nullptr);
+                    vkCmdPushConstants(cmd, texturePipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
+                    vkCmdDraw(cmd, 6, 1, 0, 0);
                     break;
                 }
                 default: {

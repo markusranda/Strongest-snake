@@ -70,6 +70,7 @@ set(SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture_scrolling.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture_parallax.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_particle.frag
+    ${CMAKE_SOURCE_DIR}/shaders/frag_texture_ui.frag
     ${CMAKE_SOURCE_DIR}/shaders/comp_particle.comp
 )
 

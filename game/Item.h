@@ -91,10 +91,10 @@ constexpr auto makeItemDatabase() {
 
     db[ItemId::COPPER_ORE]       = { ItemId::COPPER_ORE, "COPPER ORE", SpriteID::SPR_ORE_BLOCK_COPPER, ItemCategory::ORE };
     db[ItemId::HEMATITE_ORE]     = { ItemId::HEMATITE_ORE, "HEMATITE ORE", SpriteID::SPR_ORE_BLOCK_HEMATITE, ItemCategory::ORE };
-    db[ItemId::CRUSHED_COPPER]   = { ItemId::CRUSHED_COPPER, "CRUSHED COPPER", SpriteID::INVALID, ItemCategory::CRUSHED_ORE };
-    db[ItemId::CRUSHED_HEMATITE] = { ItemId::CRUSHED_HEMATITE, "CRUSHED HEMATITE", SpriteID::INVALID, ItemCategory::CRUSHED_ORE };
-    db[ItemId::INGOT_COPPER]     = { ItemId::INGOT_COPPER, "COPPER INGOT", SpriteID::INVALID, ItemCategory::INGOT};
-    db[ItemId::INGOT_IRON]       = { ItemId::INGOT_IRON, "IRON INGOT", SpriteID::INVALID, ItemCategory::INGOT};
+    db[ItemId::CRUSHED_COPPER]   = { ItemId::CRUSHED_COPPER, "CRUSHED COPPER", SpriteID::SPR_ORE_CRUSHED_COPPER, ItemCategory::CRUSHED_ORE };
+    db[ItemId::CRUSHED_HEMATITE] = { ItemId::CRUSHED_HEMATITE, "CRUSHED HEMATITE", SpriteID::SPR_ORE_CRUSHED_IRON, ItemCategory::CRUSHED_ORE };
+    db[ItemId::INGOT_COPPER]     = { ItemId::INGOT_COPPER, "COPPER INGOT", SpriteID::SPR_ORE_INGOT_COPPER, ItemCategory::INGOT};
+    db[ItemId::INGOT_IRON]       = { ItemId::INGOT_IRON, "IRON INGOT", SpriteID::SPR_ORE_INGOT_IRON, ItemCategory::INGOT};
 
     db[ItemId::DRILL_COPPER]     = { ItemId::DRILL_COPPER, "COPPER DRILL", SpriteID::SPR_ITM_CPR_DRILL, ItemCategory::INGOT};
     db[ItemId::DRILL_IRON]       = { ItemId::DRILL_IRON, "IRON DRILL", SpriteID::SPR_ITM_IRON_DRILL, ItemCategory::INGOT};

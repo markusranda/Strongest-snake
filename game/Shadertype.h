@@ -9,6 +9,7 @@ enum class ShaderType : uint16_t
     Texture,
     TextureScrolling,
     TextureParallax,
+    TextureUI,
     ShadowOverlay,
     UISimpleRect,
     COUNT
