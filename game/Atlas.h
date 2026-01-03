@@ -22,6 +22,7 @@ enum SpriteID : uint32_t
     SPR_GROUND_MID_2 = 256,
     SPR_CAVE_BACKGROUND = 257,
     
+    // --- Ground blocks ---
     SPR_GROUND_MID_3 = 384,
     SPR_GROUND_MID_4 = 512,
     SPR_GROUND_MID_5 = 640,
@@ -39,10 +40,19 @@ enum SpriteID : uint32_t
     SPR_GROUND_MID_17 = 2176,
     SPR_GROUND_MID_18 = 2304,
     SPR_GROUND_MID_19 = 2432,
+
+    // --- Items ---
+    SPR_ITM_CPR_DRILL = 515,    
+    SPR_ITM_IRON_DRILL = 516,
+    SPR_ITM_CPR_MOTOR = 517,
+    SPR_ITM_IRON_MOTOR = 518,
+    SPR_ITM_CPR_LIGHT = 519,
+    SPR_ITM_IRON_LIGHT = 520,
     
     SPR_ORE_BLOCK_COPPER = 131,
     SPR_ORE_BLOCK_HEMATITE = 132,
     
+    // --- Snek ---
     SPR_SNK_SEG_DRILL = 1,
     SPR_SNK_SEG_STORAGE = 387,    
     SPR_SNK_SEG_SMELTER = 388,    

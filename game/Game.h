@@ -660,7 +660,7 @@ struct Game
             engine.uiSystem.advanceJobs();
             jobsTimer = JOB_INTERVAL;
         }
-    }
+}
 
     void updateCamera()
     {

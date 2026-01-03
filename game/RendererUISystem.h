@@ -24,6 +24,7 @@ struct RendererUISystem;
 inline static void OnClickItem(UINode* node, void *userData);
 inline static void OnClickIncrementBtn(UINode* node, void *userData);
 inline static void OnClickCraft(UINode*, void *userData);
+inline static void OnClickRecipe(UINode*, void *userData);
 
 // ---------------------------------------------------
 // COLORS
@@ -43,10 +44,17 @@ constexpr static glm::vec4 COLOR_TEXT_SECONDARY_INVERTED = glm::vec4(0.10f, 0.10
 constexpr static glm::vec4 COLOR_FOCUS                   = glm::vec4(0.30f, 0.65f, 1.00f, 1.0f);
 constexpr static glm::vec4 COLOR_BLACK                   = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 constexpr static glm::vec4 COLOR_TRANSPARANT             = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+constexpr static glm::vec4 COLOR_DEBUG                   = glm::vec4(1.0f, 0.0f, 0.0f, 0.8f);
 
 // ---------------------------------------------------
 // TYPES
 // ---------------------------------------------------
+
+enum class ResetType : uint16_t {
+    SelectedInventoryItem,
+    SelectedRecipe,
+    COUNT,
+};
 
 struct UINodePushConstant {
     glm::vec4 boundsPx;   // x, y, w, h in pixels, origin = top-left
@@ -72,6 +80,9 @@ struct CraftingJob {
     CraftingJobType type;
     ItemId itemId;
     ItemCategory inputType;
+
+    RecipeId recipeId;
+
     int amount;
     int amountStartedAt;
     bool active;
@@ -79,6 +90,7 @@ struct CraftingJob {
     void reset() {
         active = false;
         itemId = ItemId::INVALID;
+        recipeId = RecipeId::INVALID;
         amount = 0;
         amountStartedAt = 0;
     }
@@ -87,6 +99,7 @@ struct CraftingJob {
 struct CraftingJobCraftContext {
     RendererUISystem *uiSystem;
     CraftingJob job;
+    ResetType resetType;
 };
 
 struct CraftingJobAdjustContext {
@@ -94,6 +107,11 @@ struct CraftingJobAdjustContext {
     CraftingJobType target;
     int delta;
     int max;
+};
+
+struct ClickRecipeContext {
+    RendererUISystem *uiSystem;
+    RecipeId recipeId;
 };
 
 using OnClickCallback = void (*)(UINode*, void*);
@@ -114,6 +132,7 @@ struct UINode {
     uint16_t textLen = 0;
     glm::vec2 fontSize = FONT_ATLAS_CELL_SIZE;
     InventoryItem *item = nullptr;
+    RecipeId recipeId = RecipeId::INVALID;
     OnClickCtx click;
 };
 
@@ -182,6 +201,7 @@ struct FrameArena {
 // ---------------------------------------------------
 // HELPERS
 // ---------------------------------------------------
+
 #define ARENA_ALLOC(arena, Type) \
     (Type*)((arena).alloc(sizeof(Type), alignof(Type)))
 
@@ -198,6 +218,7 @@ static inline UINode *createUINodeRaw(
     const char* text,
     glm::vec2 fontSize,
     InventoryItem *item,
+    RecipeId recipeId,
     OnClickCtx click
 ) {
     UINode* node = ARENA_ALLOC(a, UINode);
@@ -214,6 +235,7 @@ static inline UINode *createUINodeRaw(
     node->shaderType = shaderType;
     node->fontSize = fontSize;
     node->item = item;
+    node->recipeId = recipeId;
     node->click = click;
     
     for (int i = 0; i < capacity; i++) 
@@ -238,7 +260,7 @@ static inline UINode* createUINode(
     UINode *parent,
     ShaderType shaderType
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, {});
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID, {});
 }
 
 // Item
@@ -252,7 +274,7 @@ static inline UINode* createUINode(
     InventoryItem *item,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, click);
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, RecipeId::INVALID,click);
 }
 
 // Button
@@ -265,7 +287,21 @@ static inline UINode* createUINode(
     ShaderType shaderType,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, click);
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID,click);
+}
+
+// Recipe
+static inline UINode* createUINode(
+    FrameArena& a, 
+    glm::vec4 offsets, 
+    glm::vec4 color, 
+    int capacity, 
+    UINode *parent,
+    ShaderType shaderType,
+    RecipeId recipeId,
+    OnClickCtx click
+) {
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, recipeId, click);
 }
 
 // Text
@@ -279,7 +315,7 @@ static inline UINode* createUINode(
     const char* text,
     glm::vec2 fontSize = ATLAS_CELL_SIZE
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, text, fontSize, nullptr, {});
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, text, fontSize, nullptr, RecipeId::INVALID, {});
 }
 
 static inline const char* intToCString(FrameArena& a, int value) {
@@ -304,7 +340,8 @@ struct RendererUISystem {
     bool inventoryOpen = false;
     InventoryItem inventoryItems[(size_t)ItemId::COUNT]; 
     int inventoryItemsCount = 0;
-    InventoryItem *selectedItem = nullptr;
+    InventoryItem *selectedInventoryItem = nullptr;
+    RecipeId selectedRecipe = RecipeId::INVALID;
 
     // Crafting system
     CraftingJob craftingJobs[(size_t)CraftingJobType::COUNT];
@@ -740,7 +777,7 @@ struct RendererUISystem {
             glm::vec4 bgColor = COLOR_SURFACE_700;
             glm::vec4 primaryColor = COLOR_TEXT_PRIMARY;
             glm::vec4 secondaryColor = COLOR_TEXT_SECONDARY;
-            if (selectedItem && item.id == selectedItem->id) {
+            if (selectedInventoryItem && item.id == selectedInventoryItem->id) {
                 bgColor = COLOR_FOCUS;
                 primaryColor = COLOR_TEXT_PRIMARY_INVERTED;
                 secondaryColor = COLOR_TEXT_SECONDARY_INVERTED;
@@ -840,9 +877,9 @@ struct RendererUISystem {
             float height = FONT_ATLAS_CELL_SIZE.y;
 
             OnClickCtx click = { .fn = nullptr, .data = nullptr };
-            if (selectedItem) {
+            if (selectedInventoryItem) {
                 CraftingJobAdjustContext *fnCtx = ARENA_ALLOC(uiArena, CraftingJobAdjustContext);
-                *fnCtx = { .uiSystem = this, .target = craftingJob.type, .delta = -1, .max = selectedItem->count};
+                *fnCtx = { .uiSystem = this, .target = craftingJob.type, .delta = -1, .max = selectedInventoryItem->count};
                 click = { .fn = &OnClickIncrementBtn, .data = fnCtx };
             }
                 
@@ -858,9 +895,9 @@ struct RendererUISystem {
             float height = FONT_ATLAS_CELL_SIZE.y;
 
             OnClickCtx click = { .fn = nullptr, .data = nullptr };
-            if (selectedItem) {
+            if (selectedInventoryItem) {
                 CraftingJobAdjustContext *fnCtx = ARENA_ALLOC(uiArena, CraftingJobAdjustContext);
-                *fnCtx = { .uiSystem = this, .target = craftingJob.type, .delta = 1, .max = selectedItem->count};
+                *fnCtx = { .uiSystem = this, .target = craftingJob.type, .delta = 1, .max = selectedInventoryItem->count};
                 click = { .fn = &OnClickIncrementBtn, .data = fnCtx };
             }
 
@@ -871,7 +908,7 @@ struct RendererUISystem {
         // --- CRAFT ---
         {
             ItemDef itemDef = itemsDatabase[ItemId::INVALID];
-            if (selectedItem) itemDef = itemsDatabase[selectedItem->id];
+            if (selectedInventoryItem) itemDef = itemsDatabase[selectedInventoryItem->id];
             float xMin = xCursor;
             float yMin = (firstRow->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
             float width = 160.0f;
@@ -879,7 +916,8 @@ struct RendererUISystem {
             
             CraftingJobCraftContext *ctx = ARENA_ALLOC(uiArena, CraftingJobCraftContext);
             ctx->uiSystem = this;
-            const bool canCraft = !craftingJob.active && itemDef.itemId != ItemId::INVALID && craftingJob.amount > 0 && itemDef.category == craftingJob.inputType;
+            ctx->resetType = ResetType::SelectedInventoryItem;
+            const bool canCraft = !craftingJob.active && itemDef.id != ItemId::INVALID && craftingJob.amount > 0 && itemDef.category == craftingJob.inputType;
             const bool canCancel = craftingJob.active;
             
             // Variable state
@@ -890,7 +928,7 @@ struct RendererUISystem {
             if (canCraft) {
                 title = "CRAFT";
                 ctx->job = craftingJob;
-                ctx->job.itemId = itemDef.itemId; 
+                ctx->job.itemId = itemDef.id; 
                 ctx->job.active = true;
                 click = { .fn = OnClickCraft, .data = ctx};
             } else if (canCancel) {
@@ -925,7 +963,7 @@ struct RendererUISystem {
         }
 
         ItemDef item = itemsDatabase[craftingJob.itemId];
-        if (item.itemId != ItemId::INVALID) {
+        if (item.id != ItemId::INVALID) {
             assert(item.category == craftingJob.inputType);
             float xCursor = margin;
             float y = (secondRow->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
@@ -938,7 +976,7 @@ struct RendererUISystem {
             xCursor += node2->offsets.z;
             
             // Second text
-            UINode *node3 = createTextNode(itemsDatabase[outputMap[item.itemId]].name, xCursor, y, COLOR_TEXT_PRIMARY, secondRow, fontSize);
+            UINode *node3 = createTextNode(itemsDatabase[outputMap[item.id]].name, xCursor, y, COLOR_TEXT_PRIMARY, secondRow, fontSize);
             xCursor += node3->offsets.z;
         }
 
@@ -989,6 +1027,311 @@ struct RendererUISystem {
                 );
             }
         }
+    }
+
+    void createCraftingWindow(UINode *parent) {
+        assert(selectedRecipe != RecipeId::INVALID);
+        const float margin = 5.0f;
+        const RecipeDef recipe = recipeDatabase[selectedRecipe];
+        const glm::vec2 fontSize = {8.0f, 16.0f};
+        float xCursor = margin;
+        float yCursor = margin;
+
+        // Slot
+        createTextNode("---IMAGE---", xCursor, parent->offsets.w * 0.5f - fontSize.y * 0.5f, COLOR_TEXT_PRIMARY, parent, fontSize);
+        xCursor += strlen("---IMAGE---") * fontSize.x + margin;
+
+        // Ingredients
+        yCursor = 2.0f * margin;
+        for (size_t i = 0; i < recipe.ingredientCount; i++)
+        {
+            IngredientDef ingredient = recipe.ingredients[i];
+            const char *itemName = itemsDatabase[ingredient.itemId].name;
+            const char *itemAmount = intToCString(uiArena, ingredient.amount);
+            
+            // LENGTHS
+            size_t itemNameLen = strlen(itemName);
+            size_t itemAmountLen = strlen(itemAmount);
+            size_t spaces = 1;
+            size_t totalLength = itemNameLen + itemAmountLen + spaces + 1;
+            char *name = ARENA_ALLOC_N(uiArena, char, totalLength);
+            
+            // COPY
+            size_t nameCursor = 0;
+            memcpy(name + nameCursor, itemAmount, itemAmountLen);
+            nameCursor += itemAmountLen;
+            name[nameCursor++] = ' ';
+            memcpy(name + nameCursor, itemName, itemNameLen);
+            nameCursor += itemNameLen;
+            name[nameCursor++] = '\0';
+
+            createTextNode(name, xCursor, yCursor, COLOR_SECONDARY, parent, fontSize);
+            yCursor += fontSize.y + margin;
+        }
+    }
+
+    void createCraftingProgress(UINode *parent) {
+        const glm::vec2 fontSize = glm::vec2{10.0f, 18.0f} * 4.0f;
+        CraftingJob &craftingJob = craftingJobs[(size_t)CraftingJobType::Craft];
+        int percentage = 0;
+        if (craftingJob.amountStartedAt > 0) {
+            percentage = ((float)craftingJob.amount / (float)craftingJob.amountStartedAt) * 100;
+        }
+        
+        // LENGTHS
+        assert(percentage >= 0 && percentage <= 100);
+        const char *percentageText = intToCString(uiArena, percentage);
+        size_t percentageTextLen = strlen(percentageText);
+        size_t totalLength = percentageTextLen + 2; // % + \0 = 2
+        
+        // COPY 
+        size_t textCursor = 0;
+        char* text = ARENA_ALLOC_N(uiArena, char, totalLength);
+        memcpy(text + textCursor, percentageText, percentageTextLen);
+        textCursor += percentageTextLen;
+        text[textCursor++] = '%';
+        text[textCursor++] = '\0';
+        
+        float x = parent->offsets.z * 0.5f - (fontSize.x * strlen(text)) * 0.5f; // -1 to remove null terminator in width calc
+        float y = parent->offsets.w * 0.5f - fontSize.y * 0.5f;
+        createTextNode(text, x, y, COLOR_TEXT_PRIMARY, parent, fontSize);
+    }
+
+    void createCraftingBtn(UINode *parent) {
+        glm::vec2 fontSize = 3.0f * glm::vec2{10.0f, 18.0f};
+        const float margin = 10.0f;
+        
+        const char* text = "CRAFT";
+        glm::vec4 color = COLOR_SURFACE_700;
+        CraftingJob craftingJob = craftingJobs[(size_t)CraftingJobType::Craft];
+        OnClickCtx click = { .fn = nullptr, .data = nullptr };
+        RecipeDef recipe = recipeDatabase[selectedRecipe];
+
+        bool hasIngredients = false;
+        if (selectedRecipe != RecipeId::INVALID) {
+            hasIngredients = true;
+            for (size_t i = 0; i < recipe.ingredientCount; i++) {
+                IngredientDef ingredient = recipe.ingredients[i];
+                
+                // Search for this ingredient with high enough count
+                bool found = false;
+                for (size_t itemIdx = 0; itemIdx < inventoryItemsCount; itemIdx++) {
+                    InventoryItem &item = inventoryItems[itemIdx];
+
+                    if (item.id == ingredient.itemId && item.count >= ingredient.amount) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    hasIngredients = false;
+                    break;
+                }
+            }   
+        }
+
+        CraftingJobCraftContext *ctx = ARENA_ALLOC(uiArena, CraftingJobCraftContext);
+        ctx->uiSystem = this;
+        ctx->resetType = ResetType::SelectedRecipe;
+        const bool canCraft = !craftingJob.active && hasIngredients;
+        const bool canCancel = craftingJob.active;
+        
+        // Craft item | Cancel craft | Crafting disabled 
+        if (canCraft) {
+            ctx->job = craftingJob;
+            ctx->job.recipeId = recipe.id; 
+            ctx->job.active = true;
+            ctx->job.amount = recipe.craftingTime;
+            ctx->job.amountStartedAt = recipe.craftingTime;
+            click = { .fn = OnClickCraft, .data = ctx};
+        } else if (canCancel) {
+            text = "CANCEL";
+            ctx->job = craftingJob;
+            ctx->job.recipeId = RecipeId::INVALID;
+            ctx->job.active = false;
+            ctx->job.amount = 0;
+            ctx->job.amountStartedAt = 0;
+            click = { .fn = OnClickCraft, .data = ctx};
+        } else {
+            color = COLOR_DISABLED;
+        }
+        
+        // BTN 
+        const int textLen = strlen(text);
+        float width = (textLen * fontSize.x) + (2 * margin);
+        float height = fontSize.y + (2 * margin);
+        float x = (parent->offsets.z * 0.5f) - width * 0.5f;
+        float y = (parent->offsets.w * 0.5f) - height * 0.5f;
+        createButton(parent, {x, y, width, height}, color, text, COLOR_TEXT_PRIMARY, fontSize, click);
+    }
+
+    void createCraftingColumn(UINode *parent) {
+        const float margin = 5.0f;
+        const float rowWidth = parent->offsets.z - (2.0f * margin);
+        const float rowHeight = parent->offsets.w * 0.33f;
+        float xCursor = margin;
+        float yCursor = margin;
+
+        UINode *firstRow;
+        {
+            float height = rowHeight - margin;
+            firstRow = createUINode(uiArena,
+                {xCursor, yCursor, rowWidth, height},
+                COLOR_TRANSPARANT,
+                6,
+                parent,
+                ShaderType::UISimpleRect
+            );
+            yCursor += height + margin;
+            if (selectedRecipe != RecipeId::INVALID) createCraftingWindow(firstRow);
+        }
+
+        UINode *secondRow;
+        {
+            float height = rowHeight - margin;
+            secondRow = createUINode(uiArena,
+                {xCursor, yCursor, rowWidth, height},
+                COLOR_TRANSPARANT,
+                3,
+                parent,
+                ShaderType::UISimpleRect
+            );
+            yCursor += height + margin;
+            if (selectedRecipe != RecipeId::INVALID) createCraftingProgress(secondRow);
+        }
+
+        UINode *thirdRow;
+        {
+            float height = rowHeight - margin;
+            thirdRow = createUINode(uiArena,
+                {xCursor, yCursor, rowWidth, height},
+                COLOR_TRANSPARANT,
+                1,
+                parent,
+                ShaderType::UISimpleRect
+            );
+            createCraftingBtn(thirdRow);
+        }
+    }
+
+    void createRecipeGrid(UINode *parent) {
+        const float slotSize = 100.0f;
+        const float minGap   = 5.0f;
+        const float margin   = 5.0f;
+        
+        // Need: gap + slot + gap
+        if (parent->offsets.z < slotSize + 2.0f * minGap) return;
+
+        // cols*slot + (cols+1)*minGap <= contWidth
+        int cols = (int)floor((parent->offsets.z - minGap) / (slotSize + minGap));
+        int rows = (int)floor((parent->offsets.w - minGap) / (slotSize + minGap));
+        if (cols < 1) return;
+        if (rows < 1) return;
+
+        // Perfect fill gap (guaranteed >= minGap)
+        float gap = (parent->offsets.z - cols * slotSize) / (cols + 1);
+        if (gap < minGap) return;
+
+        // --- Create each item slot ---
+        for (uint16_t recipeId = 0; recipeId < (uint16_t)RecipeId::INVALID; recipeId++)
+        {
+            RecipeDef recipe = recipeDatabase[(RecipeId)recipeId];
+
+            int col = recipeId % cols;
+            int row = recipeId / cols;
+
+            glm::vec2 size   = { slotSize, slotSize };
+            glm::vec2 offset = {
+                gap + col * (slotSize + gap),
+                gap + row * (slotSize + gap),
+            };
+
+            // TODO: Implement scroll instead of giving up
+            if (offset.y + size.y > parent->offsets.w) break;
+
+            // --- Color ---
+            glm::vec4 bgColor = COLOR_SURFACE_700;
+            glm::vec4 primaryColor = COLOR_TEXT_PRIMARY;
+            glm::vec4 secondaryColor = COLOR_TEXT_SECONDARY;
+            if (selectedRecipe == recipe.id) {
+                bgColor = COLOR_FOCUS;
+                primaryColor = COLOR_TEXT_PRIMARY_INVERTED;
+                secondaryColor = COLOR_TEXT_SECONDARY_INVERTED;
+            }
+            glm::vec2 fontSize = {10.0f, 18.0f};
+
+            glm::vec4 slotNameOffsets = {
+                0,
+                fontSize.y + margin,
+                size.x - fontSize.x,
+                size.y - fontSize.y,
+            };
+
+            ClickRecipeContext *ctxData = ARENA_ALLOC(uiArena, ClickRecipeContext);
+            ctxData->uiSystem = this;
+            ctxData->recipeId = recipe.id;
+            
+            OnClickCtx clickCtx = OnClickCtx{ .fn = &OnClickRecipe, .data=ctxData};
+            UINode *slot = createUINode(
+                uiArena,
+                { offset, size },
+                bgColor,
+                2,
+                parent,
+                ShaderType::UISimpleRect,
+                recipe.id,
+                clickCtx
+            );
+            UINode *slotNameContainer = createUINode(
+                uiArena,
+                slotNameOffsets,
+                COLOR_TRANSPARANT,
+                1,
+                slot,
+                ShaderType::UISimpleRect,
+                recipe.id,
+                clickCtx
+            );
+
+            createTextNode(itemsDatabase[recipe.itemId].name, margin, margin, secondaryColor, slotNameContainer, fontSize);
+        }
+    }
+
+    void createCraftingContainerModule(UINode *parent) {
+        const float margin = 5.0f;
+        const float colHeight = parent->offsets.w - (2.0f * margin);
+        float xCursor = margin;
+        float yCursor = margin;
+        float remainingWidth = parent->offsets.z - margin;
+
+        UINode *firstCol;
+        {
+            float width = remainingWidth * 0.3f;
+            firstCol = createUINode(uiArena,
+                {xCursor, yCursor, width, colHeight},
+                COLOR_SURFACE_800,
+                3,
+                parent,
+                ShaderType::UISimpleRect
+            );
+            xCursor += width + margin;
+            remainingWidth -= width + margin;
+        }
+        createCraftingColumn(firstCol);
+
+        UINode *secondCol;
+        {
+            float width = remainingWidth - margin;
+            secondCol = createUINode(uiArena,
+                {xCursor, yCursor, width, colHeight},
+                COLOR_SURFACE_800,
+                (int)RecipeId::COUNT,
+                parent,
+                ShaderType::UISimpleRect
+            );
+        }
+        createRecipeGrid(secondCol);
     }
 
     void createCraftingPanel(UINode *parent) {        
@@ -1043,16 +1386,36 @@ struct RendererUISystem {
             yCursor += height + margin;
         }
         createCraftingModule(smeltContainer, smeltingJob, smeltMap);
+
+        // --- CRAFTING --- 
+        {
+            UINode* txtNode = createTextNode("CRAFTING", xCursor, yCursor, COLOR_TEXT_PRIMARY, parent, fontSize);
+            yCursor += txtNode->offsets.w + margin;
+        }
+        UINode *craftingContainer;
+        {
+            float x = xCursor;
+            float y = yCursor;
+            float width = parent->offsets.z - (2 * CONTAINER_MARGIN);
+            float height = parent->offsets.w - yCursor - CONTAINER_MARGIN;
+            craftingContainer = createUINode(uiArena,
+                {x, y, width, height},
+                COLOR_SURFACE_700,
+                2,
+                parent,
+                ShaderType::UISimpleRect
+            );
+        }
+        createCraftingContainerModule(craftingContainer);
     }
 
     void createInventory(UINode *root) {
         UINode* inventory;
-        float width = root->offsets.z - (2 *CONTAINER_MARGIN);
-        float height = root->offsets.w - (2 *CONTAINER_MARGIN);
-        float halfWidth = width * 0.5f;
         {
             float x = CONTAINER_MARGIN;
             float y = CONTAINER_MARGIN;
+            float width = root->offsets.z - (2 *CONTAINER_MARGIN);
+            float height = root->offsets.w - (2 *CONTAINER_MARGIN);
             inventory = createUINode(uiArena,
                 { x, y, width, height, },
                 COLOR_SURFACE_900,
@@ -1061,33 +1424,35 @@ struct RendererUISystem {
                 ShaderType::UISimpleRect
             );
         }
+        const float halfWidth = inventory->offsets.z * 0.5f;
+        const float height = inventory->offsets.w;
+        float xCursor = CONTAINER_MARGIN;
 
         UINode *itemsPanel;
         {
-            float x = CONTAINER_MARGIN;
             float y = CONTAINER_MARGIN;
             float cHeight = height - (2 * CONTAINER_MARGIN);
             float cwidth = halfWidth - CONTAINER_MARGIN;
             itemsPanel = createUINode(uiArena,
-                { x, y, cwidth, cHeight },
+                { xCursor, y, cwidth, cHeight },
                 COLOR_SURFACE_800,
                 inventoryItemsCount,
                 inventory,
                 ShaderType::UISimpleRect
             );
+            xCursor += cwidth + CONTAINER_MARGIN;
         }
         createItemsPanel(itemsPanel);
 
         UINode *craftingPanel;
         {
-            float x = halfWidth + CONTAINER_MARGIN;
             float y = CONTAINER_MARGIN;
-            float cwidth = x - (2 * CONTAINER_MARGIN);
+            float cwidth = halfWidth - CONTAINER_MARGIN;
             float cHeight = height - (2 * CONTAINER_MARGIN);
             craftingPanel = createUINode(uiArena,
-                {x, y, cwidth, cHeight},
+                {xCursor, y, cwidth, cHeight},
                 COLOR_SURFACE_800,
-                4,
+                6,
                 inventory,
                 ShaderType::UISimpleRect
             );
@@ -1244,7 +1609,9 @@ struct RendererUISystem {
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::COPPER_ORE, .count = 10 };
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::HEMATITE_ORE, .count = 206 };
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::CRUSHED_COPPER, .count = 15 };
+        inventoryItems[inventoryItemsCount++] = { .id = ItemId::INGOT_COPPER, .count = 10 };
         inventoryOpen = true;
+        selectedRecipe = RecipeId::DRILL_COPPER;
     }
 
     void addItem(ItemId itemId, int count) {
@@ -1280,7 +1647,11 @@ struct RendererUISystem {
 
         if (id < 0) return false;
 
-        if (--inventoryItems[id].count < 1) {
+        // Consume asked amount
+        assert(inventoryItems[id].count >= count);
+        inventoryItems[id].count -= count;
+
+        if (inventoryItems[id].count < 1) {
             // Swap n' pop
             inventoryItems[id] = inventoryItems[--inventoryItemsCount];
         }
@@ -1356,6 +1727,31 @@ struct RendererUISystem {
                     // disable job when we're done
                     if (job.amount <= 0) job.reset();
 
+                    break;
+                }
+                case CraftingJobType::Craft:
+                {
+                    if (!job.active) break;
+                    assert(job.amount > 0);
+
+                    if (--job.amount <= 0) {
+                        RecipeDef recipe = recipeDatabase[job.recipeId];
+                        for (size_t ingredientIdx = 0; ingredientIdx < recipe.ingredients->amount; ingredientIdx++) {
+                            IngredientDef ingredient = recipe.ingredients[ingredientIdx];
+                            
+                            for (size_t itemIdx = 0; itemIdx < inventoryItemsCount; itemIdx++) {
+                                if (inventoryItems[itemIdx].id == ingredient.itemId) {
+                                    assert(inventoryItems[itemIdx].count >= ingredient.amount);
+                                    consumeItem(inventoryItems[itemIdx].id, ingredient.amount);
+                                }
+                            }
+                        }
+                        
+                        ItemId itemId = recipe.itemId;
+                        addItem(itemId, 1);
+                        job.reset();
+                    }
+                    
                     break;
                 }
                 default:
@@ -1496,7 +1892,7 @@ struct RendererUISystem {
 inline static void OnClickItem(UINode* node, void *userData ) {
     RendererUISystem* uiSystem = (RendererUISystem*)userData;
     assert(uiSystem);
-    uiSystem->selectedItem = node->item;
+    uiSystem->selectedInventoryItem = node->item;
     fprintf(stdout, "ITEM: %d\n", node->item->id);
 }
 
@@ -1519,11 +1915,32 @@ inline static void OnClickCraft(UINode*, void *userData) {
     auto* ctx = (CraftingJobCraftContext*)userData;
     assert(ctx);
 
-    // Reset selectedItem
-    ctx->uiSystem->selectedItem = nullptr;
+    // Reset selectedInventoryItem
+    switch (ctx->resetType)
+    {
+    case ResetType::SelectedInventoryItem:
+        /* code */
+        break;
+    
+    case ResetType::SelectedRecipe:
+        
+        break;
+
+    default:
+        assert(false); // No mysterious ResetTypes
+        break;
+    }
+    ctx->uiSystem->selectedInventoryItem = nullptr;
 
     // Update job
     ctx->uiSystem->craftingJobs[(size_t)ctx->job.type] = ctx->job;
 
     fprintf(stdout, "appended new job for item: %d\n", ctx->job.itemId);
+}
+
+inline static void OnClickRecipe(UINode *, void* userData) {
+    auto* ctx = (ClickRecipeContext*)userData;
+    assert(ctx);
+
+    ctx->uiSystem->selectedRecipe = ctx->recipeId;
 }
