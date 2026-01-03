@@ -68,27 +68,30 @@ struct InventoryItem {
     int count;
 };
 
-enum class CraftingJobType : uint16_t {
-    Crush,
-    Smelt,
-    COUNT
-};
-
 struct CraftingJob {
     CraftingJobType type;
     ItemId itemId;
+    ItemCategory inputType;
     int amount;
     int amountStartedAt;
     bool active;
+
+    void reset() {
+        active = false;
+        itemId = ItemId::INVALID;
+        amount = 0;
+        amountStartedAt = 0;
+    }
 };
 
-struct CraftJobContext {
+struct CraftingJobCraftContext {
     RendererUISystem *uiSystem;
     CraftingJob job;
 };
 
-struct AdjustIntContext {
-    int* target;
+struct CraftingJobAdjustContext {
+    RendererUISystem *uiSystem;
+    CraftingJobType target;
     int delta;
     int max;
 };
@@ -301,7 +304,7 @@ struct RendererUISystem {
     bool inventoryOpen = false;
     InventoryItem inventoryItems[(size_t)ItemId::COUNT]; 
     int inventoryItemsCount = 0;
-    InventoryItem selectedItem;
+    InventoryItem *selectedItem = nullptr;
 
     // Crafting system
     CraftingJob craftingJobs[(size_t)CraftingJobType::COUNT];
@@ -737,7 +740,7 @@ struct RendererUISystem {
             glm::vec4 bgColor = COLOR_SURFACE_700;
             glm::vec4 primaryColor = COLOR_TEXT_PRIMARY;
             glm::vec4 secondaryColor = COLOR_TEXT_SECONDARY;
-            if (item.id == selectedItem.id) {
+            if (selectedItem && item.id == selectedItem->id) {
                 bgColor = COLOR_FOCUS;
                 primaryColor = COLOR_TEXT_PRIMARY_INVERTED;
                 secondaryColor = COLOR_TEXT_SECONDARY_INVERTED;
@@ -795,7 +798,7 @@ struct RendererUISystem {
         return btn;
     }
 
-    void createCraftingModule(UINode *parent, const char *title, CraftingJob &craftingJob) {
+    void createCraftingModule(UINode *parent, const CraftingJob &craftingJob, const IdIndexedArray<ItemId, ItemId, (size_t)ItemId::COUNT> outputMap) {
         float yCursor = CONTAINER_MARGIN;
         float xCursor = CONTAINER_MARGIN;
         const float firstRowHeight  = MODULE_HEIGHT * 0.4f;
@@ -804,41 +807,18 @@ struct RendererUISystem {
         glm::vec2 fontSize = {12.0f, 18.0f};
         const float margin = 15.0f;
 
-        // --- TITLE --- 
-        {
-            glm::vec2 fontSize = FONT_ATLAS_CELL_SIZE;
-            UINode* btn = createTextNode(title, xCursor, yCursor, COLOR_TEXT_PRIMARY, parent, fontSize);
-            yCursor += btn->offsets.w + margin;
-        }
-
-        // --- CONTAINERS --- 
-        UINode *moduleContainer;
-        {
-            float x = xCursor;
-            float y = yCursor;
-            float width = parent->offsets.z - (2 * CONTAINER_MARGIN);
-            float height = MODULE_HEIGHT;
-            moduleContainer = createUINode(uiArena,
-                {x, y, width, height},
-                COLOR_SURFACE_700,
-                3,
-                parent,
-                ShaderType::UISimpleRect
-            );
-            yCursor += height;
-        }
 
         // ------ FIRST ROW ------
         UINode *firstRow;
         {
             float x = 0;
             float y = 0;
-            float width = moduleContainer->offsets.z;
+            float width = parent->offsets.z;
             firstRow = createUINode(uiArena,
                 {x, y, width, firstRowHeight},
                 COLOR_SURFACE_700,
                 5,
-                moduleContainer,
+                parent,
                 ShaderType::UISimpleRect
             );
         }
@@ -858,10 +838,14 @@ struct RendererUISystem {
             float yMin = (firstRow->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
             float width = 60.0f;
             float height = FONT_ATLAS_CELL_SIZE.y;
-            AdjustIntContext *fnCtx = ARENA_ALLOC(uiArena, AdjustIntContext);
-            *fnCtx = {.target = &craftingJob.amount, .delta = -1, .max = selectedItem.count};
-            OnClickCtx click = { .fn = &OnClickIncrementBtn, .data = fnCtx };
 
+            OnClickCtx click = { .fn = nullptr, .data = nullptr };
+            if (selectedItem) {
+                CraftingJobAdjustContext *fnCtx = ARENA_ALLOC(uiArena, CraftingJobAdjustContext);
+                *fnCtx = { .uiSystem = this, .target = craftingJob.type, .delta = -1, .max = selectedItem->count};
+                click = { .fn = &OnClickIncrementBtn, .data = fnCtx };
+            }
+                
             createButton(firstRow, { xMin, yMin, width, height }, COLOR_PRIMARY, "-", COLOR_TEXT_PRIMARY, fontSize, click);
             xCursor += width + margin;
         }
@@ -872,9 +856,13 @@ struct RendererUISystem {
             float yMin = (firstRow->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
             float width = 60.0f;
             float height = FONT_ATLAS_CELL_SIZE.y;
-            AdjustIntContext *fnCtx = ARENA_ALLOC(uiArena, AdjustIntContext);
-            *fnCtx = {.target = &craftingJob.amount, .delta = 1, .max = selectedItem.count};
-            OnClickCtx click = { .fn = &OnClickIncrementBtn, .data = fnCtx };
+
+            OnClickCtx click = { .fn = nullptr, .data = nullptr };
+            if (selectedItem) {
+                CraftingJobAdjustContext *fnCtx = ARENA_ALLOC(uiArena, CraftingJobAdjustContext);
+                *fnCtx = { .uiSystem = this, .target = craftingJob.type, .delta = 1, .max = selectedItem->count};
+                click = { .fn = &OnClickIncrementBtn, .data = fnCtx };
+            }
 
             createButton(firstRow, { xMin, yMin, width, height }, COLOR_PRIMARY, "+", COLOR_TEXT_PRIMARY, fontSize, click);
             xCursor += width + margin;
@@ -882,15 +870,16 @@ struct RendererUISystem {
 
         // --- CRAFT ---
         {
-            ItemDef itemDef = itemsDatabase[selectedItem.id];
+            ItemDef itemDef = itemsDatabase[ItemId::INVALID];
+            if (selectedItem) itemDef = itemsDatabase[selectedItem->id];
             float xMin = xCursor;
             float yMin = (firstRow->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
             float width = 160.0f;
             float height = FONT_ATLAS_CELL_SIZE.y;
             
-            CraftJobContext *ctx = ARENA_ALLOC(uiArena, CraftJobContext);
+            CraftingJobCraftContext *ctx = ARENA_ALLOC(uiArena, CraftingJobCraftContext);
             ctx->uiSystem = this;
-            const bool canCraft = !craftingJob.active && itemDef.itemId != ItemId::INVALID && craftingJob.amount > 0 && itemDef.category == ItemCategory::ORE;
+            const bool canCraft = !craftingJob.active && itemDef.itemId != ItemId::INVALID && craftingJob.amount > 0 && itemDef.category == craftingJob.inputType;
             const bool canCancel = craftingJob.active;
             
             // Variable state
@@ -900,11 +889,15 @@ struct RendererUISystem {
             // Craft item | Cancel craft | Crafting disabled 
             if (canCraft) {
                 title = "CRAFT";
-                ctx->job = { .type = craftingJob.type, .itemId = itemDef.itemId, .amount = craftingJob.amount, .amountStartedAt = craftingJob.amount, .active = true, };
+                ctx->job = craftingJob;
+                ctx->job.itemId = itemDef.itemId; 
+                ctx->job.active = true;
                 click = { .fn = OnClickCraft, .data = ctx};
             } else if (canCancel) {
                 title = "CANCEL";
-                ctx->job = { .type = craftingJob.type, .itemId = ItemId::INVALID, .amount = 0, .amountStartedAt = 0, .active = false };
+                ctx->job = craftingJob;
+                ctx->job.itemId = ItemId::INVALID;
+                ctx->job.active = false;
                 click = { .fn = OnClickCraft, .data = ctx};
             } else {
                 title = "CRAFT";
@@ -921,18 +914,19 @@ struct RendererUISystem {
         {
             float x = 0;
             float y = firstRow->offsets.w;
-            float width = moduleContainer->offsets.z;
+            float width = parent->offsets.z;
             secondRow = createUINode(uiArena,
                 {x, y, width, secondRowHeight},
                 COLOR_SURFACE_700,
                 3,
-                moduleContainer,
+                parent,
                 ShaderType::UISimpleRect
             );
         }
 
         ItemDef item = itemsDatabase[craftingJob.itemId];
-        if (item.itemId != ItemId::INVALID && item.category == ItemCategory::ORE ) {
+        if (item.itemId != ItemId::INVALID) {
+            assert(item.category == craftingJob.inputType);
             float xCursor = margin;
             float y = (secondRow->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
             // First text
@@ -944,13 +938,13 @@ struct RendererUISystem {
             xCursor += node2->offsets.z;
             
             // Second text
-            UINode *node3 = createTextNode(itemsDatabase[crushMap[item.itemId]].name, xCursor, y, COLOR_TEXT_PRIMARY, secondRow, fontSize);
+            UINode *node3 = createTextNode(itemsDatabase[outputMap[item.itemId]].name, xCursor, y, COLOR_TEXT_PRIMARY, secondRow, fontSize);
             xCursor += node3->offsets.z;
         }
 
         // ------ THIRD ROW ------
         if (craftingJob.active) {
-            float fullWidth = moduleContainer->offsets.z;
+            float fullWidth = parent->offsets.z;
             float percentage = (float)craftingJob.amount / (float)craftingJob.amountStartedAt;
             UINode *thirdRow;
             {
@@ -961,7 +955,7 @@ struct RendererUISystem {
                     {x, y, fullWidth, height},
                     COLOR_SURFACE_700,
                     2,
-                    moduleContainer,
+                    parent,
                     ShaderType::UISimpleRect
                 );
             }
@@ -998,8 +992,57 @@ struct RendererUISystem {
     }
 
     void createCraftingPanel(UINode *parent) {        
+        const float margin = 15.0f;
+        const glm::vec2 fontSize = FONT_ATLAS_CELL_SIZE;
+        float yCursor = margin;
+        float xCursor = margin;
+
         CraftingJob &crushingJob = craftingJobs[(size_t)CraftingJobType::Crush];
-        createCraftingModule(parent, "CRUSHER", crushingJob);
+        CraftingJob &smeltingJob = craftingJobs[(size_t)CraftingJobType::Smelt];
+
+        // --- CRUSHER --- 
+        {
+            UINode* txtNode = createTextNode("CRUSHER", xCursor, yCursor, COLOR_TEXT_PRIMARY, parent, fontSize);
+            yCursor += txtNode->offsets.w + margin;
+        } 
+        UINode *crushContainer;
+        {
+            float x = xCursor;
+            float y = yCursor;
+            float width = parent->offsets.z - (2 * CONTAINER_MARGIN);
+            float height = MODULE_HEIGHT;
+            crushContainer = createUINode(uiArena,
+                {x, y, width, height},
+                COLOR_SURFACE_700,
+                3,
+                parent,
+                ShaderType::UISimpleRect
+            );
+            yCursor += height + margin;
+        }
+        createCraftingModule(crushContainer, crushingJob, crushMap);
+
+        // --- SMELTER --- 
+        {
+            UINode* txtNode = createTextNode("SMELTER", xCursor, yCursor, COLOR_TEXT_PRIMARY, parent, fontSize);
+            yCursor += txtNode->offsets.w + margin;
+        }
+        UINode *smeltContainer;
+        {
+            float x = xCursor;
+            float y = yCursor;
+            float width = parent->offsets.z - (2 * CONTAINER_MARGIN);
+            float height = MODULE_HEIGHT;
+            smeltContainer = createUINode(uiArena,
+                {x, y, width, height},
+                COLOR_SURFACE_700,
+                3,
+                parent,
+                ShaderType::UISimpleRect
+            );
+            yCursor += height + margin;
+        }
+        createCraftingModule(smeltContainer, smeltingJob, smeltMap);
     }
 
     void createInventory(UINode *root) {
@@ -1044,7 +1087,7 @@ struct RendererUISystem {
             craftingPanel = createUINode(uiArena,
                 {x, y, cwidth, cHeight},
                 COLOR_SURFACE_800,
-                2,
+                4,
                 inventory,
                 ShaderType::UISimpleRect
             );
@@ -1192,12 +1235,10 @@ struct RendererUISystem {
         uiArena.init(4 * 1024 * 1024); // 4 MB to start; bump as needed
 
         // Initialize all types of jobs
-        for (size_t i = 0; i < (size_t)CraftingJobType::COUNT; i++)
-            craftingJobs[i] = { .type = (CraftingJobType)i, .itemId = ItemId::INVALID, .amount = 0 };
-
-        // Init selectedItem
-        selectedItem.count = 0;
-        selectedItem.id = ItemId::INVALID;
+        for (size_t i = 0; i < (size_t)CraftingJobType::COUNT; i++) {    
+            CraftingJobType type = (CraftingJobType)i;
+            craftingJobs[i] = { .type = type, .itemId = ItemId::INVALID, .inputType = jobInputCategoryMap[type], .amount = 0, .amountStartedAt = 0  };
+        }
 
         // UNCOMMENT FOR DEBUG
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::COPPER_ORE, .count = 10 };
@@ -1240,7 +1281,8 @@ struct RendererUISystem {
         if (id < 0) return false;
 
         if (--inventoryItems[id].count < 1) {
-
+            // Swap n' pop
+            inventoryItems[id] = inventoryItems[--inventoryItemsCount];
         }
 
         return true;
@@ -1266,7 +1308,7 @@ struct RendererUISystem {
             switch (job.type) {
                 case CraftingJobType::Crush:
                 {
-                    if (!job.active) return;
+                    if (!job.active) break;
                     assert(job.amount > 0);
 
                     InventoryItem *ore = findItem(job.itemId);
@@ -1286,17 +1328,34 @@ struct RendererUISystem {
                     job.amount--;
 
                     // disable job when we're done
-                    if (job.amount <= 0) {
-                        job.active = false;
-                        job.itemId = ItemId::INVALID;
-                        job.amountStartedAt = 0;
-                    }
+                    if (job.amount <= 0) job.reset();
 
                     break;
                 }
                 case CraftingJobType::Smelt:
-                {   
-                    // Not implemented
+                {
+                    if (!job.active) break;
+                    assert(job.amount > 0);
+
+                    InventoryItem *crushedOre = findItem(job.itemId);
+                    assert(crushedOre && crushedOre->count > 0 && itemsDatabase[crushedOre->id].category == ItemCategory::CRUSHED_ORE);
+
+                    // Find ingot version of ore
+                    ItemId ingotId = smeltMap[crushedOre->id];
+
+                    // decrement crushedOre.count
+                    bool res = consumeItem(crushedOre->id, 1);
+                    assert(res);
+                    
+                    // increment crushed_ore.count
+                    addItem(ingotId, 1);
+
+                    // decrement number of runs
+                    job.amount--;
+
+                    // disable job when we're done
+                    if (job.amount <= 0) job.reset();
+
                     break;
                 }
                 default:
@@ -1435,31 +1494,33 @@ struct RendererUISystem {
 // ------------------------------------------------------------------------
 
 inline static void OnClickItem(UINode* node, void *userData ) {
-    auto* uiSystem = (RendererUISystem*)userData;
+    RendererUISystem* uiSystem = (RendererUISystem*)userData;
     assert(uiSystem);
-    uiSystem->selectedItem = *node->item;
+    uiSystem->selectedItem = node->item;
     fprintf(stdout, "ITEM: %d\n", node->item->id);
 }
 
 inline static void OnClickIncrementBtn(UINode*, void *userData) {
-    auto* ctx = (AdjustIntContext*)userData;
-    assert(ctx);
+    CraftingJobAdjustContext *ctx = (CraftingJobAdjustContext*)userData;
+    RendererUISystem *uiSystem = ctx->uiSystem;
+    CraftingJob *job = &uiSystem->craftingJobs[(size_t)ctx->target];
+    assert(ctx && uiSystem && job);
 
     // Try update
-    int newValue = *ctx->target + ctx->delta; 
+    int newValue = job->amount + ctx->delta; 
     if (newValue < 0 || newValue > ctx->max) return;
     fprintf(stdout, "new count: %d\n", newValue);
     
     // Do update
-    *ctx->target = newValue;
+    job->amount = newValue;
 }
 
 inline static void OnClickCraft(UINode*, void *userData) {
-    auto* ctx = (CraftJobContext*)userData;
+    auto* ctx = (CraftingJobCraftContext*)userData;
     assert(ctx);
 
     // Reset selectedItem
-    ctx->uiSystem->selectedItem = { .id = ItemId::INVALID};
+    ctx->uiSystem->selectedItem = nullptr;
 
     // Update job
     ctx->uiSystem->craftingJobs[(size_t)ctx->job.type] = ctx->job;
