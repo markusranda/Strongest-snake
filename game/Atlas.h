@@ -5,7 +5,6 @@
 enum SpriteID : uint32_t
 {
     SPR_GROUND_MID_0 = 0,
-    SPR_SNAKE_SKIN = 2,
     SPR_GEM_BLUE = 3,
     SPR_GEM_RED = 4,
     SPR_GEM_GREEN = 5,
@@ -42,8 +41,8 @@ enum SpriteID : uint32_t
     SPR_GROUND_MID_19 = 2432,
 
     // --- Items ---
-    SPR_ITM_CPR_DRILL = 515,    
-    SPR_ITM_IRON_DRILL = 516,
+    SPR_ITM_CPR_DRILL = 1027,    
+    SPR_ITM_IRON_DRILL = 1028,
     SPR_ITM_CPR_ENGINE = 517,
     SPR_ITM_IRON_ENGINE = 518,
     SPR_ITM_CPR_LIGHT = 519,
@@ -59,7 +58,6 @@ enum SpriteID : uint32_t
     SPR_ORE_INGOT_IRON = 644,
 
     // --- Snek ---
-    SPR_SNK_SEG_DRILL = 1,
     SPR_SNK_SEG_STORAGE = 387,    
     SPR_SNK_SEG_SMELTER = 388,    
     SPR_SNK_SEG_GRINDER = 389,    
@@ -91,16 +89,6 @@ inline glm::vec4 getUvTransform(AtlasRegion &region)
         ATLAS_CELL_SIZE.x / ATLAS_SIZE.x,
         ATLAS_CELL_SIZE.y / ATLAS_SIZE.y,
     };
-
-    // TODO: This doesn't really work that well, find a better way.
-    // Sometimes it helps with glitching lines but it also fucks up a bunch of stuff
-
-    // float epsilonU = 1.0f / ATLAS_SIZE.x;
-    // float epsilonV = 1.0f / ATLAS_SIZE.y;
-    // model.x += epsilonU;
-    // model.y += epsilonV;
-    // model.z -= 2.0f * epsilonU;
-    // model.w -= 2.0f * epsilonV;
 
     return model;
 }

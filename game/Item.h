@@ -14,7 +14,6 @@ enum class ItemCategory : uint8_t {
   ORE, 
   CRUSHED_ORE,
   INGOT,
-  INVALID,
   DRILL,
   ENGINE,
   LIGHT,
@@ -34,7 +33,6 @@ enum class ItemId : uint16_t {
   ENGINE_IRON,
   LIGHT_COPPER,
   LIGHT_IRON,
-  INVALID, 
   COUNT, 
 };
 
@@ -45,24 +43,41 @@ enum class RecipeId : uint16_t {
   ENGINE_IRON,
   LIGHT_COPPER,
   LIGHT_IRON,
-  INVALID,
   COUNT,
 };
 
+enum class OreLevel : uint32_t {
+    Copper,
+    Hematite,
+    COUNT
+};
+
+enum class DrillLevel : uint32_t {
+    Copper,
+    Hematite,
+    COUNT
+};
+
+struct OreDef {
+    ItemId itemId;
+    SpriteID spriteID;
+    OreLevel level;
+};
+
 struct ItemDef {
-  ItemId id = ItemId::INVALID;
+  ItemId id = ItemId::COUNT;
   const char* name;
   SpriteID sprite = SpriteID::INVALID;
-  ItemCategory category = ItemCategory::INVALID;
+  ItemCategory category = ItemCategory::COUNT;
 };
 
 struct IngredientDef {
-  ItemId itemId = ItemId::INVALID;
+  ItemId itemId = ItemId::COUNT;
   int amount = 0;
 };
 
 struct RecipeDef {
-  RecipeId id = RecipeId::INVALID;
+  RecipeId id = RecipeId::COUNT;
   ItemId itemId;
   IngredientDef ingredients[5];
   int ingredientCount = 0;
@@ -106,8 +121,6 @@ constexpr auto makeItemDatabase() {
     db[ItemId::LIGHT_COPPER]     = { ItemId::LIGHT_COPPER, "COPPER LIGHT", SpriteID::SPR_ITM_CPR_LIGHT, ItemCategory::ENGINE};
     db[ItemId::LIGHT_IRON]       = { ItemId::LIGHT_IRON, "IRON LIGHT", SpriteID::SPR_ITM_IRON_LIGHT, ItemCategory::LIGHT};
 
-    db[ItemId::INVALID]          = { ItemId::INVALID, "INVALID", SpriteID::INVALID, ItemCategory::INVALID};
-
     return db;
 }
 
@@ -124,8 +137,18 @@ constexpr auto makeRecipeDatabase() {
     return db;
 }
 
+constexpr auto makeOreDatabase() {
+    IdIndexedArray<ItemId, OreDef, 2> db{};
+
+    db[ItemId::COPPER_ORE]      = { ItemId::COPPER_ORE, SpriteID::SPR_ORE_BLOCK_COPPER, OreLevel::Copper};
+    db[ItemId::HEMATITE_ORE]    = { ItemId::HEMATITE_ORE, SpriteID::SPR_ORE_BLOCK_HEMATITE, OreLevel::Hematite};
+    
+    return db;
+}
+
 inline constexpr auto itemsDatabase = makeItemDatabase();
 inline constexpr auto recipeDatabase = makeRecipeDatabase();
+inline constexpr auto oreDatabase = makeOreDatabase();
 
 // ------------------------------------------------------------------
 // LOOKUP TABLES
@@ -158,6 +181,16 @@ constexpr auto makeJobInputCategory() {
     return db;
 }
 
+constexpr auto makeDrillLevelMap() {
+  IdIndexedArray<ItemId, DrillLevel, (size_t)ItemId::COUNT> db{};
+
+    db[ItemId::DRILL_COPPER] = { DrillLevel::Copper };
+    db[ItemId::DRILL_IRON] = { DrillLevel::Hematite };
+
+    return db;
+}
+
 inline constexpr auto crushMap = makeCrushMap();
 inline constexpr auto smeltMap = makeSmeltMap();
 inline constexpr auto jobInputCategoryMap = makeJobInputCategory();
+inline constexpr auto drillLevelMap = makeDrillLevelMap();

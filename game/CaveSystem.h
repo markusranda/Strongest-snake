@@ -6,6 +6,7 @@
 #include "EntityManager.h"
 #include "SnakeMath.h"
 #include "Atlas.h"
+#include "Item.h"
 #include "glm/common.hpp"
 
 // PROFILING
@@ -86,7 +87,7 @@ struct CaveSystem
         return entity;
     }
 
-    Entity createGroundOre(Entity &groundEntity, Transform &transform, OrePackage orePackage)
+    Entity createGroundOre(Entity &groundEntity, Transform &transform, OreDef orePackage)
     {
         Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
         AtlasRegion region = engine.atlasRegions[orePackage.spriteID];
@@ -117,8 +118,8 @@ struct CaveSystem
     Entity createRandomOreBlock(Entity &groundEntity, Transform &transform)
     {
         // TODO: This should be based on something more interesting like "depth" or "biome"
-        int idx = std::lround(SnakeMath::randomBetween(0, ORE_BLOCK_COUNT - 1));
-        OrePackage orePackage = ORE_BLOCKS[idx];
+        ItemId idx = (ItemId)std::lround(SnakeMath::randomBetween(0, oreDatabase.count - 1));
+        OreDef orePackage = oreDatabase[idx];
         return createGroundOre(groundEntity, transform, orePackage);
     }
 

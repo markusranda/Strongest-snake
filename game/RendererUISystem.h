@@ -91,8 +91,8 @@ struct CraftingJob {
 
     void reset() {
         active = false;
-        itemId = ItemId::INVALID;
-        recipeId = RecipeId::INVALID;
+        itemId = ItemId::COUNT;
+        recipeId = RecipeId::COUNT;
         amount = 0;
         amountStartedAt = 0;
     }
@@ -134,7 +134,7 @@ struct UINode {
     uint16_t textLen = 0;
     glm::vec2 fontSize = FONT_ATLAS_CELL_SIZE;
     InventoryItem *item = nullptr;
-    RecipeId recipeId = RecipeId::INVALID;
+    RecipeId recipeId = RecipeId::COUNT;
     OnClickCtx click;
     AtlasRegion region;
 };
@@ -265,7 +265,7 @@ static inline UINode* createUINode(
     UINode *parent,
     ShaderType shaderType
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID, {}, AtlasRegion());
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::COUNT, {}, AtlasRegion());
 }
 
 // Item
@@ -279,7 +279,7 @@ static inline UINode* createUINode(
     InventoryItem *item,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, RecipeId::INVALID,click, AtlasRegion());
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, RecipeId::COUNT,click, AtlasRegion());
 }
 
 // Button
@@ -292,7 +292,7 @@ static inline UINode* createUINode(
     ShaderType shaderType,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID,click, AtlasRegion());
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::COUNT,click, AtlasRegion());
 }
 
 // Recipe
@@ -320,7 +320,7 @@ static inline UINode* createUINode(
     const char* text,
     glm::vec2 fontSize = ATLAS_CELL_SIZE
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, text, fontSize, nullptr, RecipeId::INVALID, {}, AtlasRegion());
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, text, fontSize, nullptr, RecipeId::COUNT, {}, AtlasRegion());
 }
 
 // Texture
@@ -333,7 +333,7 @@ static inline UINode* createUINode(
     ShaderType shaderType,
     AtlasRegion &region
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::INVALID, {}, region);
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::COUNT, {}, region);
 }
 
 static inline const char* intToCString(FrameArena& a, int value) {
@@ -362,9 +362,10 @@ struct RendererUISystem {
     InventoryItem inventoryItems[(size_t)ItemId::COUNT]; 
     int inventoryItemsCount = 0;
     InventoryItem *selectedInventoryItem = nullptr;
-    RecipeId selectedRecipe = RecipeId::INVALID;
+    RecipeId selectedRecipe = RecipeId::COUNT;
 
     // Loadout
+    bool loadoutChanged = false;
     ItemId loadoutDrill;
     ItemId loadoutEngine;
     ItemId loadoutLight;
@@ -932,13 +933,21 @@ struct RendererUISystem {
         // --- SNAKE EQUIPMENT ---
         colWidth = firstRow->offsets.z * 0.25f;
         bounds = { margin, margin, colWidth - dmargin, firstRow->offsets.w - dmargin };
-        slot = createLoadoutSlot(firstRow, bounds, "?", itemsDatabase[loadoutOpenSlot].sprite);
-        bounds.x += colWidth;
-        slot = createLoadoutSlot(firstRow, bounds, "LIGHT", itemsDatabase[loadoutLight].sprite);
-        bounds.x += colWidth;
-        slot = createLoadoutSlot(firstRow, bounds, "ENGINE", itemsDatabase[loadoutEngine].sprite);
-        bounds.x += colWidth;
-        createLoadoutSlot(firstRow, bounds, "DRILL", itemsDatabase[loadoutDrill].sprite);
+        if (loadoutOpenSlot != ItemId::COUNT) {
+            slot = createLoadoutSlot(firstRow, bounds, "?", itemsDatabase[loadoutOpenSlot].sprite);
+            bounds.x += colWidth;
+        }
+        if (loadoutLight != ItemId::COUNT) {
+            slot = createLoadoutSlot(firstRow, bounds, "LIGHT", itemsDatabase[loadoutLight].sprite);
+            bounds.x += colWidth;
+        }
+        if (loadoutEngine != ItemId::COUNT) {
+            slot = createLoadoutSlot(firstRow, bounds, "ENGINE", itemsDatabase[loadoutEngine].sprite);
+            bounds.x += colWidth;
+        }
+        if (loadoutDrill != ItemId::COUNT) {
+            createLoadoutSlot(firstRow, bounds, "DRILL", itemsDatabase[loadoutDrill].sprite);
+        }
 
         UINode *secondRow = createUINode(uiArena,
             { margin, firstRow->offsets.w + margin, parent->offsets.z - dmargin, rowHeight - dmargin },
@@ -1187,7 +1196,7 @@ struct RendererUISystem {
 
         // --- CRAFT ---
         {
-            ItemDef itemDef = itemsDatabase[ItemId::INVALID];
+            ItemDef itemDef;
             if (selectedInventoryItem) itemDef = itemsDatabase[selectedInventoryItem->id];
             float xMin = xCursor;
             float yMin = (firstRow->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
@@ -1197,7 +1206,7 @@ struct RendererUISystem {
             CraftingJobCraftContext *ctx = ARENA_ALLOC(uiArena, CraftingJobCraftContext);
             ctx->uiSystem = this;
             ctx->resetType = ResetType::SelectedInventoryItem;
-            const bool canCraft = !craftingJob.active && itemDef.id != ItemId::INVALID && craftingJob.amount > 0 && itemDef.category == craftingJob.inputType;
+            const bool canCraft = !craftingJob.active && itemDef.id != ItemId::COUNT && craftingJob.amount > 0 && itemDef.category == craftingJob.inputType;
             const bool canCancel = craftingJob.active;
             
             // Variable state
@@ -1214,7 +1223,7 @@ struct RendererUISystem {
             } else if (canCancel) {
                 title = "CANCEL";
                 ctx->job = craftingJob;
-                ctx->job.itemId = ItemId::INVALID;
+                ctx->job.itemId = ItemId::COUNT;
                 ctx->job.active = false;
                 click = { .fn = OnClickCraft, .data = ctx};
             } else {
@@ -1242,8 +1251,8 @@ struct RendererUISystem {
             );
         }
 
-        ItemDef item = itemsDatabase[craftingJob.itemId];
-        if (item.id != ItemId::INVALID) {
+        if (craftingJob.itemId != ItemId::COUNT) {
+            ItemDef item = itemsDatabase[craftingJob.itemId];
             assert(item.category == craftingJob.inputType);
             float xCursor = margin;
             float y = (secondRow->offsets.w / 2.0f) - (FONT_ATLAS_CELL_SIZE.y / 2.0f);
@@ -1310,7 +1319,7 @@ struct RendererUISystem {
     }
 
     void createCraftingWindow(UINode *parent) {
-        assert(selectedRecipe != RecipeId::INVALID);
+        assert(selectedRecipe != RecipeId::COUNT);
         const float margin = 5.0f;
         const RecipeDef recipe = recipeDatabase[selectedRecipe];
         const glm::vec2 fontSize = {8.0f, 16.0f};
@@ -1388,7 +1397,7 @@ struct RendererUISystem {
         RecipeDef recipe = recipeDatabase[selectedRecipe];
 
         bool hasIngredients = false;
-        if (selectedRecipe != RecipeId::INVALID) {
+        if (selectedRecipe != RecipeId::COUNT) {
             hasIngredients = true;
             for (size_t i = 0; i < recipe.ingredientCount; i++) {
                 IngredientDef ingredient = recipe.ingredients[i];
@@ -1428,7 +1437,7 @@ struct RendererUISystem {
         } else if (canCancel) {
             text = "CANCEL";
             ctx->job = craftingJob;
-            ctx->job.recipeId = RecipeId::INVALID;
+            ctx->job.recipeId = RecipeId::COUNT;
             ctx->job.active = false;
             ctx->job.amount = 0;
             ctx->job.amountStartedAt = 0;
@@ -1464,7 +1473,7 @@ struct RendererUISystem {
                 ShaderType::UISimpleRect
             );
             yCursor += height + margin;
-            if (selectedRecipe != RecipeId::INVALID) createCraftingWindow(firstRow);
+            if (selectedRecipe != RecipeId::COUNT) createCraftingWindow(firstRow);
         }
 
         UINode *secondRow;
@@ -1478,7 +1487,7 @@ struct RendererUISystem {
                 ShaderType::UISimpleRect
             );
             yCursor += height + margin;
-            if (selectedRecipe != RecipeId::INVALID) createCraftingProgress(secondRow);
+            if (selectedRecipe != RecipeId::COUNT) createCraftingProgress(secondRow);
         }
 
         UINode *thirdRow;
@@ -1514,7 +1523,7 @@ struct RendererUISystem {
         if (gap < minGap) return;
 
         // --- Create each item slot ---
-        for (uint16_t recipeId = 0; recipeId < (uint16_t)RecipeId::INVALID; recipeId++)
+        for (uint16_t recipeId = 0; recipeId < (uint16_t)RecipeId::COUNT; recipeId++)
         {
             RecipeDef recipe = recipeDatabase[(RecipeId)recipeId];
 
@@ -1873,7 +1882,7 @@ struct RendererUISystem {
         // Initialize all types of jobs
         for (size_t i = 0; i < (size_t)CraftingJobType::COUNT; i++) {    
             CraftingJobType type = (CraftingJobType)i;
-            craftingJobs[i] = { .type = type, .itemId = ItemId::INVALID, .inputType = jobInputCategoryMap[type], .amount = 0, .amountStartedAt = 0  };
+            craftingJobs[i] = { .type = type, .itemId = ItemId::COUNT, .inputType = jobInputCategoryMap[type], .amount = 0, .amountStartedAt = 0  };
         }
 
         // ------------------------------------
@@ -1883,7 +1892,7 @@ struct RendererUISystem {
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::CRUSHED_COPPER, .count = 15 };
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::INGOT_COPPER, .count = 10 };
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::INGOT_IRON, .count = 10 };
-        inventoryItems[inventoryItemsCount++] = { .id = ItemId::ENGINE_IRON, .count = 1 };
+        inventoryItems[inventoryItemsCount++] = { .id = ItemId::DRILL_IRON, .count = 1 };
         inventoryOpen = true;
         selectedRecipe = RecipeId::DRILL_COPPER;
         // ------------------------------------
@@ -1891,7 +1900,7 @@ struct RendererUISystem {
         loadoutDrill = ItemId::DRILL_COPPER;
         loadoutEngine = ItemId::ENGINE_COPPER;
         loadoutLight = ItemId::LIGHT_COPPER;
-        loadoutOpenSlot = ItemId::INVALID;
+        loadoutOpenSlot = ItemId::COUNT;
     }
 
     void equipItem() {
@@ -1900,23 +1909,23 @@ struct RendererUISystem {
         
         switch (category) {
         case ItemCategory::DRILL:
-            consumeItem(itemToEquip, 1);
             addItem(loadoutDrill, 1);
             loadoutDrill = selectedInventoryItem->id;
             break;
         case ItemCategory::ENGINE:
-            consumeItem(itemToEquip, 1);
             addItem(loadoutEngine, 1);
             loadoutEngine = selectedInventoryItem->id;
             break;
         case ItemCategory::LIGHT:
-            consumeItem(itemToEquip, 1);
             addItem(loadoutLight, 1);
             loadoutLight = selectedInventoryItem->id;
             break;
         default:
-            break;
+            return;
         }
+    
+        consumeItem(itemToEquip, 1);
+        loadoutChanged = true;
     }
 
     void addItem(ItemId itemId, int count) {

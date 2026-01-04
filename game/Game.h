@@ -17,7 +17,7 @@
 #include "CaveSystem.h"
 #include "Chunk.h"
 #include "Atlas.h"
-#include "Mining.h"
+#include "Item.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../libs/miniaudio.h"
@@ -249,7 +249,7 @@ struct Game
 
         // --- HEAD ---
         {
-            AtlasRegion region = engine.atlasRegions[SpriteID::SPR_SNK_SEG_DRILL];
+            AtlasRegion region = engine.atlasRegions[itemsDatabase[engine.uiSystem.loadoutDrill].sprite];
             glm::vec4 uvTransform = getUvTransform(region);
             Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite, {32.0f, 32.0f}};
             Transform transform = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
@@ -401,6 +401,8 @@ struct Game
 
             updateGame(delta);
 
+            updatePlayer();
+
             updateEngineRevs();
 
             updateCamera();
@@ -421,6 +423,27 @@ struct Game
 
         ma_sound_uninit(&engineIdleAudio);
         ma_engine_uninit(&audioEngine);
+    }
+
+    void updatePlayer() {
+        if (engine.uiSystem.loadoutChanged) {
+            Entity head = player.entities.front().entity;
+            ItemDef drill = itemsDatabase[engine.uiSystem.loadoutDrill];
+
+            // Update drillLevel
+            drillLevel = drillLevelMap[drill.id];
+
+            // Update ecs
+            AtlasRegion &region = engine.atlasRegions[drill.sprite];
+            glm::vec4 *uvTransform = (glm::vec4*)engine.ecs.find(ComponentId::UvTransform, head);
+            *uvTransform = getUvTransform(region);
+
+            // Update rendering
+            engine.instanceStorage.find(head)->uvTransform = *uvTransform;
+
+            // Reset change flag
+            engine.uiSystem.loadoutChanged = false;
+        }
     }
 
     void keysEnd() 
