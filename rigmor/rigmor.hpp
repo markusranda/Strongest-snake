@@ -27,6 +27,67 @@
 // |  42–43 | `padding` | `uint8[2]` | 2     | Reserved for flags or alignment       |
 
 // --------------------------------------------------------
+// STATIC HELPERS
+// --------------------------------------------------------
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#define NOGDI
+#define NOCRYPT
+#define NOSERVICE
+#define NOMCX
+#define NOIME
+#define NOSOUND
+#define NOKANJI
+#define NOHELP
+#define NOCOMM
+#define NORASTEROPS
+#define NOMETAFILE
+#define NOWH
+#define NOWINMESSAGES
+#define NOWINSTYLES
+#define NOCLIPBOARD
+#define NOCOLOR
+#define NODRAWTEXT
+#define NOGDICAPMASKS
+#define NOICONS
+#define NOUSER
+#define NONLS
+#define NOMB
+#define NOOPENFILE
+#define NOSCROLL
+#define NOSHOWWINDOW
+#define NOSYSCOMMANDS
+#define NOVIRTUALKEYCODES
+#define NOWINOFFSETS
+#define NOWINRES
+#define NOSYSMETRICS
+#define NOTEXTMETRIC
+#define NOWINABLE
+#include <windows.h>
+
+static std::uint64_t getAvailableMemory()
+{
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatusEx(&status);
+    return status.ullAvailPhys; // bytes
+}
+#endif
+
+#ifdef __linux__
+#include <sys/sysinfo.h>
+
+static std::uint64_t getAvailableMemory()
+{
+    struct sysinfo info{};
+    sysinfo(&info);
+    return static_cast<std::uint64_t>(info.freeram) * info.mem_unit;
+}
+#endif
+
+// --------------------------------------------------------
 // Datastructures
 // --------------------------------------------------------
 
@@ -42,6 +103,7 @@ struct AtlasRegion
 };
 constexpr size_t AtlasRegionSize = sizeof(AtlasRegion);
 static_assert(AtlasRegionSize == 44);
+static_assert(std::is_trivially_copyable_v<AtlasRegion>);
 
 using CellKey = uint32_t;
 CellKey createCellKey(uint16_t cellX, uint16_t cellY, uint16_t numCols)
@@ -115,17 +177,16 @@ void findAtlasRegions(stbi_uc *pixels, int &width, int &height, int &channels, s
 void fileToBuffer(const std::filesystem::path &filename, std::vector<char> &buffer)
 {
     std::ifstream in(filename, std::ios::binary | std::ios::ate);
-    if (!in)
-    {
-        throw std::runtime_error("Failed to open file");
-    }
+    if (!in) throw std::runtime_error("Failed to open file");
+
     std::streamsize size = in.tellg();
+    if (size > getAvailableMemory()) throw std::runtime_error("Not enough system memory");
+    if (size % sizeof(AtlasRegion) != 0) throw std::runtime_error("corrupt db file: size not multiple of AtlasRegion");
+
     in.seekg(0, std::ios::beg);
     buffer.resize(size);
-    if (!in.read(buffer.data(), size))
-    {
-        throw std::runtime_error("Failed to read file");
-    }
+
+    if (!in.read(buffer.data(), size)) throw std::runtime_error("Failed to read file");
 }
 
 void radix_sort_blocks(std::vector<char> &buffer)
@@ -179,8 +240,7 @@ void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRe
     const size_t ROW_LENGTH = 44;
 
     // TOUCH THE FILE
-    if (!std::filesystem::exists(filename))
-        std::ofstream(filename, std::ios::binary).close();
+    if (!std::filesystem::exists(filename)) std::ofstream(filename, std::ios::binary).close();
 
     // READ EVERYTHING TO A BUFFER
     std::vector<char> buffer;
@@ -304,7 +364,7 @@ void commandList(const std::filesystem::path dbPath, bool onlyMissing = false)
     std::vector<char> byteBuffer;
     fileToBuffer(dbPath, byteBuffer);
     AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
-    size_t regionCount = byteBuffer.size() / sizeof(AtlasRegion);
+    size_t regionCount = byteBuffer.size() / AtlasRegionSize;
 
     printHeader();
     for (size_t i = 0; i < regionCount; ++i)
@@ -330,7 +390,7 @@ void commandFind(const std::filesystem::path dbPath, const std::string idStr)
     std::vector<char> byteBuffer;
     fileToBuffer(dbPath, byteBuffer);
     AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
-    size_t regionCount = byteBuffer.size() / sizeof(AtlasRegion);
+    size_t regionCount = byteBuffer.size() / AtlasRegionSize;
 
     for (size_t i = 0; i < regionCount; ++i)
     {
@@ -360,7 +420,7 @@ void commandEdit(const std::filesystem::path &dbPath, const std::string &idStr, 
     size_t offset = 0;
     bool found = false;
 
-    while (file.read(reinterpret_cast<char *>(&region), sizeof(AtlasRegion)))
+    while (file.read(reinterpret_cast<char *>(&region), AtlasRegionSize))
     {
         if (region.id == id)
         {
@@ -368,10 +428,10 @@ void commandEdit(const std::filesystem::path &dbPath, const std::string &idStr, 
             std::strncpy(region.name, name.c_str(), sizeof(region.name));
             region.name[31] = '\0';
             file.seekp(offset, std::ios::beg);
-            file.write(reinterpret_cast<const char *>(&region), sizeof(AtlasRegion));
+            file.write(reinterpret_cast<const char *>(&region), AtlasRegionSize);
             break;
         }
-        offset += sizeof(AtlasRegion);
+        offset += AtlasRegionSize;
     }
 
     if (!found)
@@ -380,43 +440,62 @@ void commandEdit(const std::filesystem::path &dbPath, const std::string &idStr, 
         std::cout << "Record updated successfully.\n";
 }
 
-void commandDelete(std::filesystem::path dbPath, const std::string idStr)
+/// @brief Deletes all elements inclusive in id range.
+/// @param dbPath database file
+/// @param idFrom inclusive delete from this id
+/// @param idTo omit if deleting one id
+void commandDelete(std::filesystem::path dbPath, const std::string idFromStr, const std::string idToStr = "-1")
 {
-    uint32_t id = tryParseUint32(idStr);
+    int idFrom = tryParseUint32(idFromStr);
+    int idTo = tryParseUint32(idToStr);
+    if (idFrom < 0) throw std::runtime_error("failed to delete - can't delete with negative id");
+    if (idTo < 0) idTo = idFrom;
+    if (idTo >= 0 && idTo < idFrom) throw std::runtime_error("failed to delete - idTo can't be smaller than idFrom if provided");
+    
+    // --- LOAD INTO MEMORY ---
     std::vector<char> byteBuffer;
     fileToBuffer(dbPath, byteBuffer);
-    AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
-    size_t regionCount = byteBuffer.size() / sizeof(AtlasRegion);
 
+    const AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
+    const size_t bytesBeforeDelete = byteBuffer.size();
+    const size_t regionCount = bytesBeforeDelete / AtlasRegionSize;
+    const size_t elementsToDelete = size_t(idTo - idFrom + 1);
+
+    // --- SEARCH AND DESTROY ---
     bool deleted = false;
     for (size_t i = 0; i < regionCount; ++i)
     {
-        AtlasRegion region = regions[i];
-        if (regions[i].id == id)
-        {
+        if (regions[i].id == idFrom) {
+            if (i + elementsToDelete > regionCount) throw std::runtime_error("failed to delete - range runs past end of file");
             deleted = true;
-            size_t bytesAfter = byteBuffer.size() - (i + 1) * sizeof(AtlasRegion);
-            std::memmove(
-                byteBuffer.data() + i * sizeof(AtlasRegion),
-                byteBuffer.data() + (i + 1) * sizeof(AtlasRegion),
-                bytesAfter);
-
-            byteBuffer.resize(byteBuffer.size() - sizeof(AtlasRegion));
+            
+            const size_t remainingElements = regionCount - (i + elementsToDelete);
+            const size_t bytesToMove = remainingElements * AtlasRegionSize;
+            
+            memmove(
+                byteBuffer.data() + i * AtlasRegionSize,
+                byteBuffer.data() + (i + elementsToDelete) * AtlasRegionSize,
+                bytesToMove
+            );
+            byteBuffer.resize(byteBuffer.size() - (AtlasRegionSize * elementsToDelete));     
+            
             break;
         }
     }
 
-    if (deleted)
-    {
-        std::ofstream out(dbPath, std::ios::trunc);
-        out.write(reinterpret_cast<char *>(regions), byteBuffer.size());
-        std::cout << "Delete was successful\n";
-    }
-    else
-    {
-        std::cerr << "Failed to delete: failed to find element with provided id\n";
-        return;
-    }
+    // --- VALIDATE RESULT ---
+    if (!deleted) throw std::runtime_error("failed to delete - failed to find element with provided id");
+    size_t byteDiff = bytesBeforeDelete - byteBuffer.size();
+    size_t bytesToRemove = AtlasRegionSize * elementsToDelete;
+    if(byteDiff != bytesToRemove) throw std::runtime_error("failed to delete - filesize after delete is incorrect");
+
+    // --- WRITE TO FILE ---
+    std::ofstream out(dbPath, std::ios::trunc | std::ios::binary);
+    if (!out) throw std::runtime_error("failed to delete - couldn't to open output file");
+    out.write(byteBuffer.data(), static_cast<std::streamsize>(byteBuffer.size()));
+    if (!out) throw std::runtime_error("failed to delete - couldn't to write output file");
+
+    fprintf(stdout, "Delete was successful\n");
 }
 
 // --------------------------------------------------------
@@ -478,12 +557,13 @@ int main(int argc, char *argv[])
         }
         else if (LaunchArg::Delete == std::string_view(firstArg))
         {
-            if (argc < 3)
+            if (argc < 3 || argc > 4)
             {
-                std::cerr << "Usage: rigmor delete <id>\n";
+                std::cerr << "Usage: rigmor delete <id> | rigmor delete <idFrom> <idTo>\n";
                 return 1;
             }
-            commandDelete(dbPath, argv[2]);
+            if (argc == 4) commandDelete(dbPath, argv[2], argv[3]);
+            else commandDelete(dbPath, argv[2]);
         }
         else
         {
