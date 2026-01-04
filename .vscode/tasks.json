@@ -13,7 +13,7 @@
         {
             "label": "build-rigmor",
             "type": "shell",
-            "command": ".\\rigmor\\build.ps1",
+            "command": ".\\rigmor\\script_build.ps1",
             "group": {
                 "kind": "build",
                 "isDefault": false

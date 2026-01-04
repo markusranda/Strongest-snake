@@ -5,6 +5,7 @@
 #include <fstream>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "../libs/stb_image.h"
@@ -91,6 +92,12 @@ static std::uint64_t getAvailableMemory()
 // Datastructures
 // --------------------------------------------------------
 
+struct RigmorConfig
+{
+    std::filesystem::path db;
+    std::filesystem::path png;
+};
+
 struct AtlasRegion
 {
     uint32_t id;
@@ -132,6 +139,76 @@ namespace LaunchArg
 }
 
 const char DEFAULT_ATLAS_NAME[32] = "<placeholder>";
+
+// --------------------------------------------------------
+// CONFIG LOADER
+// --------------------------------------------------------
+
+static inline void trim(std::string& s)
+{
+    auto is_ws = [](unsigned char c) {
+        return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+    };
+
+    // Go past termination codes for start
+    size_t a = 0;
+    while (a < s.size() && is_ws(s[a])) ++a;
+
+    // Go past termination codes for end from opposite direction
+    size_t b = s.size();
+    while (b > a && is_ws(s[b - 1])) --b;
+
+    // Mutate away crap
+    s = s.substr(a, b - a);
+}
+
+static RigmorConfig loadConfig()
+{
+    const std::filesystem::path cfgPath = "rigmor.config";
+
+    std::ifstream in(cfgPath);
+    if (!in) throw std::runtime_error("rigmor.config not found in working directory");
+
+    RigmorConfig cfg{};
+    bool hasDb = false;
+    bool hasPng = false;
+
+    std::string line;
+    while (std::getline(in, line))
+    {
+        // Handle comments in parsing.
+        const size_t hash = line.find('#');
+        if (hash != std::string::npos) line = line.substr(0, hash);
+
+        trim(line);
+        if (line.empty()) continue;
+
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) throw std::runtime_error("invalid line in rigmor.config: " + line);
+
+        std::string key = line.substr(0, eq);
+        std::string val = line.substr(eq + 1);
+        trim(key);
+        trim(val);
+
+        if (key == "db") {
+            cfg.db = val;
+            hasDb = true;
+        }
+        else if (key == "png") {
+            cfg.png = val;
+            hasPng = true;
+        }
+        else {
+            throw std::runtime_error("unknown key in rigmor.config: " + key);
+        }
+    }
+
+    if (!hasDb) throw std::runtime_error("rigmor.config missing required key: db");
+    if (!hasPng) throw std::runtime_error("rigmor.config missing required key: png");
+
+    return cfg;
+}
 
 // --------------------------------------------------------
 // Helper functions
@@ -233,18 +310,13 @@ void radix_sort_blocks(std::vector<char> &buffer)
     }
 }
 
-void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRegion> &updatedRegions, const std::string_view pngPath)
+void updateDatabase(RigmorConfig &config, std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRegion> &updatedRegions)
 {
-    std::filesystem::path p = pngPath;
-    std::filesystem::path filename = p.parent_path() / (p.stem().string() + ".rigdb");
     const size_t ROW_LENGTH = 44;
-
-    // TOUCH THE FILE
-    if (!std::filesystem::exists(filename)) std::ofstream(filename, std::ios::binary).close();
 
     // READ EVERYTHING TO A BUFFER
     std::vector<char> buffer;
-    fileToBuffer(filename, buffer);
+    fileToBuffer(config.db, buffer);
 
     // DO MODIFICATIONS
     for (auto &[keyA, region] : regions)
@@ -274,14 +346,10 @@ void updateDatabase(std::map<CellKey, AtlasRegion> &regions, std::vector<AtlasRe
     }
 
     radix_sort_blocks(buffer);
-    std::ofstream out(filename, std::ios::binary | std::ios::trunc);
-    if (!out)
-    {
-        throw std::runtime_error("Failed to write file");
-    }
+    std::ofstream out(config.db, std::ios::binary | std::ios::trunc);
+    if (!out) throw std::runtime_error("Failed to write file");
     out.write(buffer.data(), buffer.size());
-    if (!out)
-        throw std::runtime_error("Failed to write entire buffer");
+    if (!out) throw std::runtime_error("Failed to write entire buffer");
 }
 
 uint32_t tryParseUint32(const std::string &s)
@@ -335,22 +403,22 @@ void printRegion(AtlasRegion &region)
 // Commands
 // --------------------------------------------------------
 
-void commandScan(const std::string_view pngPath)
+void commandScan(RigmorConfig &config)
 {
     std::cout << "Starting scan...\n";
     int width;
     int height;
     int channels;
 
-    stbi_uc *pixels = stbi_load(pngPath.data(), &width, &height, &channels, STBI_rgb_alpha);
-    if (!pixels)
-        throw std::runtime_error("failed to load texture image!");
+    char const *path = config.png.string().c_str();
+    stbi_uc *pixels = stbi_load(path, &width, &height, &channels, STBI_rgb_alpha);
+    if (!pixels) throw std::runtime_error("failed to load texture image!");
 
     std::map<CellKey, AtlasRegion> regions;
     std::vector<AtlasRegion> updatedRegions;
     findAtlasRegions(pixels, width, height, channels, regions);
     std::cout << "Found " << regions.size() << " number of sprites\n";
-    updateDatabase(regions, updatedRegions, pngPath);
+    updateDatabase(config, regions, updatedRegions);
     std::cout << "Updated " << updatedRegions.size() << " number of sprites\n";
 
     for (AtlasRegion region : updatedRegions)
@@ -359,10 +427,10 @@ void commandScan(const std::string_view pngPath)
     }
 }
 
-void commandList(const std::filesystem::path dbPath, bool onlyMissing = false)
+void commandList(RigmorConfig &config, bool onlyMissing = false)
 {
     std::vector<char> byteBuffer;
-    fileToBuffer(dbPath, byteBuffer);
+    fileToBuffer(config.db, byteBuffer);
     AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
     size_t regionCount = byteBuffer.size() / AtlasRegionSize;
 
@@ -384,11 +452,11 @@ void commandList(const std::filesystem::path dbPath, bool onlyMissing = false)
     }
 }
 
-void commandFind(const std::filesystem::path dbPath, const std::string idStr)
+void commandFind(RigmorConfig &config, const std::string idStr)
 {
     uint32_t id = tryParseUint32(idStr);
     std::vector<char> byteBuffer;
-    fileToBuffer(dbPath, byteBuffer);
+    fileToBuffer(config.db, byteBuffer);
     AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
     size_t regionCount = byteBuffer.size() / AtlasRegionSize;
 
@@ -403,7 +471,7 @@ void commandFind(const std::filesystem::path dbPath, const std::string idStr)
     }
 }
 
-void commandEdit(const std::filesystem::path &dbPath, const std::string &idStr, const std::string &name)
+void commandEdit(RigmorConfig &config, const std::string &idStr, const std::string &name)
 {
     if (name.size() > 31)
     {
@@ -412,9 +480,8 @@ void commandEdit(const std::filesystem::path &dbPath, const std::string &idStr, 
     }
 
     uint32_t id = tryParseUint32(idStr);
-    std::fstream file(dbPath, std::ios::in | std::ios::out | std::ios::binary);
-    if (!file)
-        throw std::runtime_error("Failed to open db file for edit");
+    std::fstream file(config.db, std::ios::in | std::ios::out | std::ios::binary);
+    if (!file) throw std::runtime_error("Failed to open db file for edit");
 
     AtlasRegion region;
     size_t offset = 0;
@@ -441,10 +508,10 @@ void commandEdit(const std::filesystem::path &dbPath, const std::string &idStr, 
 }
 
 /// @brief Deletes all elements inclusive in id range.
-/// @param dbPath database file
+/// @param config config
 /// @param idFrom inclusive delete from this id
 /// @param idTo omit if deleting one id
-void commandDelete(std::filesystem::path dbPath, const std::string idFromStr, const std::string idToStr = "-1")
+void commandDelete(RigmorConfig &config, const std::string idFromStr, const std::string idToStr = "-1")
 {
     int idFrom = tryParseUint32(idFromStr);
     int idTo = tryParseUint32(idToStr);
@@ -454,7 +521,7 @@ void commandDelete(std::filesystem::path dbPath, const std::string idFromStr, co
     
     // --- LOAD INTO MEMORY ---
     std::vector<char> byteBuffer;
-    fileToBuffer(dbPath, byteBuffer);
+    fileToBuffer(config.db, byteBuffer);
 
     const AtlasRegion *regions = reinterpret_cast<AtlasRegion *>(byteBuffer.data());
     const size_t bytesBeforeDelete = byteBuffer.size();
@@ -490,7 +557,7 @@ void commandDelete(std::filesystem::path dbPath, const std::string idFromStr, co
     if(byteDiff != bytesToRemove) throw std::runtime_error("failed to delete - filesize after delete is incorrect");
 
     // --- WRITE TO FILE ---
-    std::ofstream out(dbPath, std::ios::trunc | std::ios::binary);
+    std::ofstream out(config.db, std::ios::trunc | std::ios::binary);
     if (!out) throw std::runtime_error("failed to delete - couldn't to open output file");
     out.write(byteBuffer.data(), static_cast<std::streamsize>(byteBuffer.size()));
     if (!out) throw std::runtime_error("failed to delete - couldn't to write output file");
@@ -504,70 +571,49 @@ void commandDelete(std::filesystem::path dbPath, const std::string idFromStr, co
 
 int main(int argc, char *argv[])
 {
-    // TODO Deal with these hardcoded values laters
-    std::string pngPath = "assets/atlas.png";
-    std::string dbPath = "assets/atlas.rigdb";
+    try {
+        // Validate launch args
+        if (argc <= 1) throw std::runtime_error("usage: rigmor <command>");
+        
+        RigmorConfig config = loadConfig();
 
-    if (argc < 2)
-    {
-        std::cerr << "Usage: rigmor <command>\n";
-        return 1;
-    }
+        // Validate files
+        if (!std::filesystem::exists(config.db)) std::ofstream(config.db, std::ios::binary).close();
+        if (!std::filesystem::exists(config.png)) throw std::runtime_error("failed to start - couldn't find atlas png");
 
-    try
-    {
         char *firstArg = argv[1];
-        if (LaunchArg::Parse == std::string_view(firstArg))
-        {
-            commandScan(pngPath);
+        if (LaunchArg::Parse == std::string_view(firstArg)) {
+            commandScan(config);
         }
-        else if (LaunchArg::List == std::string_view(firstArg))
-        {
+        else if (LaunchArg::List == std::string_view(firstArg)) {
             if (argc == 3)
             {
                 if (std::strcmp(argv[2], "--missing") == 0)
                 {
-                    commandList(dbPath, true);
+                    commandList(config, true);
                     return 0;
                 }
 
-                std::cerr << "Usage: rigmor find --missing\n";
-                return 1;
+                throw std::runtime_error("usage: rigmor find --missing");
             }
 
-            commandList(dbPath);
+            commandList(config);
         }
-        else if (LaunchArg::Find == std::string_view(firstArg))
-        {
-            if (argc < 3)
-            {
-                std::cerr << "Usage: rigmor find\n";
-                return 1;
-            }
-            commandFind(dbPath, argv[2]);
+        else if (LaunchArg::Find == std::string_view(firstArg)) {
+            if (argc < 3) throw std::runtime_error("usage: rigmor find");
+            commandFind(config, argv[2]);
         }
-        else if (LaunchArg::Edit == std::string_view(firstArg))
-        {
-            if (argc < 4)
-            {
-                std::cerr << "Usage: rigmor edit <id> <name>\n";
-                return 1;
-            }
-            commandEdit(dbPath, argv[2], argv[3]);
+        else if (LaunchArg::Edit == std::string_view(firstArg)) {
+            if (argc < 4) throw std::runtime_error("usage: rigmor edit <id> <name>");
+            commandEdit(config, argv[2], argv[3]);
         }
-        else if (LaunchArg::Delete == std::string_view(firstArg))
-        {
-            if (argc < 3 || argc > 4)
-            {
-                std::cerr << "Usage: rigmor delete <id> | rigmor delete <idFrom> <idTo>\n";
-                return 1;
-            }
-            if (argc == 4) commandDelete(dbPath, argv[2], argv[3]);
-            else commandDelete(dbPath, argv[2]);
+        else if (LaunchArg::Delete == std::string_view(firstArg)) {
+            if (argc < 3 || argc > 4) throw std::runtime_error("usage: rigmor delete <id> | rigmor delete <idFrom> <idTo>");
+            if (argc == 4) commandDelete(config, argv[2], argv[3]);
+            else commandDelete(config, argv[2]);
         }
-        else
-        {
-            std::cerr << "Unknown command: " << firstArg << "\n";
+        else {
+            throw std::runtime_error("unknown command: " + std::string(firstArg));
         }
     }
     catch (const std::exception &e)
