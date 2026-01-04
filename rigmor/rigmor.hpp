@@ -410,8 +410,8 @@ void commandScan(RigmorConfig &config)
     int height;
     int channels;
 
-    char const *path = config.png.string().c_str();
-    stbi_uc *pixels = stbi_load(path, &width, &height, &channels, STBI_rgb_alpha);
+    std::string pngPathStr = config.png.string();
+    stbi_uc *pixels = stbi_load(pngPathStr.c_str(), &width, &height, &channels, STBI_rgb_alpha);
     if (!pixels) throw std::runtime_error("failed to load texture image!");
 
     std::map<CellKey, AtlasRegion> regions;
