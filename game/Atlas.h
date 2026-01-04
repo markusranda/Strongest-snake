@@ -44,8 +44,8 @@ enum SpriteID : uint32_t
     // --- Items ---
     SPR_ITM_CPR_DRILL = 515,    
     SPR_ITM_IRON_DRILL = 516,
-    SPR_ITM_CPR_MOTOR = 517,
-    SPR_ITM_IRON_MOTOR = 518,
+    SPR_ITM_CPR_ENGINE = 517,
+    SPR_ITM_IRON_ENGINE = 518,
     SPR_ITM_CPR_LIGHT = 519,
     SPR_ITM_IRON_LIGHT = 520,
     

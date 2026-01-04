@@ -146,6 +146,7 @@ struct Game
     double lastTime = 0.0;
     float fpsTimeSum = 0.0f;
     float fps = 0.0f;
+    double lastLeftClick = 0.0f;
 
     bool gameOver = false;
     Background background;
@@ -1139,6 +1140,10 @@ struct Game
 };
 
 
+// ------------------------------------------------------------------------
+// CALLBACKS
+// ------------------------------------------------------------------------
+
 inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) 
 {
     ZoneScoped;
@@ -1180,15 +1185,29 @@ inline void clickCallback(GLFWwindow* window, int button, int action, int mods) 
     Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
     if (!game)
         return;
-
+        
+    // Figure out if this is double or single click
+    
     // We only care about left click on the down
     if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return;
+
+    // Check if we double clicked - tune parameter for smoother implementation
+    double nowTime = glfwGetTime();
+    bool dbClick = nowTime - game->lastLeftClick < 0.25f;
 
     double mouseX, mouseY;
     glfwGetCursorPos(window, &mouseX, &mouseY);
     float clickSizeHalf = 2.0f;
-    game->engine.uiSystem.tryClick({ mouseX - clickSizeHalf, mouseY - clickSizeHalf, mouseX + clickSizeHalf, mouseY + clickSizeHalf });
+    glm::vec4 bounds = { mouseX - clickSizeHalf, mouseY - clickSizeHalf, mouseX + clickSizeHalf, mouseY + clickSizeHalf };
+    game->engine.uiSystem.tryClick(bounds, dbClick);
+
+    // Update lastLeftClick 
+    game->lastLeftClick = nowTime;
 }
+
+// ------------------------------------------------------------------------
+// TRANSFORM HELPERS
+// ------------------------------------------------------------------------
 
 static inline glm::vec2 WorldToScreenPx(const Camera& cam, const glm::vec2& world)
 {

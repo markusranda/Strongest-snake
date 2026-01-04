@@ -15,6 +15,9 @@ enum class ItemCategory : uint8_t {
   CRUSHED_ORE,
   INGOT,
   INVALID,
+  DRILL,
+  ENGINE,
+  LIGHT,
   COUNT
 };
 
@@ -96,12 +99,12 @@ constexpr auto makeItemDatabase() {
     db[ItemId::INGOT_COPPER]     = { ItemId::INGOT_COPPER, "COPPER INGOT", SpriteID::SPR_ORE_INGOT_COPPER, ItemCategory::INGOT};
     db[ItemId::INGOT_IRON]       = { ItemId::INGOT_IRON, "IRON INGOT", SpriteID::SPR_ORE_INGOT_IRON, ItemCategory::INGOT};
 
-    db[ItemId::DRILL_COPPER]     = { ItemId::DRILL_COPPER, "COPPER DRILL", SpriteID::SPR_ITM_CPR_DRILL, ItemCategory::INGOT};
-    db[ItemId::DRILL_IRON]       = { ItemId::DRILL_IRON, "IRON DRILL", SpriteID::SPR_ITM_IRON_DRILL, ItemCategory::INGOT};
-    db[ItemId::ENGINE_COPPER]    = { ItemId::ENGINE_COPPER, "COPPER ENGINE", SpriteID::SPR_ITM_CPR_MOTOR, ItemCategory::INGOT};
-    db[ItemId::ENGINE_IRON]      = { ItemId::ENGINE_IRON, "IRON ENGINE", SpriteID::SPR_ITM_IRON_MOTOR, ItemCategory::INGOT};
-    db[ItemId::LIGHT_COPPER]     = { ItemId::LIGHT_COPPER, "COPPER LIGHT", SpriteID::SPR_ITM_CPR_LIGHT, ItemCategory::INGOT};
-    db[ItemId::LIGHT_IRON]       = { ItemId::LIGHT_IRON, "IRON LIGHT", SpriteID::SPR_ITM_IRON_LIGHT, ItemCategory::INGOT};
+    db[ItemId::DRILL_COPPER]     = { ItemId::DRILL_COPPER, "COPPER DRILL", SpriteID::SPR_ITM_CPR_DRILL, ItemCategory::DRILL};
+    db[ItemId::DRILL_IRON]       = { ItemId::DRILL_IRON, "IRON DRILL", SpriteID::SPR_ITM_IRON_DRILL, ItemCategory::DRILL};
+    db[ItemId::ENGINE_COPPER]    = { ItemId::ENGINE_COPPER, "COPPER ENGINE", SpriteID::SPR_ITM_CPR_ENGINE, ItemCategory::ENGINE};
+    db[ItemId::ENGINE_IRON]      = { ItemId::ENGINE_IRON, "IRON ENGINE", SpriteID::SPR_ITM_IRON_ENGINE, ItemCategory::ENGINE};
+    db[ItemId::LIGHT_COPPER]     = { ItemId::LIGHT_COPPER, "COPPER LIGHT", SpriteID::SPR_ITM_CPR_LIGHT, ItemCategory::ENGINE};
+    db[ItemId::LIGHT_IRON]       = { ItemId::LIGHT_IRON, "IRON LIGHT", SpriteID::SPR_ITM_IRON_LIGHT, ItemCategory::LIGHT};
 
     db[ItemId::INVALID]          = { ItemId::INVALID, "INVALID", SpriteID::INVALID, ItemCategory::INVALID};
 
