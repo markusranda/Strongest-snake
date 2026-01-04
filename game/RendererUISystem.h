@@ -49,7 +49,7 @@ constexpr static glm::vec4 COLOR_TRANSPARANT             = glm::vec4(0.0f, 0.0f,
 constexpr static glm::vec4 COLOR_DEBUG                   = glm::vec4(1.0f, 0.0f, 0.0f, 0.8f);
 
 // ---------------------------------------------------
-// TYPES
+// DATASTRUCTURES
 // ---------------------------------------------------
 
 enum class ResetType : uint16_t {
@@ -62,7 +62,8 @@ struct UINodePushConstant {
     glm::vec4 boundsPx;   // x, y, w, h in pixels, origin = top-left
     glm::vec4 color;      
     glm::vec4 uvRect; // u0, v0, u1, v1
-    glm::vec2 viewportPx; 
+    glm::vec2 viewportPx;
+    int triangle = 0;
 };
 static_assert(sizeof(UINodePushConstant) < 128); // If we go beyond 128, then we might get issues with push constant size limitations
 
@@ -137,6 +138,7 @@ struct UINode {
     RecipeId recipeId = RecipeId::COUNT;
     OnClickCtx click;
     AtlasRegion region;
+    bool triangle;
 };
 
 struct Word {
@@ -223,7 +225,8 @@ static inline UINode *createUINodeRaw(
     InventoryItem *item,
     RecipeId recipeId,
     OnClickCtx click,
-    AtlasRegion region
+    AtlasRegion region,
+    bool triangle
 ) {
     UINode* node = ARENA_ALLOC(a, UINode);
     if (!node) return nullptr;
@@ -242,6 +245,7 @@ static inline UINode *createUINodeRaw(
     node->recipeId = recipeId;
     node->click = click;
     node->region = region;
+    node->triangle = triangle;
     
     for (int i = 0; i < capacity; i++) 
         node->nodes[i] = nullptr;
@@ -265,7 +269,7 @@ static inline UINode* createUINode(
     UINode *parent,
     ShaderType shaderType
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::COUNT, {}, AtlasRegion());
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::COUNT, {}, AtlasRegion(), false);
 }
 
 // Item
@@ -279,7 +283,7 @@ static inline UINode* createUINode(
     InventoryItem *item,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, RecipeId::COUNT,click, AtlasRegion());
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, item, RecipeId::COUNT,click, AtlasRegion(), false);
 }
 
 // Button
@@ -292,7 +296,7 @@ static inline UINode* createUINode(
     ShaderType shaderType,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::COUNT,click, AtlasRegion());
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::COUNT,click, AtlasRegion(), false);
 }
 
 // Recipe
@@ -306,7 +310,7 @@ static inline UINode* createUINode(
     RecipeId recipeId,
     OnClickCtx click
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, recipeId, click, AtlasRegion());
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, recipeId, click, AtlasRegion(), false);
 }
 
 // Text
@@ -320,7 +324,7 @@ static inline UINode* createUINode(
     const char* text,
     glm::vec2 fontSize = ATLAS_CELL_SIZE
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, text, fontSize, nullptr, RecipeId::COUNT, {}, AtlasRegion());
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, text, fontSize, nullptr, RecipeId::COUNT, {}, AtlasRegion(), false);
 }
 
 // Texture
@@ -331,9 +335,10 @@ static inline UINode* createUINode(
     int capacity, 
     UINode *parent,
     ShaderType shaderType,
-    AtlasRegion &region
+    AtlasRegion &region,
+    bool triangle
 ) {
-    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::COUNT, {}, region);
+    return createUINodeRaw(a, offsets, color, capacity, parent, shaderType, "", ATLAS_CELL_SIZE, nullptr, RecipeId::COUNT, {}, region, triangle);
 }
 
 static inline const char* intToCString(FrameArena& a, int value) {
@@ -883,7 +888,7 @@ struct RendererUISystem {
         );
     }
 
-    UINode *createLoadoutSlot(UINode *parent, glm::vec4 bounds, const char* title, SpriteID spriteId) {
+    UINode *createLoadoutSlot(UINode *parent, glm::vec4 bounds, const char* title, SpriteID spriteId, bool triangle) {
         const float margin = 5.0f;
         const float dmargin = 2.0f * margin;
         const glm::vec2 fontSize = {10.0f, 18.0f};
@@ -908,7 +913,7 @@ struct RendererUISystem {
         texBounds.y += dmargin;
         texBounds.z -= 2.0f * dmargin;
         texBounds.w -= 2.0f * dmargin;
-        createTextureNode(spriteId, texBounds, container);
+        createTextureNode(spriteId, texBounds, container, triangle);
 
         return container;
     }
@@ -934,19 +939,19 @@ struct RendererUISystem {
         colWidth = firstRow->offsets.z * 0.25f;
         bounds = { margin, margin, colWidth - dmargin, firstRow->offsets.w - dmargin };
         if (loadoutOpenSlot != ItemId::COUNT) {
-            slot = createLoadoutSlot(firstRow, bounds, "?", itemsDatabase[loadoutOpenSlot].sprite);
+            slot = createLoadoutSlot(firstRow, bounds, "?", itemsDatabase[loadoutOpenSlot].sprite, false);
             bounds.x += colWidth;
         }
         if (loadoutLight != ItemId::COUNT) {
-            slot = createLoadoutSlot(firstRow, bounds, "LIGHT", itemsDatabase[loadoutLight].sprite);
+            slot = createLoadoutSlot(firstRow, bounds, "LIGHT", itemsDatabase[loadoutLight].sprite, false);
             bounds.x += colWidth;
         }
         if (loadoutEngine != ItemId::COUNT) {
-            slot = createLoadoutSlot(firstRow, bounds, "ENGINE", itemsDatabase[loadoutEngine].sprite);
+            slot = createLoadoutSlot(firstRow, bounds, "ENGINE", itemsDatabase[loadoutEngine].sprite, false);
             bounds.x += colWidth;
         }
         if (loadoutDrill != ItemId::COUNT) {
-            createLoadoutSlot(firstRow, bounds, "DRILL", itemsDatabase[loadoutDrill].sprite);
+            createLoadoutSlot(firstRow, bounds, "DRILL", itemsDatabase[loadoutDrill].sprite, true);
         }
 
         UINode *secondRow = createUINode(uiArena,
@@ -960,13 +965,13 @@ struct RendererUISystem {
         // --- MODULES ---
         colWidth = secondRow->offsets.z * 0.25f;
         bounds = { margin, margin, colWidth - dmargin, secondRow->offsets.w - dmargin };
-        slot = createLoadoutSlot(secondRow, bounds, "1", SpriteID::INVALID);
+        slot = createLoadoutSlot(secondRow, bounds, "1", SpriteID::INVALID, false);
         bounds.x += colWidth;
-        slot = createLoadoutSlot(secondRow, bounds, "2", SpriteID::INVALID);
+        slot = createLoadoutSlot(secondRow, bounds, "2", SpriteID::INVALID, false);
         bounds.x += colWidth;
-        slot = createLoadoutSlot(secondRow, bounds, "3", SpriteID::INVALID);
+        slot = createLoadoutSlot(secondRow, bounds, "3", SpriteID::INVALID, false);
         bounds.x += colWidth;
-        createLoadoutSlot(secondRow, bounds, "4", SpriteID::INVALID);
+        createLoadoutSlot(secondRow, bounds, "4", SpriteID::INVALID, false);
         
     }
 
@@ -1081,7 +1086,7 @@ struct RendererUISystem {
             bounds.y = (4.0f * margin);
             bounds.z -= (5.0f * margin);
             bounds.w -= (5.0f * margin);
-            createTextureNode(itemsDatabase[item.id].sprite, bounds, slot);
+            createTextureNode(itemsDatabase[item.id].sprite, bounds, slot, itemDef.category == ItemCategory::DRILL);
 
             // Name
             UINode *slotNameContainer = createUINode(
@@ -1117,11 +1122,11 @@ struct RendererUISystem {
         return btn;
     }
 
-    UINode *createTextureNode(SpriteID sprite, glm::vec4 bounds, UINode *parent) {
+    UINode *createTextureNode(SpriteID sprite, glm::vec4 bounds, UINode *parent, bool triangle) {
         AtlasRegion region = atlasRegions[(size_t)sprite];
         glm::vec4 color = {0.0f, 0.0f, 0.0f, 1.0f};
         
-        return createUINode(uiArena, bounds, color, 1, parent, ShaderType::TextureUI, region);
+        return createUINode(uiArena, bounds, color, 1, parent, ShaderType::TextureUI, region, triangle);
     }
 
     void createCraftingModule(UINode *parent, const CraftingJob &craftingJob, const IdIndexedArray<ItemId, ItemId, (size_t)ItemId::COUNT> outputMap) {
@@ -1327,7 +1332,7 @@ struct RendererUISystem {
         float yCursor = margin;
 
         // Slot
-        UINode *tex = createTextureNode(itemsDatabase[recipe.itemId].sprite, glm::vec4{ margin, margin, 60.0f, 60.0f }, parent);
+        UINode *tex = createTextureNode(itemsDatabase[recipe.itemId].sprite, glm::vec4{ margin, margin, 60.0f, 60.0f }, parent, itemsDatabase[recipe.itemId].category == ItemCategory::DRILL);
         xCursor += tex->offsets.z + margin;
 
         // Ingredients
@@ -1571,7 +1576,7 @@ struct RendererUISystem {
             bounds.y = margin;
             bounds.z -= ( 2.0f * margin);
             bounds.w -= ( 2.0f * margin);
-            createTextureNode(itemsDatabase[recipe.itemId].sprite, bounds, slot);
+            createTextureNode(itemsDatabase[recipe.itemId].sprite, bounds, slot, itemsDatabase[recipe.itemId].category == ItemCategory::DRILL);
         }
     }
 
@@ -2156,6 +2161,7 @@ struct RendererUISystem {
                         .boundsPx = node->offsets,
                         .color = node->color,
                         .viewportPx = viewportPx,
+                        .triangle = 0,
                     };
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rectPipeline.pipeline);
                     vkCmdPushConstants(cmd, rectPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
@@ -2200,11 +2206,12 @@ struct RendererUISystem {
                         .color = node->color,
                         .uvRect = uvRect,
                         .viewportPx = viewportPx,
+                        .triangle = node->triangle,
                     };
                     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, texturePipeline.pipeline);
                     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, texturePipeline.layout, 0, 1, &textureAtlasSet, 0, nullptr);
                     vkCmdPushConstants(cmd, texturePipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
-                    vkCmdDraw(cmd, 6, 1, 0, 0);
+                    vkCmdDraw(cmd, node->triangle ? 3 : 6, 1, 0, 0);
                     break;
                 }
                 default: {

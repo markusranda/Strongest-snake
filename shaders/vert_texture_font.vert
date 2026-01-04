@@ -5,23 +5,32 @@ layout(push_constant) uniform Push {
     vec4 color;      // rgba
     vec4 uvRect;     
     vec2 viewportPx; // swapchain extent (width, height)
+    int triangle;
 } push;
 
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec2 fragUV;
 
 void main() {
-    // Triangle list quad (6 verts)
-    const vec2 corners[6] = vec2[6](
-        vec2(0.0, 0.0),
-        vec2(1.0, 0.0),
-        vec2(0.0, 1.0),
-        vec2(0.0, 1.0),
-        vec2(1.0, 0.0),
-        vec2(1.0, 1.0)
-    );
-
-    vec2 corner = corners[gl_VertexIndex];
+    vec2 corner = vec2(0.0, 0.0);
+    if (push.triangle == 1) {
+        const vec2 corners[3] = vec2[3](
+            vec2(0.0, 0.0),
+            vec2(1.0, 0.5),
+            vec2(0.0, 1.0)
+        );
+        corner = corners[gl_VertexIndex];
+    } else {
+        const vec2 corners[6] = vec2[6](
+            vec2(0.0, 0.0),
+            vec2(1.0, 0.0),
+            vec2(0.0, 1.0),
+            vec2(0.0, 1.0),
+            vec2(1.0, 0.0),
+            vec2(1.0, 1.0)
+        );
+        corner = corners[gl_VertexIndex];
+    }
 
     // Pixel position
     vec2 pixelPos = push.boundsPx.xy + corner * push.boundsPx.zw;
