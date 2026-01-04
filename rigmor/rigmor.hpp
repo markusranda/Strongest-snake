@@ -529,29 +529,45 @@ void commandDelete(RigmorConfig &config, const std::string idFromStr, const std:
     const size_t elementsToDelete = size_t(idTo - idFrom + 1);
 
     // --- SEARCH AND DESTROY ---
-    bool deleted = false;
-    for (size_t i = 0; i < regionCount; ++i)
+    size_t startIndex = regionCount; // sentinel = not found
+    for (size_t index = 0; index < regionCount; ++index)
     {
-        if (regions[i].id == idFrom) {
-            if (i + elementsToDelete > regionCount) throw std::runtime_error("failed to delete - range runs past end of file");
-            deleted = true;
-            
-            const size_t remainingElements = regionCount - (i + elementsToDelete);
-            const size_t bytesToMove = remainingElements * AtlasRegionSize;
-            
-            memmove(
-                byteBuffer.data() + i * AtlasRegionSize,
-                byteBuffer.data() + (i + elementsToDelete) * AtlasRegionSize,
-                bytesToMove
-            );
-            byteBuffer.resize(byteBuffer.size() - (AtlasRegionSize * elementsToDelete));     
-            
+        if (regions[index].id == idFrom)
+        {
+            startIndex = index;
             break;
         }
     }
 
+    if (startIndex == regionCount)
+        throw std::runtime_error("failed to delete - idFrom not found");
+
+    // Ensure the range fits in the file
+    if (startIndex + elementsToDelete > regionCount)
+        throw std::runtime_error("failed to delete - range runs past end of file");
+
+    // Verify contiguity: ids must be exactly idFrom..idTo with no gaps
+    for (int offset = 0; offset < elementsToDelete; ++offset)
+    {
+        const uint32_t expectedId = idFrom + offset;
+        const uint32_t actualId = regions[startIndex + offset].id;
+
+        if (actualId != expectedId) throw std::runtime_error("failed to delete - ids not contiguous for requested range");
+    }
+
+    // Delete the contiguous block [startIndex, startIndex + elementsToDeleteCount)
+    const size_t remainingElementCount = regionCount - (startIndex + elementsToDelete);
+    const size_t bytesToMove = remainingElementCount * AtlasRegionSize;
+
+    std::memmove(
+        byteBuffer.data() + startIndex * AtlasRegionSize,
+        byteBuffer.data() + (startIndex + elementsToDelete) * AtlasRegionSize,
+        bytesToMove
+    );
+
+    byteBuffer.resize(byteBuffer.size() - elementsToDelete * AtlasRegionSize);
+
     // --- VALIDATE RESULT ---
-    if (!deleted) throw std::runtime_error("failed to delete - failed to find element with provided id");
     size_t byteDiff = bytesBeforeDelete - byteBuffer.size();
     size_t bytesToRemove = AtlasRegionSize * elementsToDelete;
     if(byteDiff != bytesToRemove) throw std::runtime_error("failed to delete - filesize after delete is incorrect");
@@ -619,5 +635,6 @@ int main(int argc, char *argv[])
     catch (const std::exception &e)
     {
         std::cerr << e.what() << '\n';
+        return 1;
     }
 }
