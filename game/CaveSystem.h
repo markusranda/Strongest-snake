@@ -17,6 +17,10 @@ const char *SPRITE_KEY = "ground_mid_1";
 
 struct CaveSystem
 {
+    EntityManager *ecs;
+    RendererInstanceStorage *instanceStorage;
+    AtlasRegion *atlasRegions;
+
     const float tileSize = 32.0f;
     uint32_t lastMapIndex = 19;
     glm::vec2 size = {tileSize, tileSize};
@@ -34,9 +38,6 @@ struct CaveSystem
         SpriteID::SPR_GEMS_ORANGE,
         SpriteID::SPR_SKULL,
     };
-    Renderer &engine;
-
-    CaveSystem(Renderer &engine) : engine(engine) {}
 
     float worldToTileCoord(float coord)
     {
@@ -46,7 +47,7 @@ struct CaveSystem
     void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, glm::vec4 uvTransform)
     {
         ZoneScoped;
-        Renderable *renderable = (Renderable*)engine.ecs.find(ComponentId::Renderable, entity);
+        Renderable *renderable = (Renderable*)ecs->find(ComponentId::Renderable, entity);
         InstanceData instance = {
             transform.model,
             material.color,
@@ -63,16 +64,16 @@ struct CaveSystem
             entity,
         };
 
-        engine.instanceStorage.push(instance);
+        instanceStorage->push(instance);
     }
     
     Entity createGroundCosmetic(Entity &groundEntity, Transform &transform, uint32_t key)
     {
         Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
-        AtlasRegion region = engine.atlasRegions[key];
+        AtlasRegion region = atlasRegions[key];
         glm::vec4 uvTransform = getUvTransform(region);
         Mesh mesh = MeshRegistry::quad;
-        Entity entity = engine.ecs.createEntity(
+        Entity entity = ecs->createEntity(
             transform,
             mesh,
             m,
@@ -82,7 +83,7 @@ struct CaveSystem
             uvTransform,
             1);
         GroundCosmetic groundCosmetic = {groundEntity};
-        engine.ecs.push(ComponentId::GroundCosmetic, entity, &groundCosmetic);
+        ecs->push(ComponentId::GroundCosmetic, entity, &groundCosmetic);
 
         return entity;
     }
@@ -90,10 +91,10 @@ struct CaveSystem
     Entity createGroundOre(Entity &groundEntity, Transform &transform, OreDef orePackage)
     {
         Material m = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::Texture, AtlasIndex::Sprite, {32.0f, 32.0f}};
-        AtlasRegion region = engine.atlasRegions[orePackage.spriteID];
+        AtlasRegion region = atlasRegions[orePackage.spriteID];
         glm::vec4 uvTransform = getUvTransform(region);
         Mesh mesh = MeshRegistry::quad;
-        Entity entity = engine.ecs.createEntity(
+        Entity entity = ecs->createEntity(
             transform,
             mesh,
             m,
@@ -103,7 +104,7 @@ struct CaveSystem
             uvTransform,
             1);
         GroundOre groundOre = { .itemId = orePackage.itemId, .parentRef = groundEntity, .oreLevel = orePackage.level  };
-        engine.ecs.push(ComponentId::GroundOre, entity, &groundOre);
+        ecs->push(ComponentId::GroundOre, entity, &groundOre);
 
         return entity;
     }
@@ -129,11 +130,11 @@ struct CaveSystem
 
         glm::vec2 position = {xWorld, yWorld};
         Transform transform = {position, size, GROUND_NAME};
-        AtlasRegion region = engine.atlasRegions[SpriteID::SPR_GROUND_MID_1];
+        AtlasRegion region = atlasRegions[SpriteID::SPR_GROUND_MID_1];
         glm::vec4 uvTransform = getUvTransform(region);
         Mesh mesh = MeshRegistry::quad;
         Ground ground = Ground{};
-        Entity entity = engine.ecs.createEntity(
+        Entity entity = ecs->createEntity(
             transform,
             mesh,
             material,
@@ -150,8 +151,8 @@ struct CaveSystem
         }
         
         Health health = Health{100, 100};
-        engine.ecs.push(ComponentId::Health, entity, &health);
-        engine.ecs.push(ComponentId::Ground, entity, &ground);
+        ecs->push(ComponentId::Health, entity, &health);
+        ecs->push(ComponentId::Ground, entity, &ground);
     }
 
     inline void createGraceArea()
@@ -173,7 +174,7 @@ struct CaveSystem
                 int32_t cx = dx * CHUNK_WORLD_SIZE;
                 int32_t cy = dy * CHUNK_WORLD_SIZE;
 
-                engine.ecs.chunks.emplace(
+                ecs->chunks.emplace(
                     packChunkCoords(cx, cy),
                     Chunk{cx, cy});
             }
@@ -199,7 +200,7 @@ struct CaveSystem
     {
         ZoneScoped;
 
-        engine.ecs.chunks.emplace(chunkIdx, Chunk{chunkWorldX, chunkWorldY});
+        ecs->chunks.emplace(chunkIdx, Chunk{chunkWorldX, chunkWorldY});
         for (int32_t y = chunkWorldY; y < chunkWorldY + CHUNK_WORLD_SIZE; y += tileSize)
         {
             int32_t xMax = chunkWorldX + CHUNK_WORLD_SIZE;

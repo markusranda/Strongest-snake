@@ -30,7 +30,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <vulkan/vulkan.h>
 #include <fstream>
-#include <stdexcept>
 #include <algorithm>
 #include <chrono>
 #include <vector>
@@ -42,17 +41,17 @@
 // PROFILING
 #include "tracy/Tracy.hpp"
 
+inline static void crash(const char *msg) {
+    fprintf(stderr, msg);
+    abort();
+}
+
 const int MAX_FRAMES_IN_FLIGHT = 3;
 
-struct Renderer
+struct GpuExecutor
 {
-    Renderer(uint32_t width, uint32_t height, Window &window) : width(width), height(height), window(window) {}
-
-    EntityManager ecs;
     RendererUISystem uiSystem;
-    uint32_t width;
-    uint32_t height;
-    Window window;
+    Window *window;
 
     RendererApplication application;
     RendererSempahores semaphores;
@@ -74,7 +73,7 @@ struct Renderer
     VkImageView colorImageView;
 
     // Command
-    std::vector<VkCommandBuffer> commandBuffers;
+    VkCommandBuffer commandBuffers[MAX_FRAMES_IN_FLIGHT];
 
     // Instances
     VkBuffer instanceBuffer = VK_NULL_HANDLE;
@@ -92,8 +91,6 @@ struct Renderer
     AtlasRegion *atlasRegions = new AtlasRegion[MAX_ATLAS_ENTRIES];
     VkDescriptorPool descriptorPool;
     std::array<VkDescriptorSet, 2> descriptorSets;
-
-    float globalTime = 0.0f;
 
     void init()
     {
@@ -127,7 +124,7 @@ struct Renderer
 
     void createApplication()
     {
-        application = RendererApplication(window.handle, swapchain);
+        application = RendererApplication(window->handle, swapchain);
     }
 
     void createSwapChain()
@@ -136,7 +133,7 @@ struct Renderer
             application.physicalDevice,
             application.device,
             application.surface,
-            &window);
+            window);
         swapchainImageLayouts.assign(swapchain.swapChainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
     }
 
@@ -258,15 +255,13 @@ struct Renderer
 
     void createCommandBuffers()
     {
-        commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.commandPool = application.commandPool;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
+        allocInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
 
-        if (vkAllocateCommandBuffers(application.device, &allocInfo, commandBuffers.data()) != VK_SUCCESS)
+        if (vkAllocateCommandBuffers(application.device, &allocInfo, commandBuffers) != VK_SUCCESS)
         {
             throw std::runtime_error("failed to allocate command buffers!");
         }
@@ -274,7 +269,7 @@ struct Renderer
 
     void createParticleSystem()
     {
-        particleSystem.init(application.device, application.physicalDevice, application.msaaSamples, swapchain);
+        particleSystem.init(application, swapchain);
     }
 
     void createUiSystem()
@@ -287,91 +282,9 @@ struct Renderer
         instanceStorage.init();
     }
 
-    // void buildTextInstances(float fps, glm::vec2 &playerCoords)
-    // {
-    //     ZoneScoped;
-
-    //     {
-    //         char text[32];
-    //         std::snprintf(text, sizeof(text), "FPS: %d", (int)fps);
-    //         uint32_t offset = instances.size();
-    //         createTextInstances(text, sizeof(text), glm::vec2(-1.0f, -1.0f), instances);
-    //         uint32_t count = instances.size() - offset;
-
-    //         DrawCmd dc(
-    //             UINT64_MAX,
-    //             RenderLayer::World, // Add new layer for UI
-    //             ShaderType::Font,
-    //             0.0f, 0,
-    //             6, 0,
-    //             count,
-    //             offset,
-    //             AtlasIndex::Font,
-    //             glm::vec2{},
-    //             glm::vec2{});
-    //         drawCmds.emplace_back(dc);
-    //     }
-
-    //     {
-    //         char text[32];
-    //         std::snprintf(text, sizeof(text), "POS: (%d, %d)", (int)playerCoords.x, (int)playerCoords.y);
-    //         uint32_t offset = instances.size();
-    //         createTextInstances(text, sizeof(text), glm::vec2(-1.0f, 0.9f), instances);
-    //         uint32_t count = instances.size() - offset;
-
-    //         DrawCmd dc(
-    //             UINT64_MAX - 1,
-    //             RenderLayer::World, // Add new layer for UI
-    //             ShaderType::Font,
-    //             0.0f, 0,
-    //             6, 0,
-    //             count,
-    //             offset,
-    //             AtlasIndex::Font,
-    //             glm::vec2{},
-    //             glm::vec2{});
-    //         drawCmds.emplace_back(dc);
-    //     }
-    // }
-
-    // void buildDebugChunkInstances()
-    // {
-    //     ZoneScoped;
-
-    //     uint32_t offset = instances.size();
-    //     ecs.collectChunkDebugInstances(instances);
-    //     uint32_t count = instances.size() - offset;
-
-    //     DrawCmd dc(
-    //         UINT64_MAX - 2,
-    //         RenderLayer::World,
-    //         ShaderType::Border, // or a basic flat color shader
-    //         0.0f, 0,
-    //         6, 0,
-    //         count,
-    //         offset,
-    //         AtlasIndex::Sprite, // or whatever fits your pipeline
-    //         glm::vec2{},
-    //         glm::vec2{});
-    //     drawCmds.emplace_back(dc);
-    // }
-
-    uint32_t prepareDraw(float delta)
+    void beginFrame(VkCommandBuffer &commandBuffer, float delta, uint32_t imageIndex)
     {
         ZoneScoped;
-        uint32_t imageIndex = semaphores.acquireImageIndex(application.device, currentFrame, swapchain);
-        if (imageIndex == UINT32_MAX)
-            return imageIndex;
-
-        vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-
-        VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to begin command buffer");
-        }
 
         barrierPresentToColor(swapchain, swapchainImageLayouts, imageIndex, commandBuffer);
 
@@ -395,9 +308,6 @@ struct Renderer
         renderInfo.colorAttachmentCount = 1;
         renderInfo.pColorAttachments = &colorAttachment;
 
-        // Compute pass before rendering
-        particleSystem.recordCompute(commandBuffer, delta);
-
         vkCmdBeginRendering(commandBuffer, &renderInfo);
 
         VkViewport viewport{};
@@ -413,17 +323,15 @@ struct Renderer
         scissor.offset = {0, 0};
         scissor.extent = swapchain.swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-        return imageIndex;
     }
 
-    void drawCmdList(Camera &camera)
+    void recordInstanceDrawCmds(VkCommandBuffer &cmd, Camera &camera, float globalTime)
     {
         ZoneScoped;
 
-        VkCommandBuffer cmd = commandBuffers[currentFrame];
-        CameraPushConstant cameraData = {camera.getViewProj()};
-        FragPushConstant fragmentPushConstant = FragPushConstant{camera.position, globalTime};
+        VkBuffer buffers[] = { vertexBuffer, instanceBuffer };
+        CameraPushConstant cameraData = { .viewProj = camera.getViewProj() };
+        FragPushConstant fragmentPushConstant = FragPushConstant{ .cameraWorldPos = camera.position, .globalTime = globalTime };
         float zoom = camera.zoom;
 
         // Draw all instances
@@ -432,85 +340,45 @@ struct Renderer
         {
             assert(dc.vertexCount > 0 && "DrawCmd has zero vertexCount");
             assert(dc.instanceCount > 0 && "DrawCmd has zero instanceCount");
-            assert(dc.firstVertex + dc.vertexCount <= vertexCapacity &&
-                   "DrawCmd vertex range exceeds vertex buffer capacity!");
-            assert(descriptorSets[(size_t)dc.atlasIndex] != VK_NULL_HANDLE && "Descriptor set missing!");
+            assert(dc.firstVertex + dc.vertexCount <= vertexCapacity && "DrawCmd vertex range exceeds vertex buffer capacity!");
+
+            VkDescriptorSet &descriptorSet = descriptorSets[(size_t)dc.atlasIndex];
+            assert(descriptorSet != VK_NULL_HANDLE && "Descriptor set missing!");
 
             const Pipeline &pipeline = pipelines[(size_t)dc.shaderType];
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-            vkCmdBindDescriptorSets(cmd,
-                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                    pipeline.layout,
-                                    0,
-                                    1,
-                                    &descriptorSets[(size_t)dc.atlasIndex],
-                                    0,
-                                    nullptr);
-            vkCmdPushConstants(cmd,
-                               pipeline.layout,
-                               VK_SHADER_STAGE_VERTEX_BIT,
-                               0,
-                               sizeof(cameraData),
-                               &cameraData);
-            vkCmdPushConstants(cmd,
-                               pipeline.layout,
-                               VK_SHADER_STAGE_FRAGMENT_BIT,
-                               sizeof(cameraData),
-                               sizeof(fragmentPushConstant),
-                               &fragmentPushConstant);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &descriptorSet, 0, nullptr);
+            vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(cameraData), &cameraData);
+            vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(cameraData), sizeof(fragmentPushConstant), &fragmentPushConstant);
 
-            // Bind vertex + instance buffer
-            size_t instanceSize = sizeof(InstanceData);
-            VkBuffer vertexBuffers[] = {vertexBuffer, instanceBuffer};
-            VkDeviceSize offsets[] = {0, currentFrame * maxIntancesPerFrame * instanceSize};
-            vkCmdBindVertexBuffers(cmd, 0, 2, vertexBuffers, offsets);
+            // Bind buffers
+            VkDeviceSize offsets[] = {0, currentFrame * maxIntancesPerFrame * sizeof(InstanceData)};
+            vkCmdBindVertexBuffers(cmd, 0, 2, buffers, offsets);
 
-            // Issue draw
+            // Issue cmd
             vkCmdDraw(cmd, dc.vertexCount, dc.instanceCount, dc.firstVertex, instanceOffset);
             instanceOffset += dc.instanceCount;
         }
-
-        // Draw UI
-        uiSystem.draw(cmd, {swapchain.swapChainExtent.width, swapchain.swapChainExtent.height});
-
-        // Draw particles
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, particleSystem.graphicsPipeline.pipeline);
-        vkCmdBindDescriptorSets(cmd,
-                                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                particleSystem.graphicsPipeline.layout,
-                                0,
-                                1, &particleSystem.graphicsDescriptorSet,
-                                0, nullptr);
-        vkCmdPushConstants(cmd, particleSystem.graphicsPipeline.layout,
-                           VK_SHADER_STAGE_VERTEX_BIT,
-                           0,
-                           sizeof(glm::mat4),
-                           &cameraData.viewProj);
-        vkCmdPushConstants(cmd, particleSystem.graphicsPipeline.layout,
-                           VK_SHADER_STAGE_VERTEX_BIT,
-                           sizeof(glm::mat4),
-                           sizeof(float),
-                           &zoom);
-
-        vkCmdDraw(cmd, particleSystem.maxParticles, 1, 0, 0);
     }
 
-    void endDraw(uint32_t imageIndex)
+    void endFrame(VkCommandBuffer commandBuffer, uint32_t imageIndex)
     {
         ZoneScoped;
-        VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
 
         vkCmdEndRendering(commandBuffer);
         barrierColorToPresent(swapchain, swapchainImageLayouts, imageIndex, commandBuffer);
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
-            throw std::runtime_error("failed to record command buffer");
+            crash("failed to record command buffer");
 
-        VkResult pres = semaphores.submitEndDraw(swapchain, currentFrame, commandBuffers, application.queue, imageIndex);
-        if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR)
+        VkResult result = semaphores.submitEndDraw(swapchain, currentFrame, &commandBuffer, application.queue, imageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
             recreateSwapchain();
-        else
-            assert(pres == VK_SUCCESS);
-
+        }
+        else if (result != VK_SUCCESS) {
+            crash("submit/preset failed");
+        }
+        
+        // Figure out next frame
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
@@ -596,11 +464,13 @@ struct Renderer
 
     void recreateSwapchain()
     {
+        ZoneScoped;
+
         int width = 0, height = 0;
-        window.getFramebufferSize(width, height);
+        window->getFramebufferSize(width, height);
         while (width == 0 || height == 0)
         {
-            window.getFramebufferSize(width, height);
+            window->getFramebufferSize(width, height);
             glfwWaitEvents();
         }
 
@@ -610,7 +480,7 @@ struct Renderer
         swapchain.cleanup(application.device);
         destroyColorResources();
 
-        swapchain.create(application.physicalDevice, application.device, application.surface, &window);
+        swapchain.create(application.physicalDevice, application.device, application.surface, window);
         swapchainImageLayouts.assign(swapchain.swapChainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
         createColorResources();
 
@@ -618,22 +488,39 @@ struct Renderer
         currentFrame = 0;
     }
 
-    void draw(Camera &camera, float delta)
+    void runFrame(Camera &camera, float globalTime, float delta)
     {
         ZoneScoped;
 
-        uint32_t imageIndex = prepareDraw(delta);
-        if (imageIndex == UINT32_MAX)
-        {
+        // Figure out if we do normal frame or recreate swapchain
+        uint32_t imageIndex = semaphores.acquireImageIndex(application.device, currentFrame, swapchain);
+        if (imageIndex == UINT32_MAX) {
             recreateSwapchain();
             Logrador::debug("Skipping draw : Recreating swapchain");
             return;
         }
-
-        //  Upload once, then draw all
+        
+        // Initialize a new commandBuffer
+        VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
+        VkCommandBufferBeginInfo beginInfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+        vkResetCommandBuffer(commandBuffer, 0);
+        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
+            crash("failed to begin command buffer");
+        
+        // Record compute cmds
+        particleSystem.recordParticles(commandBuffer, application.queue, delta);
+        
+        // Prepare instance buffer
         uploadToInstanceBuffer();
-        drawCmdList(camera);
-        endDraw((uint32_t)imageIndex);
+        
+        // Record draw cmds
+        beginFrame(commandBuffer, delta, imageIndex);
+        
+        recordInstanceDrawCmds(commandBuffer, camera, globalTime);
+        uiSystem.recordDrawCmds(commandBuffer, glm::vec2{ swapchain.swapChainExtent.width, swapchain.swapChainExtent.height });
+        particleSystem.recordDrawCmds(commandBuffer, camera);
+        
+        endFrame(commandBuffer, imageIndex);
 
         FrameMark;
     }

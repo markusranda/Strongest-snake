@@ -2,12 +2,17 @@
 
 #include "Buffer.h"
 #include "Pipelines.h"
-#include "RendererSwapchain.h"
+#include "RendererApplication.h"
+#include "RendererSwapChain.h"
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include <array>
+
+// PROFILING
+#include "tracy/Tracy.hpp"
+
 
 // IMPORTANT These structs need to match the insides of comp_particle.comp
 struct Particle
@@ -27,6 +32,8 @@ struct SpawnData
 
 struct ParticleSystem
 {
+    VkDevice device;
+
     // Buffers
     VkBuffer particleBuffer = VK_NULL_HANDLE;
     VkBuffer spawnBuffer = VK_NULL_HANDLE;
@@ -59,9 +66,14 @@ struct ParticleSystem
 
     uint32_t maxParticles = 100'000;
 
+    // Timers
+    float timeAccumulator = 0.0f; 
+    constexpr static float timeAccumulatorMax = 1.0f / 60.0f; 
+
     // -------------------------
     // COMPUTE PIPELINE
     // -------------------------
+
     void createComputePipeline(VkDevice &device, VkDeviceSize &particleSize)
     {
         // Descriptor set layout bindings
@@ -249,11 +261,10 @@ struct ParticleSystem
     }
 
     // -------------------------
-    // GRAPHICS PIPELINE (Dynamic Rendering)
+    // GRAPHICS PIPELINE
     // -------------------------
-    void createGraphicsPipeline(VkDevice &device,
-                                VkSampleCountFlagBits &msaaSamples,
-                                RendererSwapchain &swapchain)
+
+    void createGraphicsPipeline(RendererApplication &app, RendererSwapchain &swapchain)
     {
         // Binding 0 = particle buffer (storage buffer)
         VkDescriptorSetLayoutBinding particleBinding{};
@@ -365,7 +376,7 @@ struct ParticleSystem
 
         VkPipelineMultisampleStateCreateInfo msaa{};
         msaa.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        msaa.rasterizationSamples = msaaSamples;
+        msaa.rasterizationSamples = app.msaaSamples;
         msaa.sampleShadingEnable = VK_FALSE;
 
         VkPipelineColorBlendAttachmentState colorAttachment{};
@@ -449,70 +460,35 @@ struct ParticleSystem
     // -------------------------
     // INIT
     // -------------------------
-    void init(VkDevice &device, VkPhysicalDevice &physicalDevice, VkSampleCountFlagBits &msaaSamples, RendererSwapchain &swapchain)
+
+    void init(RendererApplication &app, RendererSwapchain &swapchain)
     {
-        // Free list buffer
-        CreateBuffer(device,
-                     physicalDevice,
-                     sizeof(uint32_t) * maxParticles,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     freeListBuffer,
-                     freeListMemory);
+        device = app.device;
 
-        void *freeListMapped = nullptr;
-        vkMapMemory(device, freeListMemory, 0, sizeof(uint32_t) * maxParticles, 0, &freeListMapped);
-        auto *list = reinterpret_cast<uint32_t *>(freeListMapped);
-        for (uint32_t i = 0; i < maxParticles; i++)
-            list[i] = i;
-        vkUnmapMemory(device, freeListMemory);
-
-        // Free list head buffer
-        CreateBuffer(device,
-                     physicalDevice,
-                     sizeof(uint32_t),
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     freeListHeadBuffer,
-                     freeListHeadMemory);
-
-        vkMapMemory(device, freeListHeadMemory, 0, sizeof(uint32_t), 0, &freeListHeadMapped);
-        *(uint32_t *)freeListHeadMapped = maxParticles;
-
-        // Debug buffer
-        CreateBuffer(device,
-                     physicalDevice,
-                     sizeof(float) * 4,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     debugBuffer,
-                     debugMemory);
-
-        // Particle buffer
-        VkDeviceSize particleSize = sizeof(Particle) * maxParticles;
-        CreateBuffer(device,
-                     physicalDevice,
-                     particleSize,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     particleBuffer,
-                     particleMemory);
-
-        void *mapped = nullptr;
-        vkMapMemory(device, particleMemory, 0, particleSize, 0, &mapped);
-        memset(mapped, 0, static_cast<size_t>(particleSize));
-        vkUnmapMemory(device, particleMemory);
-
-        // Spawn buffer
+        VkDeviceSize freeListSize = sizeof(uint32_t) * maxParticles;
+        VkDeviceSize freeListHeadSize = sizeof(uint32_t);
+        VkDeviceSize particlesSize = sizeof(Particle) * maxParticles;
         VkDeviceSize spawnSize = sizeof(SpawnData);
-        CreateBuffer(device,
-                     physicalDevice,
-                     spawnSize,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     spawnBuffer,
-                     spawnMemory);
+        VkDeviceSize debugSize = sizeof(float) * 4;
 
+        VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+        uint32_t *freeListInitial = (uint32_t *)malloc(freeListSize);
+        if (!freeListInitial) throw std::bad_alloc();
+        for (uint32_t i = 0; i < maxParticles; i++) freeListInitial[i] = i;
+
+        void* particlesInitial = calloc(1, particlesSize);
+        if (!particlesInitial) throw std::bad_alloc();
+
+        // BUFFERS
+        CreateDeviceLocalBufferWithData(device, app.physicalDevice, app.commandPool, app.queue, usage, freeListInitial, freeListSize, freeListBuffer, freeListMemory);
+        CreateDeviceLocalBufferWithData(device, app.physicalDevice, app.commandPool, app.queue, usage, &maxParticles, freeListHeadSize, freeListHeadBuffer, freeListHeadMemory);
+        CreateDeviceLocalBufferWithData(device, app.physicalDevice, app.commandPool, app.queue, usage, particlesInitial, particlesSize, particleBuffer, particleMemory);
+        CreateBuffer(device, app.physicalDevice, spawnSize, usage, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, spawnBuffer, spawnMemory);
+        CreateBuffer(device, app.physicalDevice, debugSize, usage, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, debugBuffer, debugMemory);
+
+        // MEMORY MAPPINGS
         vkMapMemory(device, spawnMemory, 0, spawnSize, 0, &spawnMapped);
         {
             auto *sd = reinterpret_cast<SpawnData *>(spawnMapped);
@@ -522,14 +498,18 @@ struct ParticleSystem
         }
 
         // Pipelines
-        createComputePipeline(device, particleSize);
-        createGraphicsPipeline(device, msaaSamples, swapchain);
+        createComputePipeline(device, particlesSize);
+        createGraphicsPipeline(app, swapchain);
+
+        // Cleanup
+        free(freeListInitial);
     }
 
     // -------------------------
     // DEBUG
     // -------------------------
-    void debugPrintParticles(VkDevice device)
+
+    void debugPrintParticles()
     {
         float *dbg = nullptr;
         vkMapMemory(device, debugMemory, 0, sizeof(float) * 4, 0, (void **)&dbg);
@@ -540,58 +520,50 @@ struct ParticleSystem
     // -------------------------
     // SPAWN / COMPUTE
     // -------------------------
+
     void updateSpawnFlag(glm::vec2 pos, glm::vec2 forward, uint32_t amount)
     {
-        if (!spawnMapped)
-            return;
-
         auto *sd = reinterpret_cast<SpawnData *>(spawnMapped);
         sd->pos = pos;
         sd->forward = forward;
         sd->amount = amount;
     }
 
-    void recordCompute(VkCommandBuffer cmd, float delta)
+    void recordParticles(VkCommandBuffer &cmd, VkQueue &queue, float delta)
     {
-        VkMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        ZoneScoped;
 
-        vkCmdPipelineBarrier(
-            cmd,
-            VK_PIPELINE_STAGE_HOST_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0,
-            1, &barrier,
-            0, nullptr,
-            0, nullptr);
+        // CLOCK RATE
+        if ((timeAccumulator += delta) < timeAccumulatorMax) {
+            return; // Skip if it's not time yet.
+        }
+        float simDelta = timeAccumulator; // Record how much time it took
+        timeAccumulator = 0; // Reset timer
 
+        // Bind stuff before cmd call
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
-        vkCmdBindDescriptorSets(cmd,
-                                VK_PIPELINE_BIND_POINT_COMPUTE,
-                                computePipelineLayout,
-                                0, 1,
-                                &computeDescriptorSet,
-                                0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
+        vkCmdPushConstants(cmd, computePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(float), &simDelta);
 
-        vkCmdPushConstants(cmd, computePipelineLayout,
-                           VK_SHADER_STAGE_COMPUTE_BIT,
-                           0,
-                           sizeof(float),
-                           &delta);
-
+        // Figure out how many threads to activate
         uint32_t localSize = 256;
         uint32_t groupCount = (maxParticles + localSize - 1) / localSize;
+        
+        // Dispatch
         vkCmdDispatch(cmd, groupCount, 1, 1);
     }
 
-    void resetSpawn()
-    {
-        if (!spawnMapped)
-            return;
+    void recordDrawCmds(VkCommandBuffer &cmd, Camera &camera) {
+        ZoneScoped;
 
-        auto *sd = reinterpret_cast<SpawnData *>(spawnMapped);
-        sd->amount = 0;
+        CameraPushConstant cameraData = { camera.getViewProj() };
+        float zoom = camera.zoom;
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.layout, 0, 1, &graphicsDescriptorSet, 0, nullptr);
+        vkCmdPushConstants(cmd, graphicsPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &cameraData.viewProj);
+        vkCmdPushConstants(cmd, graphicsPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(glm::mat4), sizeof(float), &zoom);
+
+        vkCmdDraw(cmd, maxParticles, 1, 0, 0);
     }
 };

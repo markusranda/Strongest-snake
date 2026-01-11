@@ -1898,7 +1898,7 @@ struct RendererUISystem {
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::INGOT_COPPER, .count = 10 };
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::INGOT_IRON, .count = 10 };
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::DRILL_IRON, .count = 1 };
-        inventoryOpen = true;
+        inventoryOpen = false;
         selectedRecipe = RecipeId::DRILL_COPPER;
         // ------------------------------------
 
@@ -2120,7 +2120,7 @@ struct RendererUISystem {
         }
     }
 
-    void draw(VkCommandBuffer &cmd, const glm::vec2 &viewportPx) {
+    void recordDrawCmds(VkCommandBuffer &cmd, const glm::vec2 &viewportPx) {
         ZoneScoped;
 
         uiArena.reset();

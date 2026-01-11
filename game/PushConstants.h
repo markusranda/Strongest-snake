@@ -13,9 +13,6 @@ struct FragPushConstant
     alignas(8) glm::vec2 cameraWorldPos;
     alignas(4) float globalTime;
     alignas(4) float _pad;
-
-    FragPushConstant(glm::vec2 cameraWorldPos, float globalTime)
-        : cameraWorldPos(cameraWorldPos), globalTime(globalTime) {}
 };
 
 static_assert(sizeof(FragPushConstant) == 16);

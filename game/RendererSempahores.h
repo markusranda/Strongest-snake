@@ -86,7 +86,7 @@ struct RendererSempahores
         return imageIndex;
     }
 
-    VkResult submitEndDraw(RendererSwapchain &swapchain, uint32_t &currentFrame, std::vector<VkCommandBuffer> &commandBuffers, VkQueue &queue, uint32_t &imageIndex)
+    VkResult submitEndDraw(RendererSwapchain &swapchain, uint32_t &currentFrame, const VkCommandBuffer *commandBuffers, VkQueue &queue, uint32_t &imageIndex)
     {
         VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -98,7 +98,7 @@ struct RendererSempahores
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+        submitInfo.pCommandBuffers = commandBuffers;
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 

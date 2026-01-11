@@ -2,7 +2,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 
 #include "Logrador.h"
-#include "Renderer.h"
 #include "Window.h"
 #include "Game.h"
 
@@ -38,7 +37,9 @@ int main()
     Logrador::info("Launching Strongest Snake");
 
     Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
-    Game game{window};
+    Game game = {
+        .window = &window,
+    };
     game.init();
     game.run();
 

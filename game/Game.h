@@ -4,7 +4,7 @@
 #include "components/Material.h"
 #include "components/Transform.h"
 #include "components/Ground.h"
-#include "Renderer.h"
+#include "GpuExecutor.h"
 #include "Window.h"
 #include "Vertex.h"
 #include "MeshRegistry.h"
@@ -135,11 +135,20 @@ inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
 inline void clickCallback(GLFWwindow* window, int button, int action, int mods);
 static inline glm::vec2 WorldToScreenPx(const Camera& cam, const glm::vec2& world);
 
-struct Game
-{
-    // Core engine + window
-    Window window;
-    Renderer engine;
+const float drillDamage = 500.0f;
+const float drillRadius = 16.0f;
+const float thrustPower = 1800.0f;
+const float friction = 4.0f; 
+const uint32_t snakeSize = 32;
+const double PARTICLE_SPAWN_INTERVAL = 0.2f;
+const double JOB_INTERVAL = 1.0f;
+
+struct Game {
+    // Systems
+    Window *window;
+    GpuExecutor *gpuExecutor;
+    CaveSystem *caveSystem;
+    EntityManager *ecs;
 
     // Timing
     uint32_t frameCount = 0;
@@ -152,7 +161,6 @@ struct Game
     Background background;
     Player player;
     Camera camera{1, 1};
-    CaveSystem caveSystem;
     uint64_t prevChunks[CHUNK_CACHE_CAPACITY];
     size_t prevChunksSize = 0;
     uint64_t curChunks[CHUNK_CACHE_CAPACITY];
@@ -161,12 +169,7 @@ struct Game
     KeyState keyStates[GLFW_KEY_LAST]; 
 
     // -- Player ---
-    const float drillDamage = 500.0f;
-    const float drillRadius = 16.0f;
     DrillLevel drillLevel = DrillLevel::Copper;
-    const float thrustPower = 1800.0f;
-    const float friction = 4.0f; // friction coefficient
-    const uint32_t snakeSize = 32;
     glm::vec2 playerVelocity = {0.0f, 0.0f};
     float rotationSpeed = 5.0f;
     float playerMaxVelocity = 1200.0f;
@@ -187,19 +190,15 @@ struct Game
     ma_sound engineIdleAudio;
 
     // Timers
+    float globalTime = 0.0f;
     double particleTimer = 0.0f;
     double jobsTimer = 0.0f;
-    const double PARTICLE_SPAWN_INTERVAL = 0.2f;
-    const double JOB_INTERVAL = 1.0f;
 
-    Game(Window &w) : window(w), engine(w.width, w.height, w), caveSystem(engine) {}
-
-    void updateInstanceData(Entity &entity, Transform &transform)
-    {
+    void updateInstanceData(Entity &entity, Transform &transform) {
         ZoneScoped;
-        Renderable *renderable = (Renderable*)engine.ecs.find(ComponentId::Renderable, entity);
-        Material *material = (Material*)engine.ecs.find(ComponentId::Material, entity);
-        InstanceData *instanceData = engine.instanceStorage.find(entity);
+        Renderable *renderable = (Renderable*)ecs->find(ComponentId::Renderable, entity);
+        Material *material = (Material*)ecs->find(ComponentId::Material, entity);
+        InstanceData *instanceData = gpuExecutor->instanceStorage.find(entity);
         assert(instanceData);
 
         instanceData->model = transform.model;
@@ -207,14 +206,13 @@ struct Game
         instanceData->textureSize = (*material).size;
     }
 
-    void createInstanceData(Entity entity)
-    {
+    void createInstanceData(Entity entity) {
         ZoneScoped;
-        Transform transform = *(Transform*)engine.ecs.find(ComponentId::Transform, entity);
-        Material material = *(Material*)engine.ecs.find(ComponentId::Material, entity);
-        Mesh mesh = *(Mesh*)engine.ecs.find(ComponentId::Mesh, entity);
-        glm::vec4 uvTransform = *(glm::vec4*)engine.ecs.find(ComponentId::UvTransform, entity);
-        Renderable renderable = *(Renderable*)engine.ecs.find(ComponentId::Renderable, entity);
+        Transform transform = *(Transform*)ecs->find(ComponentId::Transform, entity);
+        Material material = *(Material*)ecs->find(ComponentId::Material, entity);
+        Mesh mesh = *(Mesh*)ecs->find(ComponentId::Mesh, entity);
+        glm::vec4 uvTransform = *(glm::vec4*)ecs->find(ComponentId::UvTransform, entity);
+        Renderable renderable = *(Renderable*)ecs->find(ComponentId::Renderable, entity);
 
         InstanceData instance = {
             transform.model,
@@ -232,16 +230,14 @@ struct Game
             entity,
         };
 
-        engine.instanceStorage.push(instance);
+        gpuExecutor->instanceStorage.push(instance);
     }
 
-    void removeInstanceData(Entity entity)
-    {
-        engine.instanceStorage.erase(entity);
+    void removeInstanceData(Entity entity) {
+        gpuExecutor->instanceStorage.erase(entity);
     }
 
-    void createPlayer()
-    {
+    void createPlayer() {
         glm::vec2 posCursor = glm::vec2{0.0f, 0.0f};
         RenderLayer layer = RenderLayer::World;
         EntityType entityType = EntityType::Player;
@@ -249,12 +245,12 @@ struct Game
 
         // --- HEAD ---
         {
-            AtlasRegion region = engine.atlasRegions[itemsDatabase[engine.uiSystem.loadoutDrill].sprite];
+            AtlasRegion region = gpuExecutor->atlasRegions[itemsDatabase[gpuExecutor->uiSystem.loadoutDrill].sprite];
             glm::vec4 uvTransform = getUvTransform(region);
             Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite, {32.0f, 32.0f}};
             Transform transform = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
             Mesh mesh = MeshRegistry::triangle;
-            Entity entity = engine.ecs.createEntity(transform,
+            Entity entity = ecs->createEntity(transform,
                                                     mesh,
                                                     material,
                                                     layer,
@@ -264,7 +260,7 @@ struct Game
                                                     2.0f);
             player.entities[0] = { .type = SnakeSegmentType::Drill, .entity = entity };
             createInstanceData(entity);
-            engine.ecs.activeEntities.push_back(entity);
+            ecs->activeEntities.push_back(entity);
         }
 
         // --- BODY SEGMENTS ---
@@ -277,9 +273,9 @@ struct Game
                 SnakeSegmentType::Storage,
             };
             AtlasRegion regions[3] = {
-                engine.atlasRegions[SpriteID::SPR_SNK_SEG_GRINDER], 
-                engine.atlasRegions[SpriteID::SPR_SNK_SEG_SMELTER], 
-                engine.atlasRegions[SpriteID::SPR_SNK_SEG_STORAGE],
+                gpuExecutor->atlasRegions[SpriteID::SPR_SNK_SEG_GRINDER], 
+                gpuExecutor->atlasRegions[SpriteID::SPR_SNK_SEG_SMELTER], 
+                gpuExecutor->atlasRegions[SpriteID::SPR_SNK_SEG_STORAGE],
             };
             for (size_t i = 0; i < playerLength - 1; i++)
             {
@@ -287,7 +283,7 @@ struct Game
                 glm::vec4 uvTransform = getUvTransform(region);
                 posCursor -= glm::vec2{snakeSize, 0.0f};
                 Transform transform = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
-                Entity entity = engine.ecs.createEntity(transform,
+                Entity entity = ecs->createEntity(transform,
                                                         mesh,
                                                         material,
                                                         layer,
@@ -297,19 +293,29 @@ struct Game
                                                         2.0f);
                 player.entities[i + 1] = { .type = snakeTypes[i], .entity = entity };
                 createInstanceData(entity);
-                engine.ecs.activeEntities.push_back(entity);
+                ecs->activeEntities.push_back(entity);
             }
         }
     }
 
-    void init()
-    {
+    void init() {
         ZoneScoped;
 
         try
         {
             Logrador::info(std::filesystem::current_path().string());
-            engine.init();
+
+            ecs = new EntityManager();
+
+            gpuExecutor = new GpuExecutor();
+            gpuExecutor->window = window;
+            gpuExecutor->init();
+            
+            caveSystem = new CaveSystem();
+            caveSystem->ecs = ecs;
+            caveSystem->instanceStorage = &gpuExecutor->instanceStorage;
+            caveSystem->atlasRegions = gpuExecutor->atlasRegions;
+
             ma_result result = ma_engine_init(NULL, &audioEngine);
             if (result != MA_SUCCESS)
             {
@@ -327,7 +333,7 @@ struct Game
             // --- Background ---
             {
                 AtlasIndex atlasIndex = AtlasIndex::Sprite;
-                AtlasRegion region = engine.atlasRegions[SpriteID::SPR_CAVE_BACKGROUND];
+                AtlasRegion region = gpuExecutor->atlasRegions[SpriteID::SPR_CAVE_BACKGROUND];
                 Transform t = Transform{glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f}};
                 ShaderType shader = ShaderType::TextureParallax;
                 Material material = Material(shader, atlasIndex, {64.0f, 64.0f});
@@ -337,19 +343,19 @@ struct Game
                 float z = 0.0f;
                 t.commit();
 
-                Entity entity = engine.ecs.createEntity(t, mesh, material, layer, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f);
+                Entity entity = ecs->createEntity(t, mesh, material, layer, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f);
                 background = {entity};
                 createInstanceData(entity);
-                engine.ecs.activeEntities.push_back(entity);
+                ecs->activeEntities.push_back(entity);
             }
 
             createPlayer();
 
             // --- Camera ---
-            camera = Camera{window.width, window.height};
+            camera = Camera{window->width, window->height};
 
             // --- Ground ----
-            caveSystem.createGraceArea();
+            caveSystem->createGraceArea();
 
             // --- AUDIO ---
             ma_engine_set_volume(&audioEngine, 0.025);
@@ -358,10 +364,10 @@ struct Game
             ma_sound_start(&engineIdleAudio);
 
             // --- USER INPUT ---
-            glfwSetWindowUserPointer(window.handle, this); // Connects this instance of struct to the windows somehow
-            glfwSetScrollCallback(window.handle, scrollCallback);
-            glfwSetKeyCallback(window.handle, keyCallback);
-            glfwSetMouseButtonCallback(window.handle, clickCallback); 
+            glfwSetWindowUserPointer(window->handle, this); // Connects this instance of struct to the windows somehow
+            glfwSetScrollCallback(window->handle, scrollCallback);
+            glfwSetKeyCallback(window->handle, keyCallback);
+            glfwSetMouseButtonCallback(window->handle, clickCallback); 
         }
         catch (const std::exception &e)
         {
@@ -373,21 +379,19 @@ struct Game
         }
 
         // Attach camera handle to uiSystem
-        engine.uiSystem.cameraHandle = &camera;
+        gpuExecutor->uiSystem.cameraHandle = &camera;
     }
 
-    void
-    run()
-    {
+    void run() {
         Logrador::info("Starting game loop");
 
         tracy::SetThreadName("MainThread"); // Optional, nice for visualization
 
-        while (!window.shouldClose())
+        while (!window->shouldClose())
         {
             ZoneScoped;
 
-            window.pollEvents();
+            window->pollEvents();
 
             double currentTime = glfwGetTime();
             double delta = currentTime - lastTime;
@@ -409,16 +413,13 @@ struct Game
 
             updateLifecycle();
 
-            engine.globalTime += delta;
-
             updateUISystem();
 
             updateFPSCounter(delta);
             
             keysEnd();
 
-            // --- RENDER ---
-            engine.draw(camera, delta);
+            gpuExecutor->runFrame(camera, globalTime, delta);
         }
 
         ma_sound_uninit(&engineIdleAudio);
@@ -426,28 +427,27 @@ struct Game
     }
 
     void updatePlayer() {
-        if (engine.uiSystem.loadoutChanged) {
+        if (gpuExecutor->uiSystem.loadoutChanged) {
             Entity head = player.entities.front().entity;
-            ItemDef drill = itemsDatabase[engine.uiSystem.loadoutDrill];
+            ItemDef drill = itemsDatabase[gpuExecutor->uiSystem.loadoutDrill];
 
             // Update drillLevel
             drillLevel = drillLevelMap[drill.id];
 
             // Update ecs
-            AtlasRegion &region = engine.atlasRegions[drill.sprite];
-            glm::vec4 *uvTransform = (glm::vec4*)engine.ecs.find(ComponentId::UvTransform, head);
+            AtlasRegion &region = gpuExecutor->atlasRegions[drill.sprite];
+            glm::vec4 *uvTransform = (glm::vec4*)ecs->find(ComponentId::UvTransform, head);
             *uvTransform = getUvTransform(region);
 
             // Update rendering
-            engine.instanceStorage.find(head)->uvTransform = *uvTransform;
+            gpuExecutor->instanceStorage.find(head)->uvTransform = *uvTransform;
 
             // Reset change flag
-            engine.uiSystem.loadoutChanged = false;
+            gpuExecutor->uiSystem.loadoutChanged = false;
         }
     }
 
-    void keysEnd() 
-    {
+    void keysEnd() {
         for (size_t i = 0; i < GLFW_KEY_LAST; i++)
         {
             keyStates[i].pressed = false;
@@ -455,29 +455,27 @@ struct Game
         }
     }
 
-    void addChunkEntities(uint64_t chunkIdx)
-    {
-        Chunk &chunk = engine.ecs.chunks.at(chunkIdx);
+    void addChunkEntities(uint64_t chunkIdx) {
+        Chunk &chunk = ecs->chunks.at(chunkIdx);
         for (size_t i = 0; i < CHUNK_WORLD_SIZE; i++)
         {
             Entity &entity = chunk.tiles[i];
             if (entityUnset(entity))
                 continue;
             createInstanceData(entity);
-            engine.ecs.activeEntities.push_back(entity);
+            ecs->activeEntities.push_back(entity);
         }
 
         for (size_t i = 0; i < chunk.staticEntities.size(); i++)
         {
             Entity &entity = chunk.staticEntities[i];
             createInstanceData(entity);
-            engine.ecs.activeEntities.push_back(entity);
+            ecs->activeEntities.push_back(entity);
         }
     }
 
-    void deleteChunkEntities(uint64_t chunkIdx)
-    {
-        Chunk &chunk = engine.ecs.chunks.at(chunkIdx);
+    void deleteChunkEntities(uint64_t chunkIdx) {
+        Chunk &chunk = ecs->chunks.at(chunkIdx);
         for (size_t i = 0; i < CHUNK_WORLD_SIZE; i++)
         {
             Entity entity = chunk.tiles[i];
@@ -501,12 +499,11 @@ struct Game
     }
 
     // --- Game logic ---
-    void handleChunkLifecycle()
-    {
+    void handleChunkLifecycle() {
         ZoneScoped;
 
         // When player moves into a new chunk we should verify that there are in fact 3x3 loaded chunks around the player
-        Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
+        Transform *head = (Transform*)ecs->find(ComponentId::Transform, player.entities.front().entity);
         int32_t cx = worldPosToClosestChunk(head->position.x);
         int32_t cy = worldPosToClosestChunk(head->position.y);
 
@@ -522,9 +519,9 @@ struct Game
                 assert(curChunksSize < CHUNK_CACHE_CAPACITY && "You need to increase allocation pal");
                 curChunks[curChunksSize++] = chunkIdx;
 
-                if (engine.ecs.chunks.find(chunkIdx) == engine.ecs.chunks.end())
+                if (ecs->chunks.find(chunkIdx) == ecs->chunks.end())
                 {
-                    caveSystem.generateNewChunk(chunkIdx, chunkWorldX, chunkWorldY);
+                    caveSystem->generateNewChunk(chunkIdx, chunkWorldX, chunkWorldY);
                 }
             }
         }
@@ -573,15 +570,14 @@ struct Game
         prevChunksSize = curChunksSize;
     }
 
-    void handleEntityLifecycle()
-    {
+    void handleEntityLifecycle() {
         // We can read it, but if we don't write it, then it aint' with us
         size_t writeIndex = 0;
         size_t readIndex = 0;
-        size_t length = engine.ecs.activeEntities.size();
+        size_t length = ecs->activeEntities.size();
         for (; readIndex < length; ++readIndex)
         {
-            Entity entity = engine.ecs.activeEntities[readIndex];
+            Entity entity = ecs->activeEntities[readIndex];
             uint32_t entityIdx = entityIndex(entity);
 
             // --- Check if this got unloaded by chunk rules ---
@@ -591,16 +587,16 @@ struct Game
                 continue;
             }
 
-            Renderable *renderable = (Renderable*)engine.ecs.find(ComponentId::Renderable, entity);
+            Renderable *renderable = (Renderable*)ecs->find(ComponentId::Renderable, entity);
 
             // --- Handle entity types ---
-            EntityType* entityType = (EntityType*)engine.ecs.find(ComponentId::EntityType, entity);
+            EntityType* entityType = (EntityType*)ecs->find(ComponentId::EntityType, entity);
             switch (*entityType)
             {
             case EntityType::Ground:
             {
-                Health *health = (Health*)engine.ecs.find(ComponentId::Health, entity);
-                Material *material = (Material*)engine.ecs.find(ComponentId::Material, entity);
+                Health *health = (Health*)ecs->find(ComponentId::Health, entity);
+                Material *material = (Material*)ecs->find(ComponentId::Material, entity);
 
                 // Check if ground block has died
                 if (health->current > 0)
@@ -609,65 +605,64 @@ struct Game
                     material->color.a = health->current / health->max;
                     if (prevAlpha != material->color.a)
                     {
-                        InstanceData *instanceData = engine.instanceStorage.find(entity);
+                        InstanceData *instanceData = gpuExecutor->instanceStorage.find(entity);
                         assert(instanceData);
                         instanceData->color.a = material->color.a;
                     }
 
-                    engine.ecs.activeEntities[writeIndex++] = entity;
+                    ecs->activeEntities[writeIndex++] = entity;
                     break;
                 }
 
-                engine.ecs.destroyEntity(entity, SpatialStorage::ChunkTile);
-                engine.instanceStorage.erase(entity);
+                ecs->destroyEntity(entity, SpatialStorage::ChunkTile);
+                gpuExecutor->instanceStorage.erase(entity);
                 break;
             }
             case EntityType::OreBlock:
             {
-                GroundOre *groundOre = (GroundOre*)engine.ecs.find(ComponentId::GroundOre, entity);
+                GroundOre *groundOre = (GroundOre*)ecs->find(ComponentId::GroundOre, entity);
 
                 // Dies if it has lost it's ground
-                if (engine.ecs.isAlive(groundOre->parentRef))
+                if (ecs->isAlive(groundOre->parentRef))
                 {
-                    engine.ecs.activeEntities[writeIndex++] = entity;
+                    ecs->activeEntities[writeIndex++] = entity;
                     break;
                 }
 
                 // Update inventory
-                engine.uiSystem.addItem(groundOre->itemId, 1);
+                gpuExecutor->uiSystem.addItem(groundOre->itemId, 1);
                 
-                engine.ecs.destroyEntity(entity, SpatialStorage::Chunk);
-                engine.instanceStorage.erase(entity);
+                ecs->destroyEntity(entity, SpatialStorage::Chunk);
+                gpuExecutor->instanceStorage.erase(entity);
                 break;
             }
             case EntityType::GroundCosmetic:
             {
-                GroundCosmetic *groundCosmetic = (GroundCosmetic*)engine.ecs.find(ComponentId::GroundCosmetic, entity);
+                GroundCosmetic *groundCosmetic = (GroundCosmetic*)ecs->find(ComponentId::GroundCosmetic, entity);
 
                 // Dies if it has lost it's ground
-                if (engine.ecs.isAlive(groundCosmetic->parentRef))
+                if (ecs->isAlive(groundCosmetic->parentRef))
                 {
-                    engine.ecs.activeEntities[writeIndex++] = entity;
+                    ecs->activeEntities[writeIndex++] = entity;
                     break;
                 }
 
                 // TODO: Store number of ores somewhere
-                engine.ecs.destroyEntity(entity, SpatialStorage::Chunk);
-                engine.instanceStorage.erase(entity);
+                ecs->destroyEntity(entity, SpatialStorage::Chunk);
+                gpuExecutor->instanceStorage.erase(entity);
                 break;
             }
             default:
-                engine.ecs.activeEntities[writeIndex++] = entity;
+                ecs->activeEntities[writeIndex++] = entity;
                 break;
             }
         }
 
         if (writeIndex < readIndex)
-            engine.ecs.activeEntities.resize(writeIndex);
+            ecs->activeEntities.resize(writeIndex);
     }
 
-    void updateLifecycle()
-    {
+    void updateLifecycle() {
         ZoneScoped;
 
         handleChunkLifecycle();
@@ -676,28 +671,27 @@ struct Game
 
     void updateUISystem() {
         // Let UI system know the current position of the player
-        Transform *head = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
-        engine.uiSystem.playerCenterScreen = WorldToScreenPx(camera, head->getCenter());
+        Transform *head = (Transform*)ecs->find(ComponentId::Transform, player.entities.front().entity);
+        gpuExecutor->uiSystem.playerCenterScreen = WorldToScreenPx(camera, head->getCenter());
 
         // Update jobs
         if (jobsTimer <= 0) {
-            engine.uiSystem.advanceJobs();
+            gpuExecutor->uiSystem.advanceJobs();
             jobsTimer = JOB_INTERVAL;
         }
-}
+    }
 
-    void updateCamera()
-    {
+    void updateCamera() {
         ZoneScoped;
 
         // Update screen bounds
-        camera.screenW = engine.swapchain.swapChainExtent.width;
-        camera.screenH = engine.swapchain.swapChainExtent.height;
+        camera.screenW = gpuExecutor->swapchain.swapChainExtent.width;
+        camera.screenH = gpuExecutor->swapchain.swapChainExtent.height;
 
         Entity entity = background.entity;
-        Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
-        Transform *backgroundTransform = (Transform*)engine.ecs.find(ComponentId::Transform, background.entity);
-        Mesh *mesh = (Mesh*)engine.ecs.find(ComponentId::Mesh, entity);
+        Transform *playerTransform = (Transform*)ecs->find(ComponentId::Transform, player.entities.front().entity);
+        Transform *backgroundTransform = (Transform*)ecs->find(ComponentId::Transform, background.entity);
+        Mesh *mesh = (Mesh*)ecs->find(ComponentId::Mesh, entity);
 
         // Camera center follows the player
         camera.position = glm::round(playerTransform->position);
@@ -714,19 +708,19 @@ struct Game
         updateInstanceData(background.entity, *backgroundTransform);
     }
 
-    void updateTimers(double delta)
-    {
+    void updateTimers(double delta) {
         ZoneScoped;
+
+        globalTime += delta;
         particleTimer = std::max(particleTimer - delta, (double)0.0f);
         jobsTimer = std::max(jobsTimer - delta, (double)0.0f);
     }
 
-    void updateGame(double delta)
-    {
+    void updateGame(double delta) {
         ZoneScoped;
 
         // Constants / parameters
-        GLFWwindow *handle = window.handle;
+        GLFWwindow *handle = window->handle;
 
         // --- Rotation ---
         auto change = rotationSpeed * delta;
@@ -735,7 +729,7 @@ struct Game
         bool rightPressed = false;
 
         if (keyStates[GLFW_KEY_I].pressed) {
-            engine.uiSystem.inventoryOpen = !engine.uiSystem.inventoryOpen;
+            gpuExecutor->uiSystem.inventoryOpen = !gpuExecutor->uiSystem.inventoryOpen;
         }
 
         if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS)
@@ -747,8 +741,7 @@ struct Game
         updateMovement(delta, forward);
     }
 
-    void updateEngineRevs()
-    {
+    void updateEngineRevs() {
         ZoneScoped;
         if (drilling)
         {
@@ -756,7 +749,7 @@ struct Game
             return;
         }
 
-        Transform *playerTransform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
+        Transform *playerTransform = (Transform*)ecs->find(ComponentId::Transform, player.entities.front().entity);
         glm::vec2 forward = SnakeMath::getRotationVector2(playerTransform->rotation);
         float velocity = glm::dot(playerVelocity, forward);
         float ratio = velocity / playerMaxVelocity;
@@ -765,8 +758,7 @@ struct Game
         ma_sound_set_pitch(&engineIdleAudio, revs);
     }
 
-    Entity* getTileFromTileCoords(int32_t x, int32_t y)
-    {
+    Entity* getTileFromTileCoords(int32_t x, int32_t y) {
         int32_t tileX_world = x * 32;
         int32_t tileY_world = y * 32;
 
@@ -775,8 +767,8 @@ struct Game
         int32_t chunkY_world = worldPosToClosestChunk(tileY_world);
         int64_t chunkIdx = packChunkCoords(chunkX_world, chunkY_world);
         assert(chunkIdx != UINT64_MAX);
-        assert(engine.ecs.chunks.find(chunkIdx) != engine.ecs.chunks.end());
-        Chunk &chunk = engine.ecs.chunks.at(chunkIdx);
+        assert(ecs->chunks.find(chunkIdx) != ecs->chunks.end());
+        Chunk &chunk = ecs->chunks.at(chunkIdx);
 
         // --- Chunk space ---
         int32_t tileX_chunk = tileX_world - chunkX_world;
@@ -850,12 +842,7 @@ struct Game
         }
     };
 
-    bool sweepCircleHitsSolidTilesMulti(
-        const glm::vec2& startCenter,
-        const glm::vec2& endCenter,
-        float radius,
-        TileHitList& out)
-    {
+    bool sweepCircleHitsSolidTilesMulti(const glm::vec2& startCenter, const glm::vec2& endCenter, float radius, TileHitList& out) {
         assert(glm::all(glm::isfinite(startCenter)));
         assert(glm::all(glm::isfinite(endCenter)));
         out.tFirst = 1.0f;
@@ -931,8 +918,7 @@ struct Game
     }
 
 
-    void movePlayer(Transform &head, Mesh &mesh, float dt)
-    {
+    void movePlayer(Transform &head, Mesh &mesh, float dt) {
         ZoneScoped;
 
         // --- INIT ----
@@ -953,9 +939,9 @@ struct Game
                 TileHit hit = hitlist.hits[i];
                 
                 // --- Check if we are obstructed by ore ---
-                Ground *ground = (Ground*)engine.ecs.find(ComponentId::Ground, *hit.entity);
+                Ground *ground = (Ground*)ecs->find(ComponentId::Ground, *hit.entity);
                 if (ground->groundOreRef.has_value()) {
-                    GroundOre *groundOre = (GroundOre*)engine.ecs.find(ComponentId::GroundOre, ground->groundOreRef.value());
+                    GroundOre *groundOre = (GroundOre*)ecs->find(ComponentId::GroundOre, ground->groundOreRef.value());
 
                     if ((uint32_t)groundOre->oreLevel > (uint32_t)drillLevel) {
                         removedAllObstacles = false;
@@ -964,7 +950,7 @@ struct Game
                 }
 
                 // --- Handle tile collision ---
-                Health *health = (Health*)engine.ecs.find(ComponentId::Health, *hit.entity);
+                Health *health = (Health*)ecs->find(ComponentId::Health, *hit.entity);
                 float damage = drillDamage * dt;
                 health->current -= damage;
 
@@ -994,13 +980,12 @@ struct Game
         }
     }
 
-    void updateMovement(float dt, bool pressing)
-    {
+    void updateMovement(float dt, bool pressing) {
         ZoneScoped;
 
-        Transform *headT = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities.front().entity);
+        Transform *headT = (Transform*)ecs->find(ComponentId::Transform, player.entities.front().entity);
         Transform oldHeadT = *headT;
-        Mesh *headM = (Mesh*)engine.ecs.find(ComponentId::Mesh, player.entities.front().entity);
+        Mesh *headM = (Mesh*)ecs->find(ComponentId::Mesh, player.entities.front().entity);
         const Mesh &bodyM = MeshRegistry::quad; // NOTE This might not work in the future
 
         glm::vec2 acceleration = {0.0f, 0.0f};
@@ -1030,7 +1015,7 @@ struct Game
 
             if (particleTimer <= 0)
             {
-                engine.particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(headT->rotation), 8);
+                gpuExecutor->particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(headT->rotation), 8);
                 particleTimer = PARTICLE_SPAWN_INTERVAL;
             }
         }
@@ -1040,8 +1025,8 @@ struct Game
         {
             auto entity1 = player.entities[i - 1].entity;
             auto entity2 = player.entities[i].entity;
-            Transform *t1 = (Transform*)engine.ecs.find(ComponentId::Transform, entity1);
-            Transform *t2 = (Transform*)engine.ecs.find(ComponentId::Transform, entity2);
+            Transform *t1 = (Transform*)ecs->find(ComponentId::Transform, entity1);
+            Transform *t2 = (Transform*)ecs->find(ComponentId::Transform, entity2);
             glm::vec2 prevPos = t1->position;
             glm::vec2 &pos = t2->position;
             glm::vec2 dir = prevPos - pos;
@@ -1064,11 +1049,10 @@ struct Game
         updateInstanceData(player.entities.front().entity, *headT);
     }
 
-    void rotateHeadLeft(float dt)
-    {
+    void rotateHeadLeft(float dt) {
         ZoneScoped;
 
-        Transform *transform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities[2].entity);
+        Transform *transform = (Transform*)ecs->find(ComponentId::Transform, player.entities[2].entity);
         glm::vec2 forward = SnakeMath::getRotationVector2(transform->rotation);
         glm::vec2 leftDir = glm::vec2(forward.y, -forward.x);
         glm::vec2 radiusCenter = transform->position + leftDir * rotationRadius;
@@ -1080,7 +1064,7 @@ struct Game
         {
             // Move segment
             Entity entity = player.entities[i].entity;
-            Transform *segment = (Transform*)engine.ecs.find(ComponentId::Transform, entity);
+            Transform *segment = (Transform*)ecs->find(ComponentId::Transform, entity);
             glm::vec2 localCenter = segment->position - radiusCenter;
             glm::vec2 forward = SnakeMath::getRotationVector2(segment->rotation);
 
@@ -1105,11 +1089,10 @@ struct Game
         }
     }
 
-    void rotateHeadRight(float dt)
-    {
+    void rotateHeadRight(float dt) {
         ZoneScoped;
 
-        Transform *transform = (Transform*)engine.ecs.find(ComponentId::Transform, player.entities[2].entity);
+        Transform *transform = (Transform*)ecs->find(ComponentId::Transform, player.entities[2].entity);
         glm::vec2 forward = SnakeMath::getRotationVector2(transform->rotation);
         glm::vec2 rightDir = glm::vec2(-forward.y, forward.x);
         glm::vec2 radiusCenter = transform->position + rightDir * rotationRadius;
@@ -1118,7 +1101,7 @@ struct Game
         {
             // Move segment
             Entity entity = player.entities[i].entity;
-            Transform *segment = (Transform*)engine.ecs.find(ComponentId::Transform, entity);
+            Transform *segment = (Transform*)ecs->find(ComponentId::Transform, entity);
             glm::vec2 localCenter = segment->position - radiusCenter;
             glm::vec2 forward = SnakeMath::getRotationVector2(segment->rotation);
 
@@ -1143,8 +1126,7 @@ struct Game
         }
     }
 
-    void updateFPSCounter(float delta)
-    {
+    void updateFPSCounter(float delta) {
         ZoneScoped;
         frameCount++;
 
@@ -1159,7 +1141,6 @@ struct Game
             fpsTimeSum += delta;
         }
     }
-
 };
 
 
@@ -1222,7 +1203,7 @@ inline void clickCallback(GLFWwindow* window, int button, int action, int mods) 
     glfwGetCursorPos(window, &mouseX, &mouseY);
     float clickSizeHalf = 2.0f;
     glm::vec4 bounds = { mouseX - clickSizeHalf, mouseY - clickSizeHalf, mouseX + clickSizeHalf, mouseY + clickSizeHalf };
-    game->engine.uiSystem.tryClick(bounds, dbClick);
+    game->gpuExecutor->uiSystem.tryClick(bounds, dbClick);
 
     // Update lastLeftClick 
     game->lastLeftClick = nowTime;
@@ -1236,12 +1217,12 @@ static inline glm::vec2 WorldToScreenPx(const Camera& cam, const glm::vec2& worl
 {
     glm::vec4 clip = cam.getViewProj() * glm::vec4(world, 0.0f, 1.0f);
     glm::vec2 ndc = glm::vec2(clip) / clip.w; // [-1,1]
-
+    
     float u = ndc.x * 0.5f + 0.5f;
     float v = ndc.y * 0.5f + 0.5f;
-
+    
     float xPx = u * float(cam.screenW);
     float yPx = (1.0f - v) * float(cam.screenH); // flip Y for gl_FragCoord
     return {xPx, yPx};
-
+    
 }

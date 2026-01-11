@@ -1,6 +1,7 @@
 #pragma once
 #include "RendererSwapchain.h"
 #include "RendererDebug.h"
+#include "Texture.h"
 #include <vulkan/vulkan.h>
 #include <stdexcept>
 #include <vector>
@@ -296,39 +297,49 @@ struct RendererApplication
     {
         queueFamilyIndex = findUniversalQueueFamily(physicalDevice, surface);
         float priority = 1.0f;
-        VkDeviceQueueCreateInfo info{};
-        info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        info.queueFamilyIndex = queueFamilyIndex;
-        info.queueCount = 1;
-        info.pQueuePriorities = &priority;
+            
+        VkDeviceQueueCreateInfo info = {
+            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .pNext = nullptr,
+            .queueFamilyIndex = queueFamilyIndex,
+            .queueCount = 1,
+            .pQueuePriorities = &priority,
+        };
 
-        VkPhysicalDeviceVulkan13Features features13{};
-        features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-        features13.dynamicRendering = VK_TRUE;
-        features13.synchronization2 = VK_TRUE;
+        VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
+            .pNext = nullptr,
+            .timelineSemaphore = VK_TRUE,
+        };
 
-        VkPhysicalDeviceFeatures deviceFeatures{};
-        VkDeviceCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        createInfo.queueCreateInfoCount = 1;
-        createInfo.pQueueCreateInfos = &info;
-        createInfo.pEnabledFeatures = &deviceFeatures;
-        createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-        createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-        createInfo.pNext = &features13;
+        VkPhysicalDeviceVulkan13Features features13 = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+            .pNext = &timelineFeatures,
+            .synchronization2 = VK_TRUE,
+            .dynamicRendering = VK_TRUE,
+        };
 
-        if (enableValidationLayers)
-        {
+        VkPhysicalDeviceFeatures deviceFeatures = {};
+
+        VkDeviceCreateInfo createInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+            .pNext = &features13,
+            .queueCreateInfoCount = 1,
+            .pQueueCreateInfos = &info,
+            .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
+            .ppEnabledExtensionNames = deviceExtensions.data(),
+            .pEnabledFeatures = &deviceFeatures,
+        };
+
+        if (enableValidationLayers) {
             createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
             createInfo.ppEnabledLayerNames = validationLayers.data();
-        }
-        else
-        {
+        } else {
             createInfo.enabledLayerCount = 0;
+            createInfo.ppEnabledLayerNames = nullptr;
         }
 
-        if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
-        {
+        if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
             throw std::runtime_error("failed to create logical device!");
         }
 

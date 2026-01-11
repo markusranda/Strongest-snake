@@ -201,7 +201,7 @@ struct EntityManager
     std::vector<uint32_t> freeIndices; // pool of free slots
 
     // Each component's storage
-    ComponentStorage* components[(size_t)ComponentId::COUNT];
+    ComponentStorage *components[(size_t)ComponentId::COUNT];
     
     // Spatial storage of entities
     ankerl::unordered_dense::map<int64_t, Chunk> chunks;
