@@ -1,0 +1,40 @@
+#version 450
+layout(local_size_x = 1) in;
+
+layout(std430, binding = 0) buffer Counters {
+    // Counters
+    uint inCount;       // value to update for next run
+    uint outCount;      // current active count (survivors)
+    uint maxParticles;
+    uint _pad;
+    
+    // DrawCmd
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint firstInstance;
+} counters;
+layout(std430, binding = 1) buffer SpawnBuffer { 
+    vec2 pos;
+    vec2 forward;
+    uint spawnCount;
+    uint _pad;
+} spawn;
+
+void main() {
+    uint activeParticles = min(counters.outCount, counters.maxParticles);
+
+    // sim phase will use the new inCount for simulation
+    counters.inCount = activeParticles;
+    // sim phase will figure out how many survives, so this is set to 0
+    counters.outCount = 0;
+    // Notice: this will reset spawnCount and expect spawn stage to have created all of them.
+    // This means that we truly are discarding particles that we didn't have room for - which is probably fine.
+    spawn.spawnCount = 0;
+
+    // Set how many particles we're drawing
+    counters.vertexCount = activeParticles;
+    counters.instanceCount = 1;
+    counters.firstVertex = 0;
+    counters.firstInstance = 0;
+}

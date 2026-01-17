@@ -13,6 +13,9 @@
 #include <cstdlib>
 #include <new>
 
+// Global libs
+#include "SnakeMath.h"
+
 void *operator new(std::size_t sz)
 {
     void *ptr = std::malloc(sz);

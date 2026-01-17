@@ -1,0 +1,73 @@
+#version 450
+layout(local_size_x = 64) in;
+
+// DATASTRUCTURES
+struct Particle {
+    vec2  pos;
+    vec2  vel;
+    float life;
+    uint  alive;
+};
+
+// BINDINGS
+layout(std430, binding = 0) buffer ParticlesOut { Particle particlesOut[]; };
+layout(std430, binding = 1) buffer Counters {
+    // Counters
+    uint inCount;       // unused
+    uint outCount;      // current active count (survivors) on entry; appended via atomic
+    uint maxParticles;
+    uint _pad;
+    
+    // DrawCmd
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint firstInstance;
+} counters;
+layout(std430, binding = 2) readonly buffer SpawnBuffer { 
+    vec2 pos;
+    vec2 forward;
+    uint spawnCount;
+    uint _pad;
+} spawn;
+
+// PUSH CONSTANT
+layout(push_constant) uniform Params {
+    uint frameSeed;
+} pc;
+
+float hash(uint x) {
+    x ^= x * 0x3d20adea;
+    x ^= x * 0x05526c56;
+    x ^= x * 0x53a22864;
+    return float(x) * (1.0 / float(0xffffffffu));
+}
+
+void main() {
+    uint s = gl_GlobalInvocationID.x;
+    if (s >= spawn.spawnCount) return;
+
+    uint dst = atomicAdd(counters.outCount, 1u);
+    if (dst >= counters.maxParticles) return;
+
+    uint rnd = s * 1664525u + pc.frameSeed * 1013904223u;
+
+    float a = hash(rnd ^ 17u) * 6.2831853;
+    float r = sqrt(hash(rnd ^ 97u));
+    float spawnRadius = 5.0;
+
+    vec2 dir = vec2(cos(a), sin(a));
+    vec2 offset = dir * (r * spawnRadius);
+
+    Particle np;
+    np.pos = spawn.pos + offset;
+
+    float thrust = 200.0 * hash(rnd ^ 133u);
+    vec2 backward = -spawn.forward;
+
+    np.vel = backward * thrust + dir * (50.0 * hash(rnd ^ 211u));
+    np.life = 5.0;
+    np.alive = 1u;
+
+    particlesOut[dst] = np;
+}

@@ -32,6 +32,7 @@ inline VkShaderModule createShaderModule(const std::vector<char> &code, VkDevice
     return shaderModule;
 }
 
+// TODO: This should not allocate a vector, just pass a buffer
 inline std::vector<char> readFile(const std::string &filename)
 {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -222,4 +223,46 @@ inline std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> CreateGraphi
     pipelines[static_cast<size_t>(ShaderType::Border)] = createGraphicsPipeline(device, "shaders/vert_texture.spv", "shaders/frag_border.spv", textureSetLayout, swapChain, msaaSamples);
 
     return pipelines;
+}
+
+inline static VkDescriptorSetLayout CreateDescriptorSetLayout(VkDevice device, const VkDescriptorSetLayoutBinding* bindings, uint32_t bindingCount, VkDescriptorSetLayout &layout) {
+    VkDescriptorSetLayoutCreateInfo info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = bindingCount,
+        .pBindings = bindings,
+    };
+
+    if (vkCreateDescriptorSetLayout(device, &info, nullptr, &layout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor set layout");
+    }
+
+    return layout;
+}
+
+
+inline static VkPipeline CreateComputePipeline(VkDevice device, const char* spirvPath, VkPipelineLayout pipelineLayout) {
+    std::vector<char> spvBytes = readFile(spirvPath);
+    VkShaderModule shaderModule = createShaderModule(spvBytes, device);
+
+    VkPipelineShaderStageCreateInfo stageInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+        .module = shaderModule,
+        .pName = "main",
+    };
+
+    VkComputePipelineCreateInfo pipelineInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .stage = stageInfo,
+        .layout = pipelineLayout,
+    };
+
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    if (vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, 0, &pipeline) != VK_SUCCESS) {
+        vkDestroyShaderModule(device, shaderModule, 0);
+        throw std::runtime_error("failed to create compute pipeline");
+    }
+
+    vkDestroyShaderModule(device, shaderModule, 0);
+    return pipeline;
 }

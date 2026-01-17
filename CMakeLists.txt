@@ -71,7 +71,9 @@ set(SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture_parallax.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_particle.frag
     ${CMAKE_SOURCE_DIR}/shaders/frag_texture_ui.frag
-    ${CMAKE_SOURCE_DIR}/shaders/comp_particle.comp
+    ${CMAKE_SOURCE_DIR}/shaders/comp_particle_sim.comp
+    ${CMAKE_SOURCE_DIR}/shaders/comp_particle_spawn.comp
+    ${CMAKE_SOURCE_DIR}/shaders/comp_particle_counters.comp
 )
 
 set(SHADER_OUTPUTS "")

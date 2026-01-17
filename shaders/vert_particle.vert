@@ -20,12 +20,6 @@ layout(std430, binding = 0) readonly buffer Particles {
 void main() {
     uint id = gl_VertexIndex;
     Particle p = particles[id];
-    if (p.alive == 0) {
-        gl_Position = vec4(2.0, 2.0, 0.0, 1.0); 
-        gl_PointSize = 0.0;                     
-        return;
-    }
-
     gl_Position = push.viewProj * vec4(p.pos, 0.0, 1.0);
     float pixelSize = 5.0;
     gl_PointSize = pixelSize * push.zoom;

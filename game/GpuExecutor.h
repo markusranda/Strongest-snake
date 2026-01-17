@@ -508,7 +508,7 @@ struct GpuExecutor
             crash("failed to begin command buffer");
         
         // Record compute cmds
-        particleSystem.recordParticles(commandBuffer, application.queue, delta);
+        particleSystem.recordSimCmds(commandBuffer, delta);
         
         // Prepare instance buffer
         uploadToInstanceBuffer();

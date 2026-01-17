@@ -61,5 +61,8 @@ namespace SnakeMath
 
         return (v + (chunkPow2 - 1)) & ~(chunkPow2 - 1);
     }
+}
 
+static uint32_t CeilDivision(uint32_t value, uint32_t divisor) {
+    return (value + divisor - 1) / divisor;
 }
