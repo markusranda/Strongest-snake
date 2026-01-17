@@ -573,10 +573,8 @@ struct RendererUISystem {
         vkUpdateDescriptorSets(application.device, 1, &write, 0, nullptr);
 
         // --- Shaders ---
-        std::vector<char> vertShaderCode = readFile("shaders/vert_texture_font.spv");
-        std::vector<char> fragShaderCode = readFile("shaders/frag_texture_ui.spv");
-        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode, application.device);
-        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode, application.device);
+        VkShaderModule vertShaderModule = CreateShaderModule("shaders/vert_texture_font.spv", application.device);
+        VkShaderModule fragShaderModule = CreateShaderModule("shaders/frag_texture_ui.spv", application.device);
 
         // --- Stages ----
         VkPipelineShaderStageCreateInfo vertStage = {
@@ -637,10 +635,8 @@ struct RendererUISystem {
         }
 
         // --- Shaders ---
-        std::vector<char> vertShaderCode = readFile("shaders/vert_simple_ui.spv");
-        std::vector<char> fragShaderCode = readFile("shaders/frag_simple_ui.spv");
-        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode, application.device);
-        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode, application.device);
+        VkShaderModule vertShaderModule = CreateShaderModule("shaders/vert_simple_ui.spv", application.device);
+        VkShaderModule fragShaderModule = CreateShaderModule("shaders/frag_simple_ui.spv", application.device);
 
         // --- Stages ----
         VkPipelineShaderStageCreateInfo vertStage = {
@@ -757,10 +753,8 @@ struct RendererUISystem {
         vkUpdateDescriptorSets(application.device, 1, &write, 0, nullptr);
 
         // --- Shaders ---
-        std::vector<char> vertShaderCode = readFile("shaders/vert_texture_font.spv");
-        std::vector<char> fragShaderCode = readFile("shaders/frag_texture_font.spv");
-        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode, application.device);
-        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode, application.device);
+        VkShaderModule vertShaderModule = CreateShaderModule("shaders/vert_texture_font.spv", application.device);
+        VkShaderModule fragShaderModule = CreateShaderModule("shaders/frag_texture_font.spv", application.device);
 
         // --- Stages ----
         VkPipelineShaderStageCreateInfo vertStage = {
@@ -815,16 +809,13 @@ struct RendererUISystem {
         layoutInfo.bindingCount = 0;
 
         VkDescriptorSetLayout descriptorSetLayout;
-        if (vkCreateDescriptorSetLayout(application.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
-        {
+        if (vkCreateDescriptorSetLayout(application.device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create graphics descriptor set layout");
         }
 
         // --- Shaders ---
-        std::vector<char> vertShaderCode = readFile("shaders/vert_shadow_overlay.spv");
-        std::vector<char> fragShaderCode = readFile("shaders/frag_shadow_overlay.spv");
-        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode, application.device);
-        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode, application.device);
+        VkShaderModule vertShaderModule = CreateShaderModule("shaders/vert_shadow_overlay.spv", application.device);
+        VkShaderModule fragShaderModule = CreateShaderModule("shaders/frag_shadow_overlay.spv", application.device);
 
         // --- Stages ----
         VkPipelineShaderStageCreateInfo vertStage = {
@@ -857,8 +848,7 @@ struct RendererUISystem {
             .pushConstantRangeCount = 1,
             .pPushConstantRanges = &pushRange,
         };
-        if (vkCreatePipelineLayout(application.device, &layout, nullptr, &pipelineLayout) != VK_SUCCESS)
-        {
+        if (vkCreatePipelineLayout(application.device, &layout, nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create graphics pipeline layout");
         }
 

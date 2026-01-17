@@ -498,10 +498,8 @@ struct ParticleSystem
         vkUpdateDescriptorSets(device, 2, writes, 0, nullptr); 
 
         // SHADERS
-        std::vector<char> vertShaderCode = readFile("shaders/vert_particle.spv");
-        std::vector<char> fragShaderCode = readFile("shaders/frag_particle.spv");
-        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode, device);
-        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode, device);
+        VkShaderModule vertShaderModule = CreateShaderModule("shaders/vert_particle.spv", device);
+        VkShaderModule fragShaderModule = CreateShaderModule("shaders/frag_particle.spv", device);
         VkPipelineShaderStageCreateInfo vertStage = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
@@ -619,8 +617,7 @@ struct ParticleSystem
         };
 
         VkPipeline vkPipeline;
-        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vkPipeline) != VK_SUCCESS)
-        {
+        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vkPipeline) != VK_SUCCESS) {
             throw std::runtime_error("failed to create particle graphics pipeline");
         }
 
@@ -690,7 +687,6 @@ struct ParticleSystem
         sd->forward = forward;
         sd->spawnCount = spawnCount;
     }
-
 
     void recordSimCmds(VkCommandBuffer &cmd, float delta) {
         ZoneScoped;
