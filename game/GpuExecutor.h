@@ -62,7 +62,7 @@ struct GpuExecutor
     RendererSwapchain swapchain;
     std::vector<VkImageLayout> swapchainImageLayouts;
 
-    std::array<Pipeline, static_cast<size_t>(ShaderType::COUNT)> pipelines;
+    std::array<Pipeline, (size_t)ShaderType::COUNT> pipelines;
 
     // Particle system
     ParticleSystem particleSystem;

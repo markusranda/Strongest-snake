@@ -74,12 +74,7 @@ inline VkSamplerCreateInfo createSamplerInfo()
     return samplerInfo;
 }
 
-inline Texture LoadTexture(const std::string &filename,
-                           VkDevice device,
-                           VkPhysicalDevice physicalDevice,
-                           VkCommandPool commandPool,
-                           VkQueue graphicsQueue)
-{
+inline static Texture LoadTexture(const std::string &filename, VkDevice device, VkPhysicalDevice physicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue) {
     Texture texture{};
     int texWidth, texHeight, texChannels;
 
@@ -92,14 +87,10 @@ inline Texture LoadTexture(const std::string &filename,
     VkDeviceSize imageSize = texWidth * texHeight * BYTES_PER_PIXEL;
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
-    CreateBuffer(device, physicalDevice,
-                 imageSize,
-                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 stagingBuffer, stagingBufferMemory);
+    CreateBuffer(device, physicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
     void *data;
     vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
-    memcpy(data, pixels, static_cast<size_t>(imageSize));
+    memcpy(data, pixels, (size_t)imageSize);
     vkUnmapMemory(device, stagingBufferMemory);
     stbi_image_free(pixels);
 
@@ -122,12 +113,9 @@ inline Texture LoadTexture(const std::string &filename,
     vkBindImageMemory(device, texture.image, texture.memory, 0);
 
     // --- Transition, copy, transition
-    TransitionImageLayout(device, commandPool, graphicsQueue, texture.image, VK_FORMAT_R8G8B8A8_SRGB,
-                          VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    CopyBufferToImage(device, commandPool, graphicsQueue, stagingBuffer, texture.image,
-                      texWidth, texHeight);
-    TransitionImageLayout(device, commandPool, graphicsQueue, texture.image, VK_FORMAT_R8G8B8A8_SRGB,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    TransitionImageLayout(device, commandPool, graphicsQueue, texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL); 
+    CopyBufferToImage(device, commandPool, graphicsQueue, stagingBuffer, texture.image, texWidth, texHeight);
+    TransitionImageLayout(device, commandPool, graphicsQueue, texture.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     // --- Cleanup staging
     vkDestroyBuffer(device, stagingBuffer, nullptr);
