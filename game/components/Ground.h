@@ -2,6 +2,7 @@
 #include "Entity.h"
 #include <optional>
 
-struct Ground {
+struct Ground 
+{
     std::optional<Entity> groundOreRef;
 };

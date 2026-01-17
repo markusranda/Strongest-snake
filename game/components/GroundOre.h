@@ -2,7 +2,8 @@
 #include "Entity.h"
 #include "../Item.h"
 
-struct GroundOre {
+struct GroundOre 
+{
     ItemId itemId;
     Entity parentRef;
     OreLevel oreLevel;

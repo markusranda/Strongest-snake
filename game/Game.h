@@ -248,7 +248,8 @@ struct Game {
             AtlasRegion region = gpuExecutor->atlasRegions[itemsDatabase[gpuExecutor->uiSystem.loadoutDrill].sprite];
             glm::vec4 uvTransform = getUvTransform(region);
             Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite, {32.0f, 32.0f}};
-            Transform transform = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
+            Transform transform = Transform{ .position = posCursor, .size = glm::vec2{snakeSize, snakeSize}, .name = "player"};
+            transform.commit();
             Mesh mesh = MeshRegistry::triangle;
             Entity entity = ecs->createEntity(transform,
                                                     mesh,
@@ -282,15 +283,9 @@ struct Game {
                 AtlasRegion region = regions[i];
                 glm::vec4 uvTransform = getUvTransform(region);
                 posCursor -= glm::vec2{snakeSize, 0.0f};
-                Transform transform = Transform{posCursor, glm::vec2{snakeSize, snakeSize}, "player"};
-                Entity entity = ecs->createEntity(transform,
-                                                        mesh,
-                                                        material,
-                                                        layer,
-                                                        entityType,
-                                                        spatialStorage,
-                                                        uvTransform,
-                                                        2.0f);
+                Transform transform = Transform{ .position = posCursor, .size = glm::vec2{snakeSize, snakeSize}, .name = "player"};
+                transform.commit();
+                Entity entity = ecs->createEntity(transform, mesh, material, layer, entityType, spatialStorage, uvTransform, 2.0f);
                 player.entities[i + 1] = { .type = snakeTypes[i], .entity = entity };
                 createInstanceData(entity);
                 ecs->activeEntities.push_back(entity);
@@ -334,16 +329,15 @@ struct Game {
             {
                 AtlasIndex atlasIndex = AtlasIndex::Sprite;
                 AtlasRegion region = gpuExecutor->atlasRegions[SpriteID::SPR_CAVE_BACKGROUND];
-                Transform t = Transform{glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f}};
+                Transform trans = Transform{glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f}};
                 ShaderType shader = ShaderType::TextureParallax;
-                Material material = Material(shader, atlasIndex, {64.0f, 64.0f});
+                Material material = { .shaderType = shader, .atlasIndex = atlasIndex, .size = { 64.0f, 64.0f } };
                 Mesh mesh = MeshRegistry::quad;
                 RenderLayer layer = RenderLayer::Background;
                 glm::vec4 uvTransform = getUvTransform(region);
                 float z = 0.0f;
-                t.commit();
-
-                Entity entity = ecs->createEntity(t, mesh, material, layer, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f);
+                trans.commit();
+                Entity entity = ecs->createEntity(trans, mesh, material, layer, EntityType::Background, SpatialStorage::Global, uvTransform, 0.0f);
                 background = {entity};
                 createInstanceData(entity);
                 ecs->activeEntities.push_back(entity);

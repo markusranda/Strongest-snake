@@ -15,38 +15,20 @@ struct Transform
     const char *name = "not defined";
     glm::mat4 model = glm::mat4(1.0f);
 
-    Transform(glm::vec2 position, glm::vec2 size, const char *name = "not defined")
-        : position(position), size(size), name(name)
-    {
-        model = transformToModelMatrix();
-    }
-    Transform(glm::vec2 position, glm::vec2 size, float rotation, const char *name = "not defined")
-        : position(position), size(size), rotation(rotation), name(name)
-    {
-        model = transformToModelMatrix();
-    }
-    Transform(glm::vec2 position, glm::vec2 size, glm::vec2 pivotPoint, const char *name = "not defined")
-        : position(position), size(size), pivotPoint(pivotPoint), name(name)
-    {
+    void commit() {
         model = transformToModelMatrix();
     }
 
-    glm::vec2 getCenter()
-    {
+    glm::vec2 getCenter() {
         return position + size / 2.0f;
     }
 
-    float getRadius()
-    {
+    float getRadius() {
         return size.x / 2;
     }
 
-    void commit()
-    {
-        model = transformToModelMatrix();
-    }
-
 private:
+    // Very slow method
     glm::mat4 transformToModelMatrix()
     {
         ZoneScoped;

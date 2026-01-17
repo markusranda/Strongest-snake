@@ -9,7 +9,4 @@ struct Material
     ShaderType shaderType;
     AtlasIndex atlasIndex;
     glm::vec2 size;
-
-    Material(ShaderType shaderType, AtlasIndex atlasIndex, glm::vec2 size) : shaderType(shaderType), atlasIndex(atlasIndex), size(size) {}
-    Material(glm::vec4 color, ShaderType shaderType, AtlasIndex atlasIndex, glm::vec2 size) : color(color), shaderType(shaderType), atlasIndex(atlasIndex), size(size) {}
 };

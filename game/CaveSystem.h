@@ -129,7 +129,8 @@ struct CaveSystem
         ZoneScoped;
 
         glm::vec2 position = {xWorld, yWorld};
-        Transform transform = {position, size, GROUND_NAME};
+        Transform transform = { .position = position, .size = size, .name = GROUND_NAME };
+        transform.commit();
         AtlasRegion region = atlasRegions[SpriteID::SPR_GROUND_MID_1];
         glm::vec4 uvTransform = getUvTransform(region);
         Mesh mesh = MeshRegistry::quad;
