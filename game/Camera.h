@@ -8,10 +8,8 @@ struct Camera
     glm::vec2 position = {0.0f, 0.0f};
     float zoom = 1.0f;
     float rotation = 0.0f;
-    uint32_t screenW;
-    uint32_t screenH;
-
-    Camera(uint32_t screenW, uint32_t screenH) : screenW(screenW), screenH(screenH) {}
+    uint32_t screenW = 0;
+    uint32_t screenH = 0;
 
     glm::mat4 getViewProj() const
     {

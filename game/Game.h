@@ -160,7 +160,7 @@ struct Game {
     bool gameOver = false;
     Background background;
     Player player;
-    Camera camera{1, 1};
+    Camera camera;
     uint64_t prevChunks[CHUNK_CACHE_CAPACITY];
     size_t prevChunksSize = 0;
     uint64_t curChunks[CHUNK_CACHE_CAPACITY];
@@ -346,7 +346,7 @@ struct Game {
             createPlayer();
 
             // --- Camera ---
-            camera = Camera{window->width, window->height};
+            camera = Camera{ .screenW = window->width, .screenH = window->height};
 
             // --- Ground ----
             caveSystem->createGraceArea();
