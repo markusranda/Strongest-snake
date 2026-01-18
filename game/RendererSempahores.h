@@ -69,20 +69,21 @@ struct RendererSempahores
     uint32_t acquireImageIndex(VkDevice &device, uint32_t &currentFrame, RendererSwapchain &swapchain)
     {
         uint32_t imageIndex;
+
+        // Waiting for current frame to finish
         vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, 10'000'000'000ull);
         VkResult result = vkAcquireNextImageKHR(device, swapchain.handle, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-
-        if (imagesInFlight[imageIndex] != VK_NULL_HANDLE)
-            vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, 10'000'000'000ull);
-
-        imagesInFlight[imageIndex] = inFlightFences[currentFrame];
-
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
             return UINT32_MAX;
         else
             assert(result == VK_SUCCESS);
 
+        if (imagesInFlight[imageIndex] != VK_NULL_HANDLE)
+            vkWaitForFences(device, 1, &inFlightFences[imageIndex], VK_TRUE, 10'000'000'000ull);
+
+        imagesInFlight[imageIndex] = inFlightFences[currentFrame];
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
+
         return imageIndex;
     }
 

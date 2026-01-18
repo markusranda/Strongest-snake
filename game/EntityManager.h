@@ -297,7 +297,9 @@ struct EntityManager
 
     void destroyEntity(Entity e, const SpatialStorage &spatialStorage)
     {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         uint32_t entityIdx = entityIndex(e);
         uint8_t gen = entityGen(e);
@@ -334,7 +336,9 @@ struct EntityManager
 
         // --- Remove from stores ---
         {
+            #ifdef _DEBUG
             ZoneScopedN("Remove from stores");
+            #endif
 
             erase(ComponentId::Transform, e);
             erase(ComponentId::Mesh, e);
@@ -357,7 +361,9 @@ struct EntityManager
 
     void deleteEntityFromChunk(uint32_t &entityIdx, const AABB &aabb)
     {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         int32_t chunkWorldX = worldPosToClosestChunk(aabb.min.x);
         int32_t chunkWorldY = worldPosToClosestChunk(aabb.min.y);
@@ -382,7 +388,9 @@ struct EntityManager
 
     void deleteEntityFromChunkTile(const AABB &aabb)
     {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         int32_t chunkWorldX = worldPosToClosestChunk(aabb.min.x);
         int32_t chunkWorldY = worldPosToClosestChunk(aabb.min.y);

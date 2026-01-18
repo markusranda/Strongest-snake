@@ -2110,8 +2110,11 @@ struct RendererUISystem {
         }
     }
 
-    void recordDrawCmds(VkCommandBuffer &cmd, const glm::vec2 &viewportPx) {
+    void recordDrawCmds(FrameCtx &ctx) {
+        #ifdef _DEBUG
         ZoneScoped;
+        TracyVkZone(ctx.tracyVkCtx, ctx.cmd, "Ui system draw");
+        #endif
 
         uiArena.reset();
 
@@ -2120,8 +2123,8 @@ struct RendererUISystem {
             {
                 0,
                 0,
-                viewportPx.x,
-                viewportPx.y,
+                ctx.extent.x,
+                ctx.extent.y,
             },
             COLOR_SURFACE_0, 
             2,
@@ -2150,17 +2153,17 @@ struct RendererUISystem {
                     UINodePushConstant push = {
                         .boundsPx = node->offsets,
                         .color = node->color,
-                        .viewportPx = viewportPx,
+                        .viewportPx = ctx.extent,
                         .triangle = 0,
                     };
-                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rectPipeline.pipeline);
-                    vkCmdPushConstants(cmd, rectPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
-                    vkCmdDraw(cmd, 6, 1, 0, 0);
+                    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rectPipeline.pipeline);
+                    vkCmdPushConstants(ctx.cmd, rectPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
+                    vkCmdDraw(ctx.cmd, 6, 1, 0, 0);
                     break;
                 }
                 case ShaderType::Font:
                 {
-                    drawText(cmd, node, viewportPx);
+                    drawText(ctx.cmd, node, ctx.extent);
                     break;
                 }
                 case ShaderType::ShadowOverlay:
@@ -2170,9 +2173,9 @@ struct RendererUISystem {
                         .radiusPx = 300.0f * cameraHandle->zoom,
                         .featherPx = 80.0f * cameraHandle->zoom,
                     };
-                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowOverlayPipeline.pipeline);
-                    vkCmdPushConstants(cmd, shadowOverlayPipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ShadowOverlayPushConstant), &push);
-                    vkCmdDraw(cmd, 3, 1, 0, 0);
+                    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadowOverlayPipeline.pipeline);
+                    vkCmdPushConstants(ctx.cmd, shadowOverlayPipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(ShadowOverlayPushConstant), &push);
+                    vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
                     break;
                 }
                 case ShaderType::TextureUI:
@@ -2195,13 +2198,13 @@ struct RendererUISystem {
                         .boundsPx = node->offsets,
                         .color = node->color,
                         .uvRect = uvRect,
-                        .viewportPx = viewportPx,
+                        .viewportPx = ctx.extent,
                         .triangle = node->triangle,
                     };
-                    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, texturePipeline.pipeline);
-                    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, texturePipeline.layout, 0, 1, &textureAtlasSet, 0, nullptr);
-                    vkCmdPushConstants(cmd, texturePipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
-                    vkCmdDraw(cmd, node->triangle ? 3 : 6, 1, 0, 0);
+                    vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, texturePipeline.pipeline);
+                    vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, texturePipeline.layout, 0, 1, &textureAtlasSet, 0, nullptr);
+                    vkCmdPushConstants(ctx.cmd, texturePipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(UINodePushConstant), &push);
+                    vkCmdDraw(ctx.cmd, node->triangle ? 3 : 6, 1, 0, 0);
                     break;
                 }
                 default: {

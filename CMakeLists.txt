@@ -17,20 +17,23 @@ set_target_properties(strongest_snake PROPERTIES
 )
 
 # ============================
-# Tracy Profiler
+# Tracy Profiler (Debug only)
 # ============================
 set(TRACY_DIR "${CMAKE_SOURCE_DIR}/../tracy")
 
 target_include_directories(strongest_snake PRIVATE
-    ${TRACY_DIR}/public
+    $<$<CONFIG:Debug>:${TRACY_DIR}/public>
 )
 
 target_sources(strongest_snake PRIVATE
-    ${TRACY_DIR}/public/TracyClient.cpp
+    $<$<CONFIG:Debug>:${TRACY_DIR}/public/TracyClient.cpp>
 )
 
-target_compile_definitions(strongest_snake PRIVATE TRACY_ENABLE)
+target_compile_definitions(strongest_snake PRIVATE
+    $<$<CONFIG:Debug>:TRACY_ENABLE>
+)
 # ============================
+
 
 
 set(Vulkan_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows/include")

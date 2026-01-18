@@ -10,7 +10,9 @@
 #include "glm/common.hpp"
 
 // PROFILING
+#ifdef _DEBUG
 #include "tracy/Tracy.hpp"
+#endif
 
 const char *GROUND_NAME = "ground";
 const char *SPRITE_KEY = "ground_mid_1";
@@ -46,7 +48,9 @@ struct CaveSystem
 
     void createInstanceData(Entity entity, Transform transform, Material material, Mesh mesh, glm::vec4 uvTransform)
     {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
         Renderable *renderable = (Renderable*)ecs->find(ComponentId::Renderable, entity);
         InstanceData instance = {
             transform.model,
@@ -126,7 +130,9 @@ struct CaveSystem
 
     inline void createGround(float xWorld, float yWorld)
     {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         glm::vec2 position = {xWorld, yWorld};
         Transform transform = { .position = position, .size = size, .name = GROUND_NAME };
@@ -158,7 +164,9 @@ struct CaveSystem
 
     inline void createGraceArea()
     {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         float xMin = -1 * (float)(2 * CHUNK_WORLD_SIZE);
         float xMax = (float)(3 * CHUNK_WORLD_SIZE);
@@ -199,7 +207,9 @@ struct CaveSystem
 
     void generateNewChunk(int64_t &chunkIdx, int32_t &chunkWorldX, int32_t &chunkWorldY)
     {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         ecs->chunks.emplace(chunkIdx, Chunk{chunkWorldX, chunkWorldY});
         for (int32_t y = chunkWorldY; y < chunkWorldY + CHUNK_WORLD_SIZE; y += tileSize)

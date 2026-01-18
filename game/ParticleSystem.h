@@ -4,6 +4,7 @@
 #include "Pipelines.h"
 #include "RendererApplication.h"
 #include "RendererSwapChain.h"
+#include "contexts/FrameCtx.h"
 
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
@@ -11,7 +12,10 @@
 #include <array>
 
 // PROFILING
+#ifdef _DEBUG
 #include "tracy/Tracy.hpp"
+#include <tracy/TracyVulkan.hpp>
+#endif
 
 constexpr static float TIME_ACCUMULATOR_MAX = 1.0f / 60.0f; 
 constexpr uint32_t LOCAL_SIZE = 64;
@@ -80,11 +84,14 @@ struct ParticleSystem
         sd->spawnCount = spawnCount;
     }
 
-    void recordSimCmds(VkCommandBuffer &cmd, float delta) {
+    void recordSimCmds(FrameCtx &ctx) {
+        #ifdef _DEBUG 
         ZoneScoped;
+        TracyVkZone(ctx.tracyVkCtx, ctx.cmd, "Particle simulation");
+        #endif
 
         // Run at the rate of timeAccumulatorMax  
-        if ((timeAccumulator += delta) < TIME_ACCUMULATOR_MAX) {
+        if ((timeAccumulator += ctx.delta) < TIME_ACCUMULATOR_MAX) {
             return; // Skip if it's not time yet.
         }
         float simDelta = timeAccumulator; // Record how much time it took
@@ -104,10 +111,10 @@ struct ParticleSystem
         // ====================================
         // PASS ONE (SIMULATE):
         // ====================================
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSimPipeline.pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSimPipeline.layout, 0, 1, &computeSimPipeline.descriptorSet[descriptorSetSimIndex], 0, nullptr);
-        vkCmdPushConstants(cmd, computeSimPipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(float), &simDelta);
-        vkCmdDispatch(cmd, groupCountXsim, 1, 1);
+        vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSimPipeline.pipeline);
+        vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSimPipeline.layout, 0, 1, &computeSimPipeline.descriptorSet[descriptorSetSimIndex], 0, nullptr);
+        vkCmdPushConstants(ctx.cmd, computeSimPipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(float), &simDelta);
+        vkCmdDispatch(ctx.cmd, groupCountXsim, 1, 1);
 
         // BARRIER
         VkMemoryBarrier2 memBarrierA{
@@ -122,15 +129,15 @@ struct ParticleSystem
             .memoryBarrierCount = 1,
             .pMemoryBarriers = &memBarrierA,
         };
-        vkCmdPipelineBarrier2(cmd, &depA);
+        vkCmdPipelineBarrier2(ctx.cmd, &depA);
 
         // ====================================
         // PASS TWO (SPAWN):
         // ====================================
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSpawnPipeline.pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSpawnPipeline.layout, 0, 1, &computeSpawnPipeline.descriptorSet[descriptorSetSimIndex], 0, nullptr);
-        vkCmdPushConstants(cmd, computeSpawnPipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &frameseed);
-        vkCmdDispatch(cmd, groupCountXspawn, 1, 1);
+        vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSpawnPipeline.pipeline);
+        vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeSpawnPipeline.layout, 0, 1, &computeSpawnPipeline.descriptorSet[descriptorSetSimIndex], 0, nullptr);
+        vkCmdPushConstants(ctx.cmd, computeSpawnPipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(uint32_t), &frameseed);
+        vkCmdDispatch(ctx.cmd, groupCountXspawn, 1, 1);
         
         // BARRIER
         VkMemoryBarrier2 memBarrierB{
@@ -145,14 +152,14 @@ struct ParticleSystem
             .memoryBarrierCount = 1,
             .pMemoryBarriers = &memBarrierB,
         };
-        vkCmdPipelineBarrier2(cmd, &depB);
+        vkCmdPipelineBarrier2(ctx.cmd, &depB);
 
         // ====================================
         // PASS TWO (SPAWN):
         // ====================================
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCountersPipeline.pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCountersPipeline.layout, 0, 1, &computeCountersPipeline.descriptorSet[0], 0, nullptr);
-        vkCmdDispatch(cmd, 1, 1, 1);
+        vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCountersPipeline.pipeline);
+        vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_COMPUTE, computeCountersPipeline.layout, 0, 1, &computeCountersPipeline.descriptorSet[0], 0, nullptr);
+        vkCmdDispatch(ctx.cmd, 1, 1, 1);
 
         VkMemoryBarrier2 toGraphics {
             .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
@@ -167,22 +174,25 @@ struct ParticleSystem
             .pMemoryBarriers = &toGraphics,
         };
 
-        vkCmdPipelineBarrier2(cmd, &dep);
+        vkCmdPipelineBarrier2(ctx.cmd, &dep);
     }
 
     // NOTICE: This has to be called after recordSimCmds
-    void recordDrawCmds(VkCommandBuffer &cmd, Camera &camera) {
+    void recordDrawCmds(FrameCtx &ctx) {
+        #ifdef _DEBUG
         ZoneScoped;
-        
-        CameraPushConstant cameraData = { camera.getViewProj() };
-        float zoom = camera.zoom;
+        TracyVkZone(ctx.tracyVkCtx, ctx.cmd, "Particle draw");
+        #endif 
+
+        CameraPushConstant cameraData = { ctx.camera.getViewProj() };
+        float zoom = ctx.camera.zoom;
         uint32_t drawIdx = 1u - descriptorSetSimIndex;
         
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.layout, 0, 1, &graphicsPipeline.descriptorSet[drawIdx], 0, nullptr);
-        vkCmdPushConstants(cmd, graphicsPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &cameraData.viewProj);
-        vkCmdPushConstants(cmd, graphicsPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(glm::mat4), sizeof(float), &zoom);
-        vkCmdDrawIndirect(cmd, countersBuffer, sizeof(Counters), 1, sizeof(VkDrawIndirectCommand));
+        vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.pipeline);
+        vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline.layout, 0, 1, &graphicsPipeline.descriptorSet[drawIdx], 0, nullptr);
+        vkCmdPushConstants(ctx.cmd, graphicsPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &cameraData.viewProj);
+        vkCmdPushConstants(ctx.cmd, graphicsPipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(glm::mat4), sizeof(float), &zoom);
+        vkCmdDrawIndirect(ctx.cmd, countersBuffer, sizeof(Counters), 1, sizeof(VkDrawIndirectCommand));
     }
 };
 

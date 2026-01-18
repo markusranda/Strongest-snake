@@ -36,7 +36,9 @@
 #include <set>
 
 // PROFILING
+#ifdef _DEBUG
 #include "tracy/Tracy.hpp"
+#endif
 
 #undef min
 #undef max
@@ -195,7 +197,9 @@ struct Game {
     double jobsTimer = 0.0f;
 
     void updateInstanceData(Entity &entity, Transform &transform) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
         Renderable *renderable = (Renderable*)ecs->find(ComponentId::Renderable, entity);
         Material *material = (Material*)ecs->find(ComponentId::Material, entity);
         InstanceData *instanceData = gpuExecutor->instanceStorage.find(entity);
@@ -207,7 +211,9 @@ struct Game {
     }
 
     void createInstanceData(Entity entity) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
         Transform transform = *(Transform*)ecs->find(ComponentId::Transform, entity);
         Material material = *(Material*)ecs->find(ComponentId::Material, entity);
         Mesh mesh = *(Mesh*)ecs->find(ComponentId::Mesh, entity);
@@ -294,7 +300,9 @@ struct Game {
     }
 
     void init() {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         try
         {
@@ -379,11 +387,15 @@ struct Game {
     void run() {
         Logrador::info("Starting game loop");
 
+        #ifdef _DEBUG
         tracy::SetThreadName("MainThread"); // Optional, nice for visualization
+        #endif
 
         while (!window->shouldClose())
         {
+            #ifdef _DEBUG
             ZoneScoped;
+            #endif
 
             window->pollEvents();
 
@@ -396,24 +408,20 @@ struct Game {
                 throw std::runtime_error("You fucked up");
 
             updateTimers(delta);
-
             updateGame(delta);
-
             updatePlayer();
-
             updateEngineRevs();
-
             updateCamera();
-
             updateLifecycle();
-
             updateUISystem();
-
             updateFPSCounter(delta);
-            
             keysEnd();
 
-            gpuExecutor->runFrame(camera, globalTime, delta);
+            gpuExecutor->recordCommands(camera, globalTime, delta);
+
+            #ifdef _DEBUG
+            FrameMark;
+            #endif
         }
 
         ma_sound_uninit(&engineIdleAudio);
@@ -494,7 +502,9 @@ struct Game {
 
     // --- Game logic ---
     void handleChunkLifecycle() {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         // When player moves into a new chunk we should verify that there are in fact 3x3 loaded chunks around the player
         Transform *head = (Transform*)ecs->find(ComponentId::Transform, player.entities.front().entity);
@@ -657,7 +667,9 @@ struct Game {
     }
 
     void updateLifecycle() {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         handleChunkLifecycle();
         handleEntityLifecycle();
@@ -676,7 +688,9 @@ struct Game {
     }
 
     void updateCamera() {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         // Update screen bounds
         camera.screenW = gpuExecutor->swapchain.swapChainExtent.width;
@@ -703,7 +717,9 @@ struct Game {
     }
 
     void updateTimers(double delta) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         globalTime += delta;
         particleTimer = std::max(particleTimer - delta, (double)0.0f);
@@ -711,7 +727,9 @@ struct Game {
     }
 
     void updateGame(double delta) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         // Constants / parameters
         GLFWwindow *handle = window->handle;
@@ -736,7 +754,9 @@ struct Game {
     }
 
     void updateEngineRevs() {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
         if (drilling)
         {
             ma_sound_set_pitch(&engineIdleAudio, highRev);
@@ -913,7 +933,9 @@ struct Game {
 
 
     void movePlayer(Transform &head, Mesh &mesh, float dt) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         // --- INIT ----
         glm::vec2 start       = head.getCenter();
@@ -975,7 +997,9 @@ struct Game {
     }
 
     void updateMovement(float dt, bool pressing) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         Transform *headT = (Transform*)ecs->find(ComponentId::Transform, player.entities.front().entity);
         Transform oldHeadT = *headT;
@@ -1044,7 +1068,9 @@ struct Game {
     }
 
     void rotateHeadLeft(float dt) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         Transform *transform = (Transform*)ecs->find(ComponentId::Transform, player.entities[2].entity);
         glm::vec2 forward = SnakeMath::getRotationVector2(transform->rotation);
@@ -1084,7 +1110,9 @@ struct Game {
     }
 
     void rotateHeadRight(float dt) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         Transform *transform = (Transform*)ecs->find(ComponentId::Transform, player.entities[2].entity);
         glm::vec2 forward = SnakeMath::getRotationVector2(transform->rotation);
@@ -1121,7 +1149,9 @@ struct Game {
     }
 
     void updateFPSCounter(float delta) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
         frameCount++;
 
         if (frameCount >= 400)
@@ -1144,7 +1174,9 @@ struct Game {
 
 inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) 
 {
+    #ifdef _DEBUG
     ZoneScoped;
+    #endif
     
     Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
     if (!game)
@@ -1167,7 +1199,9 @@ inline void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
 
 inline void scrollCallback(GLFWwindow *window, double xoffset, double yoffset)
 {
+    #ifdef _DEBUG
     ZoneScoped;
+    #endif
     
     // TODO Add scrollMax before release or maybe max when DEBUG isn't present
     Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));

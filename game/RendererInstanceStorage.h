@@ -372,7 +372,9 @@ public:
     // TODO: This method should maybe be faster, but I need a baseline for how fast it could be
     void uploadToGPUBuffer(char *out, size_t outCapacityBytes)
     {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         size_t instanceSize = sizeof(InstanceData);
         size_t outBytes = 0;

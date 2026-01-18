@@ -32,8 +32,7 @@ struct RendererApplication
     Texture atlasTexture;
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    void pickMsaaSampleCount()
-    {
+    void pickMsaaSampleCount() {
         VkPhysicalDeviceProperties physicalDeviceProperties;
         vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
 
@@ -52,23 +51,12 @@ struct RendererApplication
         msaaSamples = samples;
     }
 
-    void createTextures()
-    {
-        atlasTexture = LoadTexture("assets/atlas.png",
-                                   device,
-                                   physicalDevice,
-                                   commandPool,
-                                   queue);
-
-        fontTexture = LoadTexture("assets/fonts.png",
-                                  device,
-                                  physicalDevice,
-                                  commandPool,
-                                  queue);
+    void createTextures() {
+        atlasTexture = LoadTexture("assets/atlas.png", device, physicalDevice, commandPool, queue); 
+        fontTexture = LoadTexture("assets/fonts.png", device, physicalDevice, commandPool, queue);
     }
 
-    void createCommandPool()
-    {
+    void createCommandPool() {
         VkCommandPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -80,8 +68,7 @@ struct RendererApplication
         }
     }
 
-    bool checkValidationLayerSupport()
-    {
+    bool checkValidationLayerSupport() {
         uint32_t layerCount;
         vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 
@@ -110,8 +97,7 @@ struct RendererApplication
         return true;
     }
 
-    std::vector<const char *> getRequiredExtensions()
-    {
+    std::vector<const char *> getRequiredExtensions() {
         uint32_t glfwExtensionCount = 0;
         const char **glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
         std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
@@ -124,8 +110,7 @@ struct RendererApplication
         return extensions;
     }
 
-    void createSurface(GLFWwindow *window)
-    {
+    void createSurface(GLFWwindow *window) {
         auto status = glfwCreateWindowSurface(instance, window, nullptr, &surface);
         if (status != VK_SUCCESS)
         {
@@ -136,8 +121,7 @@ struct RendererApplication
         }
     }
 
-    bool checkDeviceExtensionSupport(VkPhysicalDevice &device)
-    {
+    bool checkDeviceExtensionSupport(VkPhysicalDevice &device) {
         uint32_t extensionCount;
         vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
 
@@ -154,8 +138,7 @@ struct RendererApplication
         return requiredExtensions.empty();
     }
 
-    bool isDeviceSuitable(VkPhysicalDevice &device, VkSurfaceKHR &surface, RendererSwapchain &swapchain)
-    {
+    bool isDeviceSuitable(VkPhysicalDevice &device, VkSurfaceKHR &surface, RendererSwapchain &swapchain) {
         if (!checkDeviceExtensionSupport(device))
             return false;
 
@@ -166,8 +149,7 @@ struct RendererApplication
         return swapChainAdequate;
     }
 
-    void pickPhysicalDevice(RendererSwapchain &swapchain)
-    {
+    void pickPhysicalDevice(RendererSwapchain &swapchain) {
         uint32_t deviceCount = 0;
         vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
@@ -194,8 +176,7 @@ struct RendererApplication
         }
     }
 
-    void createDebugMessenger()
-    {
+    void createDebugMessenger() {
         if (!enableValidationLayers)
             return;
 
@@ -208,8 +189,7 @@ struct RendererApplication
         }
     }
 
-    void createInstance()
-    {
+    void createInstance() {
         if (enableValidationLayers && !checkValidationLayerSupport())
         {
             throw std::runtime_error("validation layers requested, but not available!");
@@ -248,8 +228,7 @@ struct RendererApplication
             throw std::runtime_error("failed to create instance!");
     }
 
-    uint32_t findUniversalQueueFamily(VkPhysicalDevice gpu, VkSurfaceKHR surface)
-    {
+    uint32_t findUniversalQueueFamily(VkPhysicalDevice gpu, VkSurfaceKHR surface) {
         uint32_t count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(gpu, &count, nullptr);
 
@@ -271,8 +250,7 @@ struct RendererApplication
         throw std::runtime_error("No universal graphics+present queue family found");
     }
 
-    void createLogicalDevice()
-    {
+    void createLogicalDevice() {
         queueFamilyIndex = findUniversalQueueFamily(physicalDevice, surface);
         float priority = 1.0f;
             
@@ -324,8 +302,7 @@ struct RendererApplication
         vkGetDeviceQueue(device, queueFamilyIndex, 0, &queue);
     }
 
-    void deviceWaitIdle()
-    {
+    void deviceWaitIdle() {
         vkDeviceWaitIdle(device);
     }
 };

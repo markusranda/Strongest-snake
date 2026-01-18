@@ -3,7 +3,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 // PROFILING
+#ifdef _DEBUG
 #include "tracy/Tracy.hpp"
+#endif
 
 struct Transform
 {
@@ -31,7 +33,9 @@ private:
     // Very slow method
     glm::mat4 transformToModelMatrix()
     {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         glm::vec2 pivotOffset = this->size * this->pivotPoint;
         glm::mat4 model = glm::mat4(1.0f);                            // Identity matrix

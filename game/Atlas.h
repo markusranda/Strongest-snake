@@ -1,6 +1,5 @@
 #pragma once
 #include <glm/glm.hpp>
-#include "tracy/Tracy.hpp"
 
 enum SpriteID : uint32_t
 {

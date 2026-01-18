@@ -13,9 +13,6 @@
 #include <cstdlib>
 #include <new>
 
-// Global libs
-#include "SnakeMath.h"
-
 void *operator new(std::size_t sz)
 {
     void *ptr = std::malloc(sz);
@@ -35,16 +32,22 @@ void operator delete(void *ptr) noexcept
 const uint32_t WIDTH = 1920;
 const uint32_t HEIGHT = 1080;
 
-int main()
-{
+int main() {
     Logrador::info("Launching Strongest Snake");
 
-    Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
-    Game game = {
-        .window = &window,
-    };
-    game.init();
-    game.run();
-
+    try {
+        Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
+        Game game = {
+            .window = &window,
+        };
+        game.init();
+        game.run();
+    }
+    catch(const std::exception& e) {
+        std::cerr << e.what() << '\n';
+        _sleep(5000);
+        return EXIT_FAILURE;
+    }
+    
     return EXIT_SUCCESS;
 }

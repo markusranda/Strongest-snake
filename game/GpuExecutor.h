@@ -22,6 +22,7 @@
 #include "RendererApplication.h"
 #include "RendererInstanceStorage.h"
 #include "RendererUISystem.h"
+#include "contexts/FrameCtx.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -39,7 +40,43 @@
 #include <array>
 
 // PROFILING
+#ifdef _DEBUG
 #include "tracy/Tracy.hpp"
+#include <tracy/TracyVulkan.hpp>
+
+VkCommandPool tracyCmdPool = VK_NULL_HANDLE;
+VkCommandBuffer tracyCmdBuf = VK_NULL_HANDLE;
+TracyVkCtx tracyCtx = nullptr;
+
+void InitTracyVulkan(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue queue, uint32_t queueFamilyIndex) {
+    const VkCommandPoolCreateInfo poolInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = queueFamilyIndex
+    };
+
+    vkCreateCommandPool(device, &poolInfo, nullptr, &tracyCmdPool);
+
+    const VkCommandBufferAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .commandPool = tracyCmdPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1
+    };
+
+    vkAllocateCommandBuffers(device, &allocInfo, &tracyCmdBuf);
+
+    tracyCtx = TracyVkContext(
+        physicalDevice,
+        device,
+        queue,
+        tracyCmdBuf
+    );
+}
+#endif
+
 
 inline static void crash(const char *msg) {
     fprintf(stderr, msg);
@@ -94,7 +131,7 @@ struct GpuExecutor
 
     void init() {
         try {
-            Logrador::info("Renderer is being created");
+            Logrador::info("Renderer is being created");            
             application = CreateRendererApplication(window->handle, swapchain);
             createSwapChain();
             createColorResources();
@@ -108,6 +145,11 @@ struct GpuExecutor
             particleSystem = CreateParticleSystem(application, swapchain);
             createUiSystem();
             createInstanceStorage();
+
+            #ifdef _DEBUG
+                InitTracyVulkan(application.physicalDevice, application.device, application.queue, application.queueFamilyIndex);
+            #endif
+
             Logrador::info("Renderer is complete");
         }
         catch (const std::exception &e) {
@@ -145,9 +187,7 @@ struct GpuExecutor
     void createAtlasData() {
         std::ifstream in("assets/atlas.rigdb", std::ios::binary);
         if (!in)
-        {
-            throw std::runtime_error("Failed to open file");
-        }
+            throw std::runtime_error("Failed to open atlas db file");
         char buffer[sizeof(AtlasRegion)];
         while (in.read(buffer, sizeof(buffer)))
         {
@@ -254,55 +294,16 @@ struct GpuExecutor
         instanceStorage.init();
     }
 
-    void beginFrame(VkCommandBuffer &commandBuffer, float delta, uint32_t imageIndex) {
+    void recordInstanceDrawCmds(FrameCtx &ctx, float globalTime) {
+        #ifdef _DEBUG
         ZoneScoped;
-
-        barrierPresentToColor(swapchain, swapchainImageLayouts, imageIndex, commandBuffer);
-
-        // Dynamic rendering setup (MSAA color + resolve to swapchain)
-        VkRenderingAttachmentInfoKHR colorAttachment{};
-        colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
-        colorAttachment.imageView = colorImageView; // MSAA image
-        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-        colorAttachment.resolveImageView = swapchain.swapChainImageViews[imageIndex];
-        colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachment.clearValue.color = {0.5f, 0.5f, 0.5f, 1.0f};
-
-        VkRenderingInfoKHR renderInfo{};
-        renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
-        renderInfo.renderArea.offset = {0, 0};
-        renderInfo.renderArea.extent = swapchain.swapChainExtent;
-        renderInfo.layerCount = 1;
-        renderInfo.colorAttachmentCount = 1;
-        renderInfo.pColorAttachments = &colorAttachment;
-
-        vkCmdBeginRendering(commandBuffer, &renderInfo);
-
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float)swapchain.swapChainExtent.width;
-        viewport.height = (float)swapchain.swapChainExtent.height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-        VkRect2D scissor{};
-        scissor.offset = {0, 0};
-        scissor.extent = swapchain.swapChainExtent;
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-    }
-
-    void recordInstanceDrawCmds(VkCommandBuffer &cmd, Camera &camera, float globalTime) {
-        ZoneScoped;
+        TracyVkZone(tracyCtx, ctx.cmd, "Instance draw cmds");
+        #endif
 
         VkBuffer buffers[] = { vertexBuffer, instanceBuffer };
-        CameraPushConstant cameraData = { .viewProj = camera.getViewProj() };
-        FragPushConstant fragmentPushConstant = FragPushConstant{ .cameraWorldPos = camera.position, .globalTime = globalTime };
-        float zoom = camera.zoom;
+        CameraPushConstant cameraData = { .viewProj = ctx.camera.getViewProj() };
+        FragPushConstant fragmentPushConstant = FragPushConstant{ .cameraWorldPos = ctx.camera.position, .globalTime = globalTime };
+        float zoom = ctx.camera.zoom;
 
         // Draw all instances
         int instanceOffset = 0;
@@ -316,39 +317,19 @@ struct GpuExecutor
             assert(descriptorSet != VK_NULL_HANDLE && "Descriptor set missing!");
 
             const Pipeline &pipeline = pipelines[(size_t)dc.shaderType];
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &descriptorSet, 0, nullptr);
-            vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(cameraData), &cameraData);
-            vkCmdPushConstants(cmd, pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(cameraData), sizeof(fragmentPushConstant), &fragmentPushConstant);
+            vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+            vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &descriptorSet, 0, nullptr);
+            vkCmdPushConstants(ctx.cmd, pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(cameraData), &cameraData);
+            vkCmdPushConstants(ctx.cmd, pipeline.layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(cameraData), sizeof(fragmentPushConstant), &fragmentPushConstant);
 
             // Bind buffers
             VkDeviceSize offsets[] = {0, currentFrame * maxIntancesPerFrame * sizeof(InstanceData)};
-            vkCmdBindVertexBuffers(cmd, 0, 2, buffers, offsets);
+            vkCmdBindVertexBuffers(ctx.cmd, 0, 2, buffers, offsets);
 
             // Issue cmd
-            vkCmdDraw(cmd, dc.vertexCount, dc.instanceCount, dc.firstVertex, instanceOffset);
+            vkCmdDraw(ctx.cmd, dc.vertexCount, dc.instanceCount, dc.firstVertex, instanceOffset);
             instanceOffset += dc.instanceCount;
         }
-    }
-
-    void endFrame(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-        ZoneScoped;
-
-        vkCmdEndRendering(commandBuffer);
-        barrierColorToPresent(swapchain, swapchainImageLayouts, imageIndex, commandBuffer);
-        if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
-            crash("failed to record command buffer");
-
-        VkResult result = semaphores.submitEndDraw(swapchain, currentFrame, &commandBuffer, application.queue, imageIndex);
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-            recreateSwapchain();
-        }
-        else if (result != VK_SUCCESS) {
-            crash("submit/preset failed");
-        }
-        
-        // Figure out next frame
-        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
     void createStaticVertexBuffer() {
@@ -372,7 +353,9 @@ struct GpuExecutor
     }
 
     void uploadToInstanceBuffer() {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
         // TODO  Rewrite instanceBuffer in Renderer to use three seperate buffer based on the three different frames
         // that exist at the same time. This means we can allocate a new buffer without bothering the gpu. Pack it in a FrameResource.
         VkDeviceSize stride = maxIntancesPerFrame * sizeof(InstanceData);
@@ -429,7 +412,9 @@ struct GpuExecutor
     }
 
     void recreateSwapchain() {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         int width = 0, height = 0;
         window->getFramebufferSize(width, height);
@@ -453,8 +438,10 @@ struct GpuExecutor
         currentFrame = 0;
     }
 
-    void runFrame(Camera &camera, float globalTime, float delta) {
+    void recordCommands(Camera &camera, float globalTime, float delta) {
+        #ifdef _DEBUG
         ZoneScoped;
+        #endif
 
         // Figure out if we do normal frame or recreate swapchain
         uint32_t imageIndex = semaphores.acquireImageIndex(application.device, currentFrame, swapchain);
@@ -465,27 +452,99 @@ struct GpuExecutor
         }
         
         // Initialize a new commandBuffer
-        VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
+        VkCommandBuffer cmd = commandBuffers[currentFrame];
         VkCommandBufferBeginInfo beginInfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-        vkResetCommandBuffer(commandBuffer, 0);
-        if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
-            crash("failed to begin command buffer");
         
-        // Record compute cmds
-        particleSystem.recordSimCmds(commandBuffer, delta);
+        vkResetCommandBuffer(cmd, 0);
+        if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS)
+            crash("failed to begin command buffer");
+
+        FrameCtx frameCtx = {
+            .cmd = cmd,
+            .camera = camera,
+            .extent = glm::vec2{ swapchain.swapChainExtent.width, swapchain.swapChainExtent.height },
+            .imageIndex = imageIndex,
+            .delta = delta,
+            #ifdef _DEBUG
+            .tracyVkCtx = tracyCtx,
+            #endif
+        };
+
+        // --- Record compute cmds ---
+        particleSystem.recordSimCmds(frameCtx);
         
         // Prepare instance buffer
         uploadToInstanceBuffer();
-        
-        // Record draw cmds
-        beginFrame(commandBuffer, delta, imageIndex);
-        
-        recordInstanceDrawCmds(commandBuffer, camera, globalTime);
-        uiSystem.recordDrawCmds(commandBuffer, glm::vec2{ swapchain.swapChainExtent.width, swapchain.swapChainExtent.height });
-        particleSystem.recordDrawCmds(commandBuffer, camera);
-        
-        endFrame(commandBuffer, imageIndex);
 
-        FrameMark;
+        // --- Barrier ---
+        barrierPresentToColor(swapchain, swapchainImageLayouts, imageIndex, cmd);
+        // Dynamic rendering setup (MSAA color + resolve to swapchain)
+        VkRenderingAttachmentInfoKHR colorAttachment = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
+            .imageView = colorImageView, // MSAA image
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
+            .resolveImageView = swapchain.swapChainImageViews[imageIndex],
+            .resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = { .color = {0.5f, 0.5f, 0.5f, 1.0f} }
+        };
+
+        // --- Create render info ---
+        VkRenderingInfoKHR renderInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+            .renderArea = {
+                .offset = {0, 0},
+                .extent = swapchain.swapChainExtent,
+            },
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &colorAttachment,
+        };
+        vkCmdBeginRendering(cmd, &renderInfo);
+        
+        // --- Create viewport ---
+        VkViewport viewport = {
+            .x = 0.0f,
+            .y = 0.0f,
+            .width = (float)swapchain.swapChainExtent.width,
+            .height = (float)swapchain.swapChainExtent.height,
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+        // --- Create scissor ---
+        VkRect2D scissor = { .offset = {0, 0}, .extent = swapchain.swapChainExtent };
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+        
+        // --- Record command for drawing ---
+        recordInstanceDrawCmds(frameCtx, globalTime);
+        uiSystem.recordDrawCmds(frameCtx);
+        particleSystem.recordDrawCmds(frameCtx);
+
+        // --- End command buffer and rendering ---
+        vkCmdEndRendering(cmd);
+        barrierColorToPresent(swapchain, swapchainImageLayouts, imageIndex, cmd);
+        
+        #ifdef _DEBUG
+            // TRACY COLLECT
+            TracyVkCollect(tracyCtx, cmd);
+        #endif
+
+        if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
+            crash("failed to record command buffer");
+
+        VkResult result = semaphores.submitEndDraw(swapchain, currentFrame, &cmd, application.queue, imageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+            recreateSwapchain();
+        }
+        else if (result != VK_SUCCESS) {
+            crash("submit/preset failed");
+        }
+        
+        // Figure out next frame
+        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 };

@@ -4,11 +4,15 @@
 #include "components/AABB.h"
 
 // PROFILING
+#ifdef _DEBUG
 #include "tracy/Tracy.hpp"
+#endif
 
 inline AABB computeWorldAABB(const Mesh &mesh, const Transform &t)
 {
+    #ifdef _DEBUG
     ZoneScoped;
+    #endif
     glm::vec2 min(FLT_MAX), max(-FLT_MAX);
 
     const auto &verts = MeshRegistry::getVertices(mesh);
@@ -31,7 +35,9 @@ inline AABB computeWorldAABB(const Mesh &mesh, const Transform &t)
 
 inline bool rectIntersects(AABB &A, AABB &B)
 {
+    #ifdef _DEBUG
     ZoneScoped;
+    #endif
     return (A.min.x < B.max.x &&
             A.max.x > B.min.x &&
             A.min.y < B.max.y &&
@@ -40,7 +46,9 @@ inline bool rectIntersects(AABB &A, AABB &B)
 
 inline bool rectIntersectsExclusive(AABB &A, AABB &B)
 {
+    #ifdef _DEBUG
     ZoneScoped;
+    #endif
     return (A.min.x < B.max.x &&
             A.max.x > B.min.x &&
             A.min.y < B.max.y &&
@@ -49,7 +57,9 @@ inline bool rectIntersectsExclusive(AABB &A, AABB &B)
 
 inline bool rectFullyInside(AABB &A, AABB &B)
 {
+    #ifdef _DEBUG
     ZoneScoped;
+    #endif
     return (A.min.x >= B.min.x &&
             A.max.x <= B.max.x &&
             A.min.y >= B.min.y &&
