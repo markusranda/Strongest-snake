@@ -3,11 +3,14 @@ layout(local_size_x = 64) in;
 
 // DATASTRUCTURES
 struct Particle {
-    vec2 pos;
-    vec2 vel;
+    vec2  pos;
+    vec2  vel;
+    float size;
+    float _pad;
     float life;
-    uint alive;
+    uint  alive;
 };
+
 
 // BINDINGS
 layout(std430, binding = 0) readonly  buffer ParticlesIn  { Particle particlesIn[];  };

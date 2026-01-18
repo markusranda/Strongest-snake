@@ -27,6 +27,8 @@ struct Particle
 {
     glm::vec2 pos;
     glm::vec2 vel;
+    float size;
+    float _pad;
     float life;
     uint32_t alive;
 };
