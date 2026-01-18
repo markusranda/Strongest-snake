@@ -92,12 +92,10 @@ struct GpuExecutor
     VkDescriptorPool descriptorPool;
     std::array<VkDescriptorSet, 2> descriptorSets;
 
-    void init()
-    {
-        try
-        {
+    void init() {
+        try {
             Logrador::info("Renderer is being created");
-            createApplication();
+            application = CreateRendererApplication(window->handle, swapchain);
             createSwapChain();
             createColorResources();
             createGraphicsPipeline();
@@ -107,38 +105,25 @@ struct GpuExecutor
             createStaticVertexBuffer();
             createSemaphores();
             createCommandBuffers();
-            createParticleSystem();
+            particleSystem = CreateParticleSystem(application, swapchain);
             createUiSystem();
             createInstanceStorage();
             Logrador::info("Renderer is complete");
         }
-        catch (const std::exception &e)
-        {
+        catch (const std::exception &e) {
             throw std::runtime_error(std::string("Failed to construct engine: ") + e.what());
         }
-        catch (...)
-        {
+        catch (...) {
             throw std::runtime_error(std::string("Unknown exception thrown in init: "));
         }
     }
 
-    void createApplication()
-    {
-        application = RendererApplication(window->handle, swapchain);
-    }
-
-    void createSwapChain()
-    {
-        swapchain.create(
-            application.physicalDevice,
-            application.device,
-            application.surface,
-            window);
+    void createSwapChain() {
+        swapchain.create(application.physicalDevice, application.device, application.surface, window);
         swapchainImageLayouts.assign(swapchain.swapChainImages.size(), VK_IMAGE_LAYOUT_UNDEFINED);
     }
 
-    void createColorResources()
-    {
+    void createColorResources() {
         VkFormat colorFormat = swapchain.swapChainImageFormat;
 
         CreateImage(
@@ -157,8 +142,7 @@ struct GpuExecutor
         colorImageView = CreateImageView(application.device, colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     }
 
-    void createAtlasData()
-    {
+    void createAtlasData() {
         std::ifstream in("assets/atlas.rigdb", std::ios::binary);
         if (!in)
         {
@@ -172,8 +156,7 @@ struct GpuExecutor
         }
     }
 
-    void createDescriptorPool()
-    {
+    void createDescriptorPool() {
         VkDescriptorPoolSize poolSize{};
         poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         poolSize.descriptorCount = 2;
@@ -188,8 +171,7 @@ struct GpuExecutor
             throw std::runtime_error("failed to create descriptor pool!");
     }
 
-    void createDescriptorSets()
-    {
+    void createDescriptorSets() {
         std::array<VkDescriptorSetLayout, 2> layouts = {textureSetLayout, textureSetLayout};
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -229,8 +211,7 @@ struct GpuExecutor
         vkUpdateDescriptorSets(application.device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }
 
-    void createGraphicsPipeline()
-    {
+    void createGraphicsPipeline() {
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
         samplerLayoutBinding.binding = 0;
         samplerLayoutBinding.descriptorCount = 1;
@@ -248,13 +229,11 @@ struct GpuExecutor
         pipelines = CreateGraphicsPipelines(application.device, textureSetLayout, swapchain, application.msaaSamples);
     }
 
-    void createSemaphores()
-    {
+    void createSemaphores() {
         semaphores.init(application.device, swapchain, MAX_FRAMES_IN_FLIGHT);
     }
 
-    void createCommandBuffers()
-    {
+    void createCommandBuffers() {
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.commandPool = application.commandPool;
@@ -267,23 +246,15 @@ struct GpuExecutor
         }
     }
 
-    void createParticleSystem()
-    {
-        particleSystem.init(application, swapchain);
-    }
-
-    void createUiSystem()
-    {
+    void createUiSystem() {
         uiSystem.init(application, swapchain, atlasRegions);
     }
 
-    void createInstanceStorage()
-    {
+    void createInstanceStorage() {
         instanceStorage.init();
     }
 
-    void beginFrame(VkCommandBuffer &commandBuffer, float delta, uint32_t imageIndex)
-    {
+    void beginFrame(VkCommandBuffer &commandBuffer, float delta, uint32_t imageIndex) {
         ZoneScoped;
 
         barrierPresentToColor(swapchain, swapchainImageLayouts, imageIndex, commandBuffer);
@@ -325,8 +296,7 @@ struct GpuExecutor
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
     }
 
-    void recordInstanceDrawCmds(VkCommandBuffer &cmd, Camera &camera, float globalTime)
-    {
+    void recordInstanceDrawCmds(VkCommandBuffer &cmd, Camera &camera, float globalTime) {
         ZoneScoped;
 
         VkBuffer buffers[] = { vertexBuffer, instanceBuffer };
@@ -361,8 +331,7 @@ struct GpuExecutor
         }
     }
 
-    void endFrame(VkCommandBuffer commandBuffer, uint32_t imageIndex)
-    {
+    void endFrame(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
         ZoneScoped;
 
         vkCmdEndRendering(commandBuffer);
@@ -382,8 +351,7 @@ struct GpuExecutor
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
-    void createStaticVertexBuffer()
-    {
+    void createStaticVertexBuffer() {
         const auto vertices = MeshRegistry::vertices;
         VkDeviceSize size = sizeof(Vertex) * vertices.size();
 
@@ -403,8 +371,7 @@ struct GpuExecutor
         vertexCapacity = static_cast<uint32_t>(vertices.size());
     }
 
-    void uploadToInstanceBuffer()
-    {
+    void uploadToInstanceBuffer() {
         ZoneScoped;
         // TODO  Rewrite instanceBuffer in Renderer to use three seperate buffer based on the three different frames
         // that exist at the same time. This means we can allocate a new buffer without bothering the gpu. Pack it in a FrameResource.
@@ -448,8 +415,7 @@ struct GpuExecutor
         instanceStorage.uploadToGPUBuffer(static_cast<char *>(instanceBufferMapped) + frameOffset, stride);
     }
 
-    void destroyColorResources()
-    {
+    void destroyColorResources() {
         if (colorImageView)
             vkDestroyImageView(application.device, colorImageView, nullptr);
         if (colorImage)
@@ -462,8 +428,7 @@ struct GpuExecutor
         colorImageMemory = VK_NULL_HANDLE;
     }
 
-    void recreateSwapchain()
-    {
+    void recreateSwapchain() {
         ZoneScoped;
 
         int width = 0, height = 0;
@@ -488,8 +453,7 @@ struct GpuExecutor
         currentFrame = 0;
     }
 
-    void runFrame(Camera &camera, float globalTime, float delta)
-    {
+    void runFrame(Camera &camera, float globalTime, float delta) {
         ZoneScoped;
 
         // Figure out if we do normal frame or recreate swapchain

@@ -32,21 +32,6 @@ struct RendererApplication
     Texture atlasTexture;
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    RendererApplication() {}
-    RendererApplication(GLFWwindow *window, RendererSwapchain &swapchain)
-    {
-        Logrador::info("RendererApplication is being created");
-        createInstance();
-        createSurface(window);
-        createDebugMessenger();
-        pickPhysicalDevice(swapchain);
-        createLogicalDevice();
-        createCommandPool();
-        createTextures();
-        pickMsaaSampleCount();
-        Logrador::info("RendererApplication has been created");
-    }
-
     void pickMsaaSampleCount()
     {
         VkPhysicalDeviceProperties physicalDeviceProperties;
@@ -128,9 +113,7 @@ struct RendererApplication
     std::vector<const char *> getRequiredExtensions()
     {
         uint32_t glfwExtensionCount = 0;
-        const char **glfwExtensions;
-        glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
+        const char **glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
         std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
         if (enableValidationLayers)
@@ -232,42 +215,37 @@ struct RendererApplication
             throw std::runtime_error("validation layers requested, but not available!");
         }
 
-        VkApplicationInfo appInfo{};
-        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "Strongest snake";
-        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.pEngineName = "HoneyBadger";
-        appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.apiVersion = VK_API_VERSION_1_4;
-
-        VkInstanceCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        createInfo.pApplicationInfo = &appInfo;
+        VkApplicationInfo appInfo = {
+            .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+            .pApplicationName = "Strongest snake",
+            .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+            .pEngineName = "HoneyBadger",
+            .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+            .apiVersion = VK_API_VERSION_1_4,
+        };
 
         auto extensions = getRequiredExtensions();
-        createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-        createInfo.ppEnabledExtensionNames = extensions.data();
-
-        VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-        if (enableValidationLayers)
-        {
+        VkInstanceCreateInfo createInfo = {
+            .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+            .pApplicationInfo = &appInfo,
+            .enabledExtensionCount = (uint32_t)extensions.size(),
+            .ppEnabledExtensionNames = extensions.data(),
+        };
+        if (enableValidationLayers) {
             createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
             createInfo.ppEnabledLayerNames = validationLayers.data();
-
+            
+            VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
             PopulateDebugMessengerCreateInfo(debugCreateInfo);
             createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT *)&debugCreateInfo;
         }
-        else
-        {
+        else {
             createInfo.enabledLayerCount = 0;
-
             createInfo.pNext = nullptr;
         }
 
         if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
-        {
             throw std::runtime_error("failed to create instance!");
-        }
     }
 
     uint32_t findUniversalQueueFamily(VkPhysicalDevice gpu, VkSurfaceKHR surface)
@@ -351,3 +329,20 @@ struct RendererApplication
         vkDeviceWaitIdle(device);
     }
 };
+
+static RendererApplication CreateRendererApplication(GLFWwindow *window, RendererSwapchain &swapchain) {
+    Logrador::info("RendererApplication is being created");
+    
+    RendererApplication application;
+    application.createInstance();
+    application.createSurface(window);
+    application.createDebugMessenger();
+    application.pickPhysicalDevice(swapchain);
+    application.createLogicalDevice();
+    application.createCommandPool();
+    application.createTextures();
+    application.pickMsaaSampleCount();
+    Logrador::info("RendererApplication has been created");
+
+    return application;
+}

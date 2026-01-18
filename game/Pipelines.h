@@ -18,6 +18,7 @@ struct Pipeline
 {
     VkPipeline pipeline;
     VkPipelineLayout layout;
+    VkDescriptorSet descriptorSet[2]; // Sized for two, but can contain none
 };
 
 // ====================================

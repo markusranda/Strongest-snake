@@ -9,7 +9,7 @@ namespace MeshRegistry
     static constexpr Mesh triangle = Mesh(6, 3, "Triangle");
 
     // --- Vertices ---
-    // !! Remember to update count if increasing number of vertices !!
+    // !! Remember to update counts if increasing number of vertices !!
     static const std::vector<Vertex> vertices = {
         // Quad
         Vertex{{0.0f, 0.0f}, {0.0f, 0.0f}},

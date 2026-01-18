@@ -34,34 +34,6 @@ struct InstanceData
     uint64_t drawKey;
     Entity entity;
 
-    InstanceData() {}
-    InstanceData(glm::mat4 model,
-                 glm::vec4 color,
-                 glm::vec4 uvTransform,
-                 glm::vec2 worldSize,
-                 glm::vec2 textureSize,
-                 RenderLayer layer,
-                 ShaderType shader,
-                 uint16_t z,
-                 uint8_t tie,
-                 Mesh mesh,
-                 AtlasIndex atlasIndex,
-                 uint64_t drawKey,
-                 Entity entity)
-        : model(model),
-          color(color),
-          uvTransform(uvTransform),
-          worldSize(worldSize),
-          textureSize(textureSize),
-          layer(layer),
-          shader(shader),
-          z(z),
-          tie(tie),
-          mesh(mesh),
-          atlasIndex(atlasIndex),
-          drawKey(drawKey),
-          entity(entity) {}
-
     bool operator==(const InstanceData &other) const
     {
         return model == other.model &&
