@@ -1682,6 +1682,10 @@ struct RendererUISystem {
     }
 
     void createInventory(UINode *root) {
+        #ifdef _DEBUG
+        ZoneScoped;
+        #endif
+        
         UINode* inventory;
         {
             float x = CONTAINER_MARGIN;
@@ -2117,21 +2121,10 @@ struct RendererUISystem {
         #endif
 
         uiArena.reset();
+        glm::vec2 viewportPx = { ctx.extent.width, ctx.extent.height };
 
         // --- Create Nodes ---
-        root = createUINode(uiArena, 
-            {
-                0,
-                0,
-                ctx.extent.x,
-                ctx.extent.y,
-            },
-            COLOR_SURFACE_0, 
-            2,
-            nullptr,
-            ShaderType::UISimpleRect
-        );
-
+        root = createUINode(uiArena, { 0, 0, ctx.extent.width, ctx.extent.height }, COLOR_SURFACE_0, 2, nullptr, ShaderType::UISimpleRect);
         createShadowOverlay(root);
         if (inventoryOpen) createInventory(root);
 
@@ -2153,7 +2146,7 @@ struct RendererUISystem {
                     UINodePushConstant push = {
                         .boundsPx = node->offsets,
                         .color = node->color,
-                        .viewportPx = ctx.extent,
+                        .viewportPx = viewportPx,
                         .triangle = 0,
                     };
                     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rectPipeline.pipeline);
@@ -2163,7 +2156,7 @@ struct RendererUISystem {
                 }
                 case ShaderType::Font:
                 {
-                    drawText(ctx.cmd, node, ctx.extent);
+                    drawText(ctx.cmd, node, viewportPx);
                     break;
                 }
                 case ShaderType::ShadowOverlay:
@@ -2198,7 +2191,7 @@ struct RendererUISystem {
                         .boundsPx = node->offsets,
                         .color = node->color,
                         .uvRect = uvRect,
-                        .viewportPx = ctx.extent,
+                        .viewportPx = viewportPx,
                         .triangle = node->triangle,
                     };
                     vkCmdBindPipeline(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, texturePipeline.pipeline);

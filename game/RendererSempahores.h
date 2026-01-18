@@ -10,8 +10,7 @@ struct RendererSempahores
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> imagesInFlight;
 
-    void init(VkDevice &device, RendererSwapchain &swapchain, const uint32_t &maxFrames)
-    {
+    void init(VkDevice &device, RendererSwapchain &swapchain, const uint32_t &maxFrames) {
         size_t imageCount = swapchain.swapChainImages.size();
 
         imageAvailableSemaphores.resize(maxFrames);
@@ -26,8 +25,7 @@ struct RendererSempahores
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
         // Create per-frame semaphores + fences
-        for (size_t i = 0; i < maxFrames; i++)
-        {
+        for (size_t i = 0; i < maxFrames; i++) {
             if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
                 vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
                 vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS)
@@ -39,10 +37,8 @@ struct RendererSempahores
         imagesInFlight.assign(swapchain.swapChainImages.size(), VK_NULL_HANDLE);
     }
 
-    void destroySemaphores(VkDevice &device, const uint32_t &maxFrames)
-    {
-        for (size_t i = 0; i < maxFrames; i++)
-        {
+    void destroySemaphores(VkDevice &device, const uint32_t &maxFrames) {
+        for (size_t i = 0; i < maxFrames; i++) {
             if (imageAvailableSemaphores[i] != VK_NULL_HANDLE)
             {
                 vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
@@ -66,8 +62,7 @@ struct RendererSempahores
     /**
      * Tries to acquire nexct image. Returns UINT32_MAX on failure
      */
-    uint32_t acquireImageIndex(VkDevice &device, uint32_t &currentFrame, RendererSwapchain &swapchain)
-    {
+    uint32_t acquireImageIndex(VkDevice &device, uint32_t &currentFrame, RendererSwapchain &swapchain) {
         uint32_t imageIndex;
 
         // Waiting for current frame to finish
@@ -87,35 +82,35 @@ struct RendererSempahores
         return imageIndex;
     }
 
-    VkResult submitEndDraw(RendererSwapchain &swapchain, uint32_t &currentFrame, const VkCommandBuffer *commandBuffers, VkQueue &queue, uint32_t &imageIndex)
-    {
+    VkResult submitEndDraw(RendererSwapchain &swapchain, uint32_t &currentFrame, const VkCommandBuffer *commandBuffers, VkQueue &queue, uint32_t &imageIndex) {
         VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
         VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
 
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = waitSemaphores;
-        submitInfo.pWaitDstStageMask = waitStages;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = commandBuffers;
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = signalSemaphores;
+        VkSubmitInfo submitInfo = {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = waitSemaphores,
+            .pWaitDstStageMask = waitStages,
+            .commandBufferCount = 1,
+            .pCommandBuffers = commandBuffers,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = signalSemaphores,
+        };
 
         if (vkQueueSubmit(queue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
             throw std::runtime_error("failed to submit draw command buffer");
 
-        VkPresentInfoKHR presentInfo{};
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = signalSemaphores;
-
         VkSwapchainKHR swapChains[] = {swapchain.handle};
-        presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = swapChains;
-        presentInfo.pImageIndices = &imageIndex;
-        presentInfo.pResults = nullptr;
+        VkPresentInfoKHR presentInfo = {
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = signalSemaphores,
+            .swapchainCount = 1,
+            .pSwapchains = swapChains,
+            .pImageIndices = &imageIndex,
+            .pResults = nullptr,
+        };
 
         return vkQueuePresentKHR(queue, &presentInfo);
     }

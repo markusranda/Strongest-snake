@@ -308,6 +308,7 @@ struct Game {
         {
             Logrador::info(std::filesystem::current_path().string());
 
+            ma_result maResult;
             ecs = new EntityManager();
 
             gpuExecutor = new GpuExecutor();
@@ -319,15 +320,11 @@ struct Game {
             caveSystem->instanceStorage = &gpuExecutor->instanceStorage;
             caveSystem->atlasRegions = gpuExecutor->atlasRegions;
 
-            ma_result result = ma_engine_init(NULL, &audioEngine);
-            if (result != MA_SUCCESS)
-            {
-                throw std::runtime_error("Failed to start audio engine");
-            }
+            maResult = ma_engine_init(NULL, &audioEngine);
+            if (maResult != MA_SUCCESS)throw std::runtime_error("Failed to start audio engine");
 
             // --- Keystates ---
-            for (size_t i = 0; i < GLFW_KEY_LAST; i++)
-            {
+            for (size_t i = 0; i < GLFW_KEY_LAST; i++) {
                 keyStates[i].pressed = false;
                 keyStates[i].down = false;
                 keyStates[i].released = false;
@@ -360,10 +357,13 @@ struct Game {
             caveSystem->createGraceArea();
 
             // --- AUDIO ---
-            ma_engine_set_volume(&audioEngine, 0.025);
-            ma_sound_init_from_file(&audioEngine, "assets/engine_idle.wav", 0, NULL, NULL, &engineIdleAudio);
+            maResult = ma_engine_set_volume(&audioEngine, 0.025);
+            if (maResult != MA_SUCCESS) throw std::runtime_error("failed to set audio level");
+            maResult = ma_sound_init_from_file(&audioEngine, "assets/engine_idle.wav", 0, NULL, NULL, &engineIdleAudio);
+            if (maResult != MA_SUCCESS) throw std::runtime_error("failed to init audio file");
             ma_sound_set_looping(&engineIdleAudio, MA_TRUE);
-            ma_sound_start(&engineIdleAudio);
+            maResult = ma_sound_start(&engineIdleAudio);
+            if (maResult != MA_SUCCESS) throw std::runtime_error("failed start sound");
 
             // --- USER INPUT ---
             glfwSetWindowUserPointer(window->handle, this); // Connects this instance of struct to the windows somehow
@@ -399,14 +399,16 @@ struct Game {
 
             window->pollEvents();
 
+            // Check if it's time to end this
+            if (gameOver)
+                break;
+            
             double currentTime = glfwGetTime();
             double delta = currentTime - lastTime;
             delta = std::fmin(delta, 0.033);
             lastTime = currentTime;
 
-            if (gameOver)
-                throw std::runtime_error("You fucked up");
-
+            // TODO Add arena that will be used for every allocations within this frame's lifetime.
             updateTimers(delta);
             updateGame(delta);
             updatePlayer();
@@ -415,9 +417,8 @@ struct Game {
             updateLifecycle();
             updateUISystem();
             updateFPSCounter(delta);
-            keysEnd();
-
             gpuExecutor->recordCommands(camera, globalTime, delta);
+            keysEnd();
 
             #ifdef _DEBUG
             FrameMark;
@@ -693,8 +694,8 @@ struct Game {
         #endif
 
         // Update screen bounds
-        camera.screenW = gpuExecutor->swapchain.swapChainExtent.width;
-        camera.screenH = gpuExecutor->swapchain.swapChainExtent.height;
+        camera.screenW = gpuExecutor->swapchain.extent.width;
+        camera.screenH = gpuExecutor->swapchain.extent.height;
 
         Entity entity = background.entity;
         Transform *playerTransform = (Transform*)ecs->find(ComponentId::Transform, player.entities.front().entity);
@@ -942,6 +943,8 @@ struct Game {
         glm::vec2 end         = start + playerVelocity * dt;
         drilling              = false;
 
+
+        // TODO: This collision system sucks. Implement something that makes sense
 
         // Limit how many tiles you can chew through in one move to avoid infinite loops.
         bool removedAllObstacles = true;

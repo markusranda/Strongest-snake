@@ -11,7 +11,7 @@ struct FrameCtx
 {
     VkCommandBuffer cmd;
     Camera camera;
-    glm::vec2 extent;
+    VkExtent2D extent;
     uint32_t imageIndex;
     float delta;
 

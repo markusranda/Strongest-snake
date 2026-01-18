@@ -77,6 +77,49 @@ void InitTracyVulkan(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue q
 }
 #endif
 
+static void BeginRendering(FrameCtx &ctx, VkImageView imageView, VkImageView resolveImageView, VkExtent2D extent) {
+    // Dynamic rendering setup (MSAA color + resolve to swapchain)
+    VkRenderingAttachmentInfoKHR colorAttachment = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
+        .imageView = imageView, // MSAA image
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
+        .resolveImageView = resolveImageView,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = { .color = {0.5f, 0.5f, 0.5f, 1.0f} }
+    };
+
+    VkRenderingInfoKHR renderInfo = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+        .renderArea = {
+            .offset = {0, 0},
+            .extent = extent,
+        },
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachment,
+    };
+    vkCmdBeginRendering(ctx.cmd, &renderInfo);
+}
+
+static void SetViewport(FrameCtx &ctx) {
+    VkViewport viewport = {
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = (float)ctx.extent.width,
+        .height = (float)ctx.extent.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    };
+    vkCmdSetViewport(ctx.cmd, 0, 1, &viewport);
+}
+
+static void SetScissor(FrameCtx &ctx) {
+    VkRect2D scissor = { .offset = {0, 0}, .extent = ctx.extent };
+    vkCmdSetScissor(ctx.cmd, 0, 1, &scissor);
+}
 
 inline static void crash(const char *msg) {
     fprintf(stderr, msg);
@@ -171,8 +214,8 @@ struct GpuExecutor
         CreateImage(
             application.device,
             application.physicalDevice,
-            swapchain.swapChainExtent.width,
-            swapchain.swapChainExtent.height,
+            swapchain.extent.width,
+            swapchain.extent.height,
             application.msaaSamples,
             colorFormat,
             VK_IMAGE_TILING_OPTIMAL,
@@ -453,16 +496,18 @@ struct GpuExecutor
         
         // Initialize a new commandBuffer
         VkCommandBuffer cmd = commandBuffers[currentFrame];
+        if (vkResetCommandBuffer(cmd, 0) != VK_SUCCESS) {
+            crash("failed to reset command buffer");
+        }
         VkCommandBufferBeginInfo beginInfo = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-        
-        vkResetCommandBuffer(cmd, 0);
         if (vkBeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS)
             crash("failed to begin command buffer");
 
+        // --- Create a new frame ctx ---
         FrameCtx frameCtx = {
             .cmd = cmd,
             .camera = camera,
-            .extent = glm::vec2{ swapchain.swapChainExtent.width, swapchain.swapChainExtent.height },
+            .extent = swapchain.extent,
             .imageIndex = imageIndex,
             .delta = delta,
             #ifdef _DEBUG
@@ -476,48 +521,11 @@ struct GpuExecutor
         // Prepare instance buffer
         uploadToInstanceBuffer();
 
-        // --- Barrier ---
+        // --- Begin rendering ---
         barrierPresentToColor(swapchain, swapchainImageLayouts, imageIndex, cmd);
-        // Dynamic rendering setup (MSAA color + resolve to swapchain)
-        VkRenderingAttachmentInfoKHR colorAttachment = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
-            .imageView = colorImageView, // MSAA image
-            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
-            .resolveImageView = swapchain.swapChainImageViews[imageIndex],
-            .resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue = { .color = {0.5f, 0.5f, 0.5f, 1.0f} }
-        };
-
-        // --- Create render info ---
-        VkRenderingInfoKHR renderInfo = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
-            .renderArea = {
-                .offset = {0, 0},
-                .extent = swapchain.swapChainExtent,
-            },
-            .layerCount = 1,
-            .colorAttachmentCount = 1,
-            .pColorAttachments = &colorAttachment,
-        };
-        vkCmdBeginRendering(cmd, &renderInfo);
-        
-        // --- Create viewport ---
-        VkViewport viewport = {
-            .x = 0.0f,
-            .y = 0.0f,
-            .width = (float)swapchain.swapChainExtent.width,
-            .height = (float)swapchain.swapChainExtent.height,
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f,
-        };
-        vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-        // --- Create scissor ---
-        VkRect2D scissor = { .offset = {0, 0}, .extent = swapchain.swapChainExtent };
-        vkCmdSetScissor(cmd, 0, 1, &scissor);
+        BeginRendering(frameCtx, colorImageView, swapchain.swapChainImageViews[imageIndex], swapchain.extent);
+        SetViewport(frameCtx);
+        SetScissor(frameCtx);
         
         // --- Record command for drawing ---
         recordInstanceDrawCmds(frameCtx, globalTime);
@@ -527,9 +535,9 @@ struct GpuExecutor
         // --- End command buffer and rendering ---
         vkCmdEndRendering(cmd);
         barrierColorToPresent(swapchain, swapchainImageLayouts, imageIndex, cmd);
-        
+
+        // --- GPU Profiling
         #ifdef _DEBUG
-            // TRACY COLLECT
             TracyVkCollect(tracyCtx, cmd);
         #endif
 

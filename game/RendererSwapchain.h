@@ -23,7 +23,7 @@ struct RendererSwapchain
     std::vector<VkImage> swapChainImages;
     std::vector<VkImageView> swapChainImageViews;
     VkFormat swapChainImageFormat;
-    VkExtent2D swapChainExtent;
+    VkExtent2D extent;
 
     void create(VkPhysicalDevice physicalDevice,
                 VkDevice device,
@@ -58,7 +58,7 @@ struct RendererSwapchain
 
         VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
         VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-        swapChainExtent = chooseSwapExtent(swapChainSupport.capabilities, *window);
+        extent = chooseSwapExtent(swapChainSupport.capabilities, *window);
 
         uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
         if (swapChainSupport.capabilities.maxImageCount > 0 &&
@@ -73,7 +73,7 @@ struct RendererSwapchain
         createInfo.minImageCount = imageCount;
         createInfo.imageFormat = surfaceFormat.format;
         createInfo.imageColorSpace = surfaceFormat.colorSpace;
-        createInfo.imageExtent = swapChainExtent;
+        createInfo.imageExtent = extent;
         createInfo.imageArrayLayers = 1;
         createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
