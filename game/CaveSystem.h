@@ -8,21 +8,19 @@
 #include "Atlas.h"
 #include "Item.h"
 #include "glm/common.hpp"
+#include "Globals.h"
+#include "Colors.h"
 
 // PROFILING
 #ifdef _DEBUG
 #include "tracy/Tracy.hpp"
 #endif
 
-const char *GROUND_NAME = "ground";
-const char *SPRITE_KEY = "ground_mid_1";
+inline const char *GROUND_NAME = "ground";
+inline const char *SPRITE_KEY = "ground_mid_1";
 
 struct CaveSystem
 {
-    EntityManager *ecs;
-    RendererInstanceStorage *instanceStorage;
-    AtlasRegion *atlasRegions;
-
     const float tileSize = 32.0f;
     uint32_t lastMapIndex = 19;
     glm::vec2 size = {tileSize, tileSize};

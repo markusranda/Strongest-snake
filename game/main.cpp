@@ -4,6 +4,7 @@
 #include "Logrador.h"
 #include "Window.h"
 #include "Game.h"
+#include "Globals.h"
 
 // ______________________________
 //         TRACY TIME
@@ -29,17 +30,14 @@ void operator delete(void *ptr) noexcept
 }
 #endif
 
-const uint32_t WIDTH = 1920;
-const uint32_t HEIGHT = 1080;
 
 int main() {
     Logrador::info("Launching Strongest Snake");
 
     try {
-        Window window = Window(WIDTH, HEIGHT, "StrongestSnake");
-        Game game = {
-            .window = &window,
-        };
+        InitGlobals();
+        
+        Game game = {};
         game.init();
         game.run();
     }

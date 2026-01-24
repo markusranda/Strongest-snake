@@ -63,7 +63,7 @@ struct ParticleSystem
     Pipeline computeSimPipeline;
     Pipeline computeSpawnPipeline;
     Pipeline computeCountersPipeline;
-    Pipeline graphicsPipeline{};
+    Pipeline graphicsPipeline;
 
     // Mapped
     void *spawnMapped = nullptr;

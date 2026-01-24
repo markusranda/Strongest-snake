@@ -23,6 +23,7 @@
 #include "RendererInstanceStorage.h"
 #include "RendererUISystem.h"
 #include "contexts/FrameCtx.h"
+#include "Globals.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -44,11 +45,11 @@
 #include "tracy/Tracy.hpp"
 #include <tracy/TracyVulkan.hpp>
 
-VkCommandPool tracyCmdPool = VK_NULL_HANDLE;
-VkCommandBuffer tracyCmdBuf = VK_NULL_HANDLE;
-TracyVkCtx tracyCtx = nullptr;
+inline VkCommandPool tracyCmdPool = VK_NULL_HANDLE;
+inline VkCommandBuffer tracyCmdBuf = VK_NULL_HANDLE;
+inline TracyVkCtx tracyCtx = nullptr;
 
-void InitTracyVulkan(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue queue, uint32_t queueFamilyIndex) {
+inline void InitTracyVulkan(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue queue, uint32_t queueFamilyIndex) {
     const VkCommandPoolCreateInfo poolInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .pNext = nullptr,
@@ -130,9 +131,6 @@ const int MAX_FRAMES_IN_FLIGHT = 3;
 
 struct GpuExecutor
 {
-    RendererUISystem uiSystem;
-    Window *window;
-
     RendererApplication application;
     RendererSempahores semaphores;
     RendererInstanceStorage instanceStorage;
@@ -143,9 +141,6 @@ struct GpuExecutor
     std::vector<VkImageLayout> swapchainImageLayouts;
 
     std::array<Pipeline, (size_t)ShaderType::COUNT> pipelines;
-
-    // Particle system
-    ParticleSystem particleSystem;
 
     // MSAA
     VkImage colorImage;
@@ -168,7 +163,6 @@ struct GpuExecutor
 
     // Texture
     VkDescriptorSetLayout textureSetLayout;
-    AtlasRegion *atlasRegions = new AtlasRegion[MAX_ATLAS_ENTRIES];
     VkDescriptorPool descriptorPool;
     std::array<VkDescriptorSet, 2> descriptorSets;
 
@@ -185,8 +179,6 @@ struct GpuExecutor
             createStaticVertexBuffer();
             createSemaphores();
             createCommandBuffers();
-            particleSystem = CreateParticleSystem(application, swapchain);
-            createUiSystem();
             createInstanceStorage();
 
             #ifdef _DEBUG
@@ -327,10 +319,6 @@ struct GpuExecutor
         {
             throw std::runtime_error("failed to allocate command buffers!");
         }
-    }
-
-    void createUiSystem() {
-        uiSystem.init(application, swapchain, atlasRegions);
     }
 
     void createInstanceStorage() {
@@ -516,7 +504,7 @@ struct GpuExecutor
         };
 
         // --- Record compute cmds ---
-        particleSystem.recordSimCmds(frameCtx);
+        particleSystem->recordSimCmds(frameCtx);
         
         // Prepare instance buffer
         uploadToInstanceBuffer();
@@ -529,8 +517,8 @@ struct GpuExecutor
         
         // --- Record command for drawing ---
         recordInstanceDrawCmds(frameCtx, globalTime);
-        uiSystem.recordDrawCmds(frameCtx);
-        particleSystem.recordDrawCmds(frameCtx);
+        uiSystem->recordDrawCmds(frameCtx);
+        particleSystem->recordDrawCmds(frameCtx);
 
         // --- End command buffer and rendering ---
         vkCmdEndRendering(cmd);

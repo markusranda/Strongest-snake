@@ -7,6 +7,7 @@
 #include "ShaderType.h"
 #include "Camera.h"
 #include "Collision.h"
+#include "Globals.h"
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.h>
@@ -358,7 +359,6 @@ struct RendererUISystem {
     Pipeline shadowOverlayPipeline;
     VkDescriptorSet fontAtlasSet;
     VkDescriptorSet textureAtlasSet;
-    AtlasRegion *atlasRegions = nullptr;
     FrameArena uiArena;
     UINode *root = nullptr; // Notice: Never store this pointer.
 
@@ -1868,9 +1868,7 @@ struct RendererUISystem {
     // MAIN FUNCTIONS
     // ------------------------------------------------------------------------
 
-    void init(RendererApplication &application, RendererSwapchain &swapchain, AtlasRegion *atlasRegions) {
-        this->atlasRegions = atlasRegions;
-        
+    void init(RendererApplication &application, RendererSwapchain &swapchain) {
         createRectPipeline(application, swapchain);
         createFontPipeline(application, swapchain);
         createShadowOverlayPipeline(application, swapchain);

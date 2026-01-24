@@ -5,7 +5,7 @@
 #include "components/Transform.h"
 #include "components/Ground.h"
 #include "GpuExecutor.h"
-#include "Window.h"
+#include "CaveSystem.h"
 #include "Vertex.h"
 #include "MeshRegistry.h"
 #include "EntityManager.h"
@@ -14,10 +14,11 @@
 #include "TextureComponent.h"
 #include "Colors.h"
 #include "SnakeMath.h"
-#include "CaveSystem.h"
 #include "Chunk.h"
 #include "Atlas.h"
 #include "Item.h"
+#include "Globals.h"
+#include "InstanceData.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../libs/miniaudio.h"
@@ -146,12 +147,6 @@ const double PARTICLE_SPAWN_INTERVAL = 0.2f;
 const double JOB_INTERVAL = 1.0f;
 
 struct Game {
-    // Systems
-    Window *window;
-    GpuExecutor *gpuExecutor;
-    CaveSystem *caveSystem;
-    EntityManager *ecs;
-
     // Timing
     uint32_t frameCount = 0;
     double lastTime = 0.0;
@@ -251,7 +246,7 @@ struct Game {
 
         // --- HEAD ---
         {
-            AtlasRegion region = gpuExecutor->atlasRegions[itemsDatabase[gpuExecutor->uiSystem.loadoutDrill].sprite];
+            AtlasRegion region = atlasRegions[itemsDatabase[uiSystem->loadoutDrill].sprite];
             glm::vec4 uvTransform = getUvTransform(region);
             Material material = Material{Colors::fromHex(Colors::WHITE, 1.0f), ShaderType::TextureScrolling, AtlasIndex::Sprite, {32.0f, 32.0f}};
             Transform transform = Transform{ .position = posCursor, .size = glm::vec2{snakeSize, snakeSize}, .name = "player"};
@@ -280,9 +275,9 @@ struct Game {
                 SnakeSegmentType::Storage,
             };
             AtlasRegion regions[3] = {
-                gpuExecutor->atlasRegions[SpriteID::SPR_SNK_SEG_GRINDER], 
-                gpuExecutor->atlasRegions[SpriteID::SPR_SNK_SEG_SMELTER], 
-                gpuExecutor->atlasRegions[SpriteID::SPR_SNK_SEG_STORAGE],
+                atlasRegions[SpriteID::SPR_SNK_SEG_GRINDER], 
+                atlasRegions[SpriteID::SPR_SNK_SEG_SMELTER], 
+                atlasRegions[SpriteID::SPR_SNK_SEG_STORAGE],
             };
             for (size_t i = 0; i < playerLength - 1; i++)
             {
@@ -308,19 +303,7 @@ struct Game {
         {
             Logrador::info(std::filesystem::current_path().string());
 
-            ma_result maResult;
-            ecs = new EntityManager();
-
-            gpuExecutor = new GpuExecutor();
-            gpuExecutor->window = window;
-            gpuExecutor->init();
-            
-            caveSystem = new CaveSystem();
-            caveSystem->ecs = ecs;
-            caveSystem->instanceStorage = &gpuExecutor->instanceStorage;
-            caveSystem->atlasRegions = gpuExecutor->atlasRegions;
-
-            maResult = ma_engine_init(NULL, &audioEngine);
+            ma_result maResult = ma_engine_init(NULL, &audioEngine);
             if (maResult != MA_SUCCESS)throw std::runtime_error("Failed to start audio engine");
 
             // --- Keystates ---
@@ -333,7 +316,7 @@ struct Game {
             // --- Background ---
             {
                 AtlasIndex atlasIndex = AtlasIndex::Sprite;
-                AtlasRegion region = gpuExecutor->atlasRegions[SpriteID::SPR_CAVE_BACKGROUND];
+                AtlasRegion region = atlasRegions[SpriteID::SPR_CAVE_BACKGROUND];
                 Transform trans = Transform{glm::vec2{0.0f, 0.0f}, glm::vec2{0.0f, 0.0f}};
                 ShaderType shader = ShaderType::TextureParallax;
                 Material material = { .shaderType = shader, .atlasIndex = atlasIndex, .size = { 64.0f, 64.0f } };
@@ -381,7 +364,7 @@ struct Game {
         }
 
         // Attach camera handle to uiSystem
-        gpuExecutor->uiSystem.cameraHandle = &camera;
+        uiSystem->cameraHandle = &camera;
     }
 
     void run() {
@@ -430,15 +413,15 @@ struct Game {
     }
 
     void updatePlayer() {
-        if (gpuExecutor->uiSystem.loadoutChanged) {
+        if (uiSystem->loadoutChanged) {
             Entity head = player.entities.front().entity;
-            ItemDef drill = itemsDatabase[gpuExecutor->uiSystem.loadoutDrill];
+            ItemDef drill = itemsDatabase[uiSystem->loadoutDrill];
 
             // Update drillLevel
             drillLevel = drillLevelMap[drill.id];
 
             // Update ecs
-            AtlasRegion &region = gpuExecutor->atlasRegions[drill.sprite];
+            AtlasRegion &region = atlasRegions[drill.sprite];
             glm::vec4 *uvTransform = (glm::vec4*)ecs->find(ComponentId::UvTransform, head);
             *uvTransform = getUvTransform(region);
 
@@ -446,7 +429,7 @@ struct Game {
             gpuExecutor->instanceStorage.find(head)->uvTransform = *uvTransform;
 
             // Reset change flag
-            gpuExecutor->uiSystem.loadoutChanged = false;
+            uiSystem->loadoutChanged = false;
         }
     }
 
@@ -635,7 +618,7 @@ struct Game {
                 }
 
                 // Update inventory
-                gpuExecutor->uiSystem.addItem(groundOre->itemId, 1);
+                uiSystem->addItem(groundOre->itemId, 1);
                 
                 ecs->destroyEntity(entity, SpatialStorage::Chunk);
                 gpuExecutor->instanceStorage.erase(entity);
@@ -679,11 +662,11 @@ struct Game {
     void updateUISystem() {
         // Let UI system know the current position of the player
         Transform *head = (Transform*)ecs->find(ComponentId::Transform, player.entities.front().entity);
-        gpuExecutor->uiSystem.playerCenterScreen = WorldToScreenPx(camera, head->getCenter());
+        uiSystem->playerCenterScreen = WorldToScreenPx(camera, head->getCenter());
 
         // Update jobs
         if (jobsTimer <= 0) {
-            gpuExecutor->uiSystem.advanceJobs();
+            uiSystem->advanceJobs();
             jobsTimer = JOB_INTERVAL;
         }
     }
@@ -742,7 +725,7 @@ struct Game {
         bool rightPressed = false;
 
         if (keyStates[GLFW_KEY_I].pressed) {
-            gpuExecutor->uiSystem.inventoryOpen = !gpuExecutor->uiSystem.inventoryOpen;
+            uiSystem->inventoryOpen = !uiSystem->inventoryOpen;
         }
 
         if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS)
@@ -1034,9 +1017,8 @@ struct Game {
             glm::vec4 world = headT->model * local;
             glm::vec2 drillTipWorld = glm::vec2(world.x, world.y);
 
-            if (particleTimer <= 0)
-            {
-                gpuExecutor->particleSystem.updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(headT->rotation), 8);
+            if (particleTimer <= 0) {
+                particleSystem->updateSpawnFlag(drillTipWorld, SnakeMath::getRotationVector2(headT->rotation), 8);
                 particleTimer = PARTICLE_SPAWN_INTERVAL;
             }
         }
@@ -1234,7 +1216,7 @@ inline void clickCallback(GLFWwindow* window, int button, int action, int mods) 
     glfwGetCursorPos(window, &mouseX, &mouseY);
     float clickSizeHalf = 2.0f;
     glm::vec4 bounds = { mouseX - clickSizeHalf, mouseY - clickSizeHalf, mouseX + clickSizeHalf, mouseY + clickSizeHalf };
-    game->gpuExecutor->uiSystem.tryClick(bounds, dbClick);
+    uiSystem->tryClick(bounds, dbClick);
 
     // Update lastLeftClick 
     game->lastLeftClick = nowTime;
