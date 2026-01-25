@@ -143,22 +143,22 @@ struct UINode {
     OnClickCtx click;
     AtlasRegion region;
     bool triangle;
-    float margin;
+    float padding;
 
     float x() {
-        return offsets.x + margin;
+        return offsets.x + padding;
     }
 
     float y() {
-        return offsets.y + margin;
+        return offsets.y + padding;
     }
 
     float width() {
-        return offsets.z - ( 2.0f * margin);
+        return offsets.z - ( 2.0f * padding);
     }
     
     float height() {
-        return offsets.w - ( 2.0f * margin);
+        return offsets.w - ( 2.0f * padding);
     }
 };
 
@@ -253,7 +253,7 @@ static inline UINode *createUINodeRaw(FrameArena& a, UINode &nodeDesc) {
     node->click = nodeDesc.click;
     node->region = nodeDesc.region;
     node->triangle = nodeDesc.triangle;
-    node->margin = nodeDesc.margin;
+    node->padding = nodeDesc.padding;
     
     for (int i = 0; i < node->capacity; i++) 
         node->nodes[i] = nullptr;
@@ -268,7 +268,7 @@ static inline UINode *createUINodeRaw(FrameArena& a, UINode &nodeDesc) {
 }
 
 static inline UINode uiDefaults() {
-    return { .capacity = 0, .text = "", .textLen = 0,.fontSize = ATLAS_CELL_SIZE, .recipeId = RecipeId::COUNT, .click = {}, .region = AtlasRegion(), .triangle = false, .margin = 0.0f };
+    return { .capacity = 0, .text = "", .textLen = 0,.fontSize = ATLAS_CELL_SIZE, .recipeId = RecipeId::COUNT, .click = {}, .region = AtlasRegion(), .triangle = false, .padding = 0.0f };
 }
 
 static inline UINode* createUINodeBasic(FrameArena& a, glm::vec4 offsets, glm::vec4 color, int capacity, UINode *parent, ShaderType shaderType) {
@@ -893,7 +893,7 @@ struct RendererUISystem {
         const float dgap = 5.0f;
 
         UINode *container = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_800, 2, parent, ShaderType::UISimpleRect);
-        container->margin = 5.0f;
+        container->padding = 5.0f;
 
         float remainingHeight = container->height();
         float cursorY = container->y();
@@ -959,7 +959,7 @@ struct RendererUISystem {
         {
             glm::vec4 bounds = { parent->x(), yCursor, parent->width(), remainingHeight * 0.70f };
             firstRow = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_800, inventoryItemsCount, parent, ShaderType::UISimpleRect);
-            firstRow->margin = gap;
+            firstRow->padding = gap;
             yCursor += bounds.w + gap;
             remainingHeight -= bounds.w + gap;
         }
@@ -970,7 +970,7 @@ struct RendererUISystem {
             float height = remainingHeight - gap;
             glm::vec4 bounds = { parent->x(), yCursor, parent->width(), height };
             secondRow = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_700, (int)RecipeId::COUNT, parent, ShaderType::UISimpleRect);
-            secondRow->margin = gap;
+            secondRow->padding = gap;
         }
         createLoadoutRow(secondRow);
     }
@@ -1056,7 +1056,7 @@ struct RendererUISystem {
             {
                 glm::vec4 bounds = { parent->x(), parent->y(), parent->width(), firstRowHeight };
                 firstRow = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_700, 5, parent, ShaderType::UISimpleRect);
-                firstRow->margin = 5.0f;
+                firstRow->padding = 5.0f;
                 yCursor += firstRow->height() + gap;
             }
             float xCursor = firstRow->x();
@@ -1144,7 +1144,7 @@ struct RendererUISystem {
             {
                 glm::vec4 bounds = { parent->x(), yCursor, parent->width(), secondRowHeight };
                 secondRow = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_700, 3, parent, ShaderType::UISimpleRect);
-                secondRow->margin = 5.0f;
+                secondRow->padding = 5.0f;
             }
             float xCursor = secondRow->x();
 
@@ -1175,7 +1175,7 @@ struct RendererUISystem {
             {
                 glm::vec4 bounds = { parent->x(), yCursor, parent->width(), thirdRowHeight };
                 thirdRow = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_700, 2, parent, ShaderType::UISimpleRect); 
-                thirdRow->margin = 5.0f;
+                thirdRow->padding = 5.0f;
             }
 
             UINode *progressBarBG;
@@ -1336,7 +1336,7 @@ struct RendererUISystem {
         {
             float height = rowHeight;
             firstRow = createUINodeBasic(uiArena, { xCursor, yCursor, rowWidth, height }, COLOR_TRANSPARANT, 6, parent, ShaderType::UISimpleRect);
-            firstRow->margin = 10.0f;
+            firstRow->padding = 10.0f;
             yCursor += height + gap;
             if (selectedRecipe != RecipeId::COUNT) createCraftingWindow(firstRow);
         }
@@ -1353,7 +1353,7 @@ struct RendererUISystem {
         {
             float height = rowHeight;
             thirdRow = createUINodeBasic(uiArena, {xCursor, yCursor, rowWidth, height}, COLOR_TRANSPARANT, 1, parent, ShaderType::UISimpleRect);
-            thirdRow->margin = 10.0f;
+            thirdRow->padding = 10.0f;
             createCraftingBtn(thirdRow);
         }
     }
@@ -1486,7 +1486,7 @@ struct RendererUISystem {
         {
             glm::vec4 bounds = { xCursor, yCursor, parent->width(), parent->height() - yCursor - CONTAINER_MARGIN };
             craftingContainer = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_700, 2, parent, ShaderType::UISimpleRect);
-            craftingContainer->margin = 5.0f;
+            craftingContainer->padding = 5.0f;
         }
         createCraftingContainerModule(craftingContainer);
     }
@@ -1500,7 +1500,7 @@ struct RendererUISystem {
         {
             glm::vec4 bounds = { parent->x(), parent->y(), parent->width(), parent->height() };
             inventory = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_900, 2, parent, ShaderType::UISimpleRect);
-            inventory->margin = CONTAINER_MARGIN;
+            inventory->padding = CONTAINER_MARGIN;
         }
         const float gap = CONTAINER_MARGIN;
         const float halfWidth = inventory->width() * 0.5f - (gap * 0.5f);
@@ -1510,7 +1510,7 @@ struct RendererUISystem {
         {
             glm::vec4 bounds = { xCursor, inventory->y(), halfWidth, inventory->height() };
             itemsPanel = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_800, 2, inventory, ShaderType::UISimpleRect);
-            itemsPanel->margin = CONTAINER_MARGIN;
+            itemsPanel->padding = CONTAINER_MARGIN;
             xCursor += halfWidth + gap;
         }
         createItemsPanel(itemsPanel);
@@ -1519,7 +1519,7 @@ struct RendererUISystem {
         {
             glm::vec4 bounds = { xCursor, inventory->y(), halfWidth, inventory->height() };
             craftingPanel = createUINodeBasic(uiArena, bounds, COLOR_SURFACE_800, 6, inventory, ShaderType::UISimpleRect);
-            craftingPanel->margin = CONTAINER_MARGIN;
+            craftingPanel->padding = CONTAINER_MARGIN;
         }
         createCraftingPanel(craftingPanel);
     }
@@ -1911,7 +1911,7 @@ struct RendererUISystem {
 
         // --- Create Nodes ---
         root = createUINodeBasic(uiArena, { 0, 0, ctx.extent.width, ctx.extent.height }, COLOR_SURFACE_0, 2, nullptr, ShaderType::UISimpleRect);
-        root->margin = 10.0f;
+        root->padding = 10.0f;
         createShadowOverlay(root);
         if (inventoryOpen) createInventory(root);
 
