@@ -21,7 +21,7 @@
 // ---------------------------------------------------
 
 struct UINode;
-struct RendererUISystem;
+struct UISystem;
 inline static void OnClickInventoryItem(UINode* node, void *userData, bool dbClick);
 inline static void OnClickIncrementBtn(UINode* node, void *userData, bool dbClick);
 inline static void OnClickCraft(UINode*, void *userData, bool dbClick);
@@ -367,7 +367,7 @@ static inline const char* intToCString(FrameArena& a, int value) {
 }
 // ---------------------------------------------------
 
-struct RendererUISystem {
+struct UISystem {
     Pipeline texturePipeline;
     Pipeline rectPipeline;
     Pipeline fontPipeline;
@@ -1678,7 +1678,6 @@ struct RendererUISystem {
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::INGOT_COPPER, .count = 10 };
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::INGOT_IRON, .count = 10 };
         inventoryItems[inventoryItemsCount++] = { .id = ItemId::DRILL_IRON, .count = 1 };
-        inventoryOpen = true;
         selectedRecipe = RecipeId::DRILL_COPPER;
         // ------------------------------------
 

@@ -6,7 +6,7 @@ struct CaveSystem;
 struct EntityManager;
 struct RendererInstanceStorage;
 struct AtlasRegion;
-struct RendererUISystem;
+struct UISystem;
 struct ParticleSystem;
 
 extern Window* window;
@@ -15,7 +15,7 @@ extern CaveSystem* caveSystem;
 extern EntityManager* ecs;
 extern RendererInstanceStorage *instanceStorage;
 extern AtlasRegion *atlasRegions;
-extern RendererUISystem *uiSystem;
+extern UISystem *uiSystem;
 extern ParticleSystem *particleSystem;
 
 void InitGlobals();

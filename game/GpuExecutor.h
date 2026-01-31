@@ -21,7 +21,7 @@
 #include "RendererSempahores.h"
 #include "RendererApplication.h"
 #include "RendererInstanceStorage.h"
-#include "RendererUISystem.h"
+#include "UISystem.h"
 #include "contexts/FrameCtx.h"
 #include "Globals.h"
 

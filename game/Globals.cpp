@@ -5,7 +5,7 @@
 #include "EntityManager.h"
 #include "RendererInstanceStorage.h"
 #include "Atlas.h"
-#include "RendererUISystem.h"
+#include "UISystem.h"
 
 Window* window = nullptr;
 GpuExecutor* gpuExecutor = nullptr;
@@ -13,7 +13,7 @@ CaveSystem* caveSystem = nullptr;
 EntityManager* ecs = nullptr;
 RendererInstanceStorage *instanceStorage = nullptr;
 AtlasRegion *atlasRegions = nullptr;
-RendererUISystem *uiSystem = nullptr;
+UISystem *uiSystem = nullptr;
 ParticleSystem *particleSystem = (ParticleSystem*)malloc(sizeof(ParticleSystem));
 
 const uint32_t WIDTH = 1920;
@@ -32,7 +32,7 @@ void InitGlobals() {
     gpuExecutor = new GpuExecutor();
     gpuExecutor->init();
 
-    uiSystem = new RendererUISystem();
+    uiSystem = new UISystem();
     uiSystem->init(gpuExecutor->application, gpuExecutor->swapchain);
 
     ParticleSystem tmp = CreateParticleSystem(gpuExecutor->application, gpuExecutor->swapchain);
