@@ -34,15 +34,10 @@ target_compile_definitions(strongest_snake PRIVATE
 )
 # ============================
 
-
-
 set(Vulkan_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows/include")
 set(Vulkan_LIBRARY "${CMAKE_SOURCE_DIR}/vcpkg_installed/x64-windows/lib/vulkan-1.lib")
 target_include_directories(strongest_snake PRIVATE ${Vulkan_INCLUDE_DIR})
 target_link_libraries(strongest_snake PRIVATE ${Vulkan_LIBRARY})
-
-find_package(glm CONFIG REQUIRED)
-target_link_libraries(strongest_snake PRIVATE glm::glm)
 
 find_package(glfw3 CONFIG REQUIRED)
 target_link_libraries(strongest_snake PRIVATE glfw)

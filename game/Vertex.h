@@ -1,5 +1,5 @@
 #pragma once
-#include <glm/glm.hpp>
+#include "../libs/glm/glm.hpp"
 #include <array>
 #include "vulkan/vulkan.h"
 #include "VertexBinding.h"

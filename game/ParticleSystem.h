@@ -7,7 +7,7 @@
 #include "contexts/FrameCtx.h"
 
 #include <vulkan/vulkan.h>
-#include <glm/glm.hpp>
+#include "../libs/glm/glm.hpp"
 #include <vector>
 #include <array>
 

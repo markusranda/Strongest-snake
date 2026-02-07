@@ -1,7 +1,7 @@
 #pragma once
 #include "components/Entity.h"
 #include "components/Transform.h"
-#include <glm/glm.hpp>
+#include "../libs/glm/glm.hpp"
 #include <vector>
 
 const int32_t CHUNK_WORLD_SIZE = 1024;

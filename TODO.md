@@ -1,0 +1,8 @@
+- Create console with cheat commands. Add item, remove item, refuel ...
+- Create tech tree that contains all techs
+- Add fuel mechanic. Should include fuel gauge. Should include Refuel station.
+- Add money.
+- Add some kind of ore deposit station that buys all kinds of ore.
+- Add minimap.
+- Add world map.
+- Add some kind of ore tracker for late game.

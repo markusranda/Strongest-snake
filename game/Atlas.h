@@ -1,5 +1,5 @@
 #pragma once
-#include <glm/glm.hpp>
+#include "../libs/glm/glm.hpp"
 
 enum SpriteID : uint32_t
 {
@@ -40,6 +40,8 @@ enum SpriteID : uint32_t
     SPR_GROUND_MID_19 = 2432,
 
     // --- Items ---
+    SPR_ITM_PRIM_DRILL = 1026,
+    SPR_ITM_FLINT_DRILL = 1029, 
     SPR_ITM_CPR_DRILL = 1027,    
     SPR_ITM_IRON_DRILL = 1028,
     SPR_ITM_CPR_ENGINE = 517,
@@ -56,10 +58,18 @@ enum SpriteID : uint32_t
     SPR_ORE_INGOT_COPPER = 643,
     SPR_ORE_INGOT_IRON = 644,
 
+    SPR_ITM_FUEL_CAN = 1411,
+    SPR_ITEM_CASH = 1412,
+    SPR_ITM_CAMPFIRE = 1413,
+    SPR_ITM_CLAY_BRICK = 1414,
+    SPR_ITM_CLAY_KILN = 1415,
+    SPR_ITM_SIEVE = 1416, 
+
     // --- Snek ---
     SPR_SNK_SEG_STORAGE = 387,    
     SPR_SNK_SEG_SMELTER = 388,    
-    SPR_SNK_SEG_GRINDER = 389,    
+    SPR_SNK_SEG_GRINDER = 389,
+    SPR_SNK_SEG_WATER_BARREL = 390, 
     INVALID,
 };
 

@@ -1,7 +1,8 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include "../libs/glm/glm.hpp"
+#include "../libs/glm/matrix.hpp"
+#include "../libs/glm/ext/matrix_clip_space.hpp"
 
 struct Camera
 {

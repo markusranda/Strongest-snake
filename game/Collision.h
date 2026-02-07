@@ -1,5 +1,5 @@
 #pragma once
-#include "glm/vec2.hpp"
+#include "../libs/glm/glm.hpp"
 #include "MeshRegistry.h"
 #include "components/AABB.h"
 

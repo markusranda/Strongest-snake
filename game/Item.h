@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <array>
 
+constexpr uint32_t TECH_MAX_PARENTS = 8;
+
 enum class CraftingJobType : uint16_t {
     Crush,
     Smelt,
@@ -17,6 +19,7 @@ enum class ItemCategory : uint8_t {
   DRILL,
   ENGINE,
   LIGHT,
+  SMELTER,
   COUNT
 };
 
@@ -58,6 +61,65 @@ enum class DrillLevel : uint32_t {
     COUNT
 };
 
+enum class TechId : uint16_t {
+    // Introduces the concept of drilling blocks. 
+    // Requirement: Drill 5 blocks.
+    // Reward: Ore deposit appears on minimap.
+    DrillsMatter, 
+
+    // Introduces the concept of selling ore for stone cold cash. 
+    // Requirement: Sell > 5 blocks of ore.
+    // Reward: Fuel station appears on minimap.
+    MoneyMatters, 
+    
+    // Introduces the concept of fuel. 
+    // Requirement: Refuel once at the fuel station. 
+    // Reward: Primitive crafter module and the recipe for flint drill.
+    FuelAwareness, 
+    
+    // Introduces the concept of better drills. 
+    // Requirement: Gather required materials to craft a flint drill.
+    // Reward: None
+    // With flint drill the player can now drill harder material, and drill previous tier faster.
+    FlintDrill,
+
+    // Introduces planning and logistics.
+    // Requirement: Craft basic storage container.
+    // Reward: None.
+    StorageMatters,
+
+    // Introduces water barrel
+    // Requirement: Craft basic fluid container.
+    // Reward: Recipe Unfired clay bricks, Recipe drying rack.
+    WaterStorage,
+
+    // Introduce the first forge
+    // Requirement: Craft campfire (forge category) items could be stones, and roots.
+    // Reward: None
+    FireDiscovered,
+
+    // After crafting a drying rack and mixing unfired clay bricks the player can dry bricks on the drying rack
+    // Requirement: Craft enough clay bricks to build the Kiln
+    DryClay,
+
+    // Requirement: Craft kiln.
+    CraftFirstKiln,
+
+    // Requirement: Craft Sieve module
+    CraftSieveModule,
+
+    // Requirement: Sieve enough sand gravel or sand to find small lumps of copper.
+    // Reward: Recipe copper drill.
+    GatherFirstOre,
+    
+    // Player should gather ore from sieve and use the kiln to craft the first copper ingots
+    // Requirement: Craft Copper drill
+    // Reward: None
+    CopperDrill, 
+
+    COUNT
+};
+
 struct OreDef {
     ItemId itemId;
     SpriteID spriteID;
@@ -82,6 +144,18 @@ struct RecipeDef {
   IngredientDef ingredients[5];
   int ingredientCount = 0;
   int craftingTime = 0;
+};
+
+// Has some kind of unlock requirement
+// Opens up new challenges (Doesn't really have to check this if the game is designed well)
+// Opens up spawns (ores, locations maybe).
+// Opens up crafting recipes. 
+// Contains some kind of hint
+// Things that get unlocked should probably reference the TechDef and not the other way around. 
+struct TechDef {
+  TechId techId;
+  uint16_t level;
+  SpriteID sprite;
 };
 
 template<typename TIN, typename TOUT, size_t N>
@@ -146,9 +220,49 @@ constexpr auto makeOreDatabase() {
     return db;
 }
 
+constexpr auto makeTechDatabase() {
+    IdIndexedArray<TechId, TechDef, (size_t)TechId::COUNT> db{};
+
+    db[TechId::DrillsMatter] = { TechId::DrillsMatter, 1, SpriteID::SPR_ITM_PRIM_DRILL };
+    db[TechId::MoneyMatters] = { TechId::MoneyMatters, 2, SpriteID::SPR_ITEM_CASH };
+    db[TechId::FuelAwareness] = { TechId::FuelAwareness, 3, SpriteID::SPR_ITM_FUEL_CAN };
+    db[TechId::FlintDrill] = { TechId::FlintDrill, 4, SpriteID::SPR_ITM_FLINT_DRILL };
+    db[TechId::StorageMatters] = { TechId::StorageMatters, 5, SpriteID::SPR_SNK_SEG_STORAGE };
+    db[TechId::WaterStorage] = { TechId::WaterStorage, 6, SpriteID::SPR_SNK_SEG_WATER_BARREL };
+    db[TechId::FireDiscovered] = { TechId::FireDiscovered, 7, SpriteID::SPR_ITM_CAMPFIRE };
+    db[TechId::DryClay] = { TechId::DryClay, 8, SpriteID::SPR_ITM_CLAY_BRICK };
+    db[TechId::CraftFirstKiln] = { TechId::CraftFirstKiln, 8, SpriteID::SPR_ITM_CLAY_KILN };
+    db[TechId::CraftSieveModule] = { TechId::CraftSieveModule, 8, SpriteID::SPR_ITM_SIEVE };
+    db[TechId::GatherFirstOre] = { TechId::GatherFirstOre, 8, SpriteID::SPR_ORE_BLOCK_COPPER };
+    db[TechId::CopperDrill] = { TechId::CopperDrill, 9, SpriteID::SPR_ITM_CPR_DRILL };
+
+    return db;
+}
+
+constexpr auto makeTechHintDatabase() {
+    IdIndexedArray<TechId, const char*, (size_t)TechId::COUNT> db{};
+   
+    db[TechId::DrillsMatter] = "DRILL 5 BLOCKS";
+    db[TechId::MoneyMatters] = "SELL 5 BLOCKS OF ORE";
+    db[TechId::FuelAwareness] = "REFUEL ONCE AT THE FUEL STATION";
+    db[TechId::FlintDrill] = "GATHER REQUIRED MATERIALS TO CRAFT A FLINT DRILL";
+    db[TechId::StorageMatters] = "CRAFT BASIC STORAGE CONTAINER";
+    db[TechId::WaterStorage] = "CRAFT BASIC FLUID CONTAINER";
+    db[TechId::FireDiscovered] = "CRAFT CAMPFIRE (FORGE CATEGORY) ITEMS COULD BE STONES, AND ROOTS";
+    db[TechId::DryClay] = "CRAFT ENOUGH CLAY BRICKS TO BUILD THE KILN";
+    db[TechId::CraftFirstKiln] = "CRAFT KILN";
+    db[TechId::CraftSieveModule] = "CRAFT SIEVE MODULE";
+    db[TechId::GatherFirstOre] = "SIEVE ENOUGH SAND GRAVEL OR SAND TO FIND SMALL LUMPS OF COPPER";
+    db[TechId::CopperDrill] = "CRAFT COPPER DRILL";
+
+    return db;
+}
+
 inline constexpr auto itemsDatabase = makeItemDatabase();
 inline constexpr auto recipeDatabase = makeRecipeDatabase();
 inline constexpr auto oreDatabase = makeOreDatabase();
+inline constexpr auto techDatabase = makeTechDatabase();
+inline constexpr auto techHintsDatabase = makeTechHintDatabase();
 
 // ------------------------------------------------------------------
 // LOOKUP TABLES

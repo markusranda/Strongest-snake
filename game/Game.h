@@ -24,11 +24,11 @@
 #include "../libs/miniaudio.h"
 
 #define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <glm/common.hpp>
-#include <glm/gtx/string_cast.hpp>
-#include <glm/gtx/rotate_vector.hpp>
-#include <glm/gtx/compatibility.hpp>
+#include "../libs/glm/glm.hpp"
+#include "../libs/glm/common.hpp"
+#include "../libs/glm/gtx/string_cast.hpp"
+#include "../libs/glm/gtx/rotate_vector.hpp"
+#include "../libs/glm/gtx/compatibility.hpp"
 #include <GLFW/glfw3.h>
 #include <unordered_map>
 #include <filesystem>
@@ -725,7 +725,15 @@ struct Game {
         bool rightPressed = false;
 
         if (keyStates[GLFW_KEY_I].pressed) {
-            uiSystem->inventoryOpen = !uiSystem->inventoryOpen;
+            if (uiSystem->windowState == UIWindowState::INVENTORY) uiSystem->windowState = UIWindowState::COUNT;
+            else uiSystem->windowState = UIWindowState::INVENTORY;
+        }
+        if (keyStates[GLFW_KEY_T].pressed) {
+            if (uiSystem->windowState == UIWindowState::TECH) uiSystem->windowState = UIWindowState::COUNT;
+            else uiSystem->windowState = UIWindowState::TECH;
+        }
+        if (keyStates[GLFW_KEY_ESCAPE].pressed) {
+            uiSystem->windowState = UIWindowState::COUNT; // TODO This should probably open some kind of main menu
         }
 
         if (glfwGetKey(handle, GLFW_KEY_A) == GLFW_PRESS)
@@ -1202,24 +1210,37 @@ inline void clickCallback(GLFWwindow* window, int button, int action, int mods) 
     Game *game = reinterpret_cast<Game *>(glfwGetWindowUserPointer(window));
     if (!game)
         return;
-        
-    // Figure out if this is double or single click
-    
+
     // We only care about left click on the down
-    if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return;
+    if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
-    // Check if we double clicked - tune parameter for smoother implementation
-    double nowTime = glfwGetTime();
-    bool dbClick = nowTime - game->lastLeftClick < 0.25f;
+    // --- Handle case where we pressed ---
+    if (action == GLFW_PRESS) {
+        // Start dragMode in uiSystem
+        // We reset prevCursorPosition to avoid jumping 
+        if (!uiSystem->dragMode) uiSystem->prevCursorPosition = { 0.0f, 0.0f };
+        uiSystem->dragMode = true;
 
-    double mouseX, mouseY;
-    glfwGetCursorPos(window, &mouseX, &mouseY);
-    float clickSizeHalf = 2.0f;
-    glm::vec4 bounds = { mouseX - clickSizeHalf, mouseY - clickSizeHalf, mouseX + clickSizeHalf, mouseY + clickSizeHalf };
-    uiSystem->tryClick(bounds, dbClick);
+        // Check if we double clicked - tune parameter for smoother implementation
+        double nowTime = glfwGetTime();
+        bool dbClick = nowTime - game->lastLeftClick < 0.25f;
+        
+        double mouseX, mouseY;
+        glfwGetCursorPos(window, &mouseX, &mouseY);
+        float clickSizeHalf = 2.0f;
+        glm::vec4 bounds = { mouseX - clickSizeHalf, mouseY - clickSizeHalf, mouseX + clickSizeHalf, mouseY + clickSizeHalf };
+        uiSystem->tryClick(bounds, dbClick);
+        
+        // Update lastLeftClick 
+        game->lastLeftClick = nowTime;
 
-    // Update lastLeftClick 
-    game->lastLeftClick = nowTime;
+        return;
+    }
+
+    // --- Handle case where we released ---
+
+    // End dragMode in uiSystem
+    uiSystem->dragMode = false;
 }
 
 // ------------------------------------------------------------------------

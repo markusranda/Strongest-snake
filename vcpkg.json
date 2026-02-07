@@ -1,5 +1,5 @@
 {
   "name": "strongest-snake",
   "version": "0.1.0",
-  "dependencies": ["vulkan", "shaderc", "glm", "glfw3"]
+  "dependencies": ["vulkan", "shaderc", "glfw3"]
 }

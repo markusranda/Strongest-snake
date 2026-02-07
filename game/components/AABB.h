@@ -1,8 +1,8 @@
 #pragma once
-#include "Logrador.h"
+#include "../Logrador.h"
 #include "Entity.h"
 
-#include "glm/vec2.hpp"
+#include "../../libs/glm/glm.hpp"
 
 const uint32_t MAX_AABB_NODES = 4;
 

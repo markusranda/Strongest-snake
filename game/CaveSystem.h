@@ -7,7 +7,7 @@
 #include "SnakeMath.h"
 #include "Atlas.h"
 #include "Item.h"
-#include "glm/common.hpp"
+#include "../libs/glm/common.hpp"
 #include "Globals.h"
 #include "Colors.h"
 

@@ -66,3 +66,9 @@ namespace SnakeMath
 static uint32_t CeilDivision(uint32_t value, uint32_t divisor) {
     return (value + divisor - 1) / divisor;
 }
+
+static inline uint32_t u32FloorDiv(float numerator, float denominator) {
+    if (denominator <= 0.0f) return 0;
+    if (numerator <= 0.0f) return 0;
+    return (uint32_t)(numerator / denominator);
+}

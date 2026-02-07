@@ -1,6 +1,6 @@
 #pragma once
 #include <vulkan/vulkan.h>
-#include <glm/glm.hpp>
+#include "../libs/glm/glm.hpp"
 #include "../Camera.h"
 
 #ifdef _DEBUG

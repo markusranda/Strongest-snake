@@ -5,8 +5,9 @@
 #include "ShaderType.h"
 #include "components/Mesh.h"
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include "../libs/glm/glm.hpp"
+#include "../libs/glm/matrix.hpp"
+
 #include <array>
 #include <string>
 #include <algorithm>

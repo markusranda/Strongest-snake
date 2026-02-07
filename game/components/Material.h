@@ -1,7 +1,7 @@
 #pragma once
 #include "../Shadertype.h"
 #include "../AtlasIndex.h"
-#include <glm/glm.hpp>
+#include "../libs/glm/glm.hpp"
 
 struct Material
 {

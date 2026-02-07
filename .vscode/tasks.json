@@ -19,7 +19,18 @@
                 "isDefault": false
             } 
         },
-
+        {
+            "label": "run-strongest-snake",
+            "type": "shell",
+            "command": "raddbg ${workspaceFolder}/build/Debug/strongest_snake.exe",
+            "dependsOn": "build-strongest-snake",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            }
+        }
     ],
     "version": "2.0.0"
 }
